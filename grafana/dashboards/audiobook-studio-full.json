@@ -1,0 +1,679 @@
+{
+  "title": "Audiobook Studio - Full Observability Dashboard",
+  "uid": "audiobook-studio-full",
+  "tags": ["audiobook", "observability", "slo", "business"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "HTTP Request Latency (p50, p95, p99)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(audiobook_http_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(audiobook_http_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "p95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(audiobook_http_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "p99",
+          "refId": "C"
+        }
+      ],
+      "unit": "s",
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 1},
+              {"color": "red", "value": 5}
+            ]
+          },
+          "decimals": 2
+        }
+      },
+      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8}
+    },
+    {
+      "id": 2,
+      "title": "HTTP Request Rate by Status",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum by (status_code) (rate(audiobook_http_requests_total[1m]))",
+          "legendFormat": "{{status_code}}",
+          "refId": "A"
+        }
+      ],
+      "unit": "reqps",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {"type": "value", "options": {"200": {"color": "green", "index": 0}}},
+            {"type": "value", "options": {"404": {"color": "yellow", "index": 1}}},
+            {"type": "value", "options": {"500": {"color": "red", "index": 2}}}
+          ]
+        }
+      },
+      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8}
+    },
+    {
+      "id": 3,
+      "title": "HTTP Error Rate (%)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(audiobook_http_errors_total[5m])) / sum(rate(audiobook_http_requests_total[5m])) * 100",
+          "legendFormat": "Error Rate %",
+          "refId": "A"
+        }
+      ],
+      "unit": "percent",
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 1},
+              {"color": "red", "value": 5}
+            ]
+          },
+          "min": 0,
+          "max": 10
+        }
+      },
+      "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8}
+    },
+    {
+      "id": 4,
+      "title": "Top Slow Endpoints (p99)",
+      "type": "table",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, path) (rate(audiobook_http_request_duration_seconds_bucket[5m])))",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {"type": "organize", "options": {"excludeByName": {}, "indexByName": {}, "renameByName": {}}},
+        {"type": "sortBy", "options": {"fields": {"Value": {"desc": true}}}}
+      ],
+      "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8}
+    },
+    {
+      "id": 5,
+      "title": "LLM Request Latency (p50, p95, p99)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le, model) (rate(audiobook_llm_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{model}} p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, model) (rate(audiobook_llm_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{model}} p95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, model) (rate(audiobook_llm_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{model}} p99",
+          "refId": "C"
+        }
+      ],
+      "unit": "s",
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 10},
+              {"color": "red", "value": 30}
+            ]
+          }
+        }
+      },
+      "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8}
+    },
+    {
+      "id": 6,
+      "title": "LLM Token Usage Rate (tokens/sec)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum by (model, type) (rate(audiobook_llm_tokens_total[1m]))",
+          "legendFormat": "{{model}} {{type}}",
+          "refId": "A"
+        }
+      ],
+      "unit": "ops",
+      "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8}
+    },
+    {
+      "id": 7,
+      "title": "LLM Error Rate (%)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(audiobook_llm_errors_total[5m])) / sum(rate(audiobook_llm_tokens_total[5m])) * 100",
+          "legendFormat": "LLM Error Rate %",
+          "refId": "A"
+        }
+      ],
+      "unit": "percent",
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 1},
+              {"color": "red", "value": 5}
+            ]
+          },
+          "min": 0,
+          "max": 10
+        }
+      },
+      "gridPos": {"x": 0, "y": 24, "w": 12, "h": 8}
+    },
+    {
+      "id": 8,
+      "title": "LLM Cost Rate (USD/hour)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum by (provider) (rate(audiobook_llm_cost_usd_total[5m])) * 3600",
+          "legendFormat": "{{provider}}",
+          "refId": "A"
+        }
+      ],
+      "unit": "currencyUSD",
+      "gridPos": {"x": 12, "y": 24, "w": 12, "h": 8}
+    },
+    {
+      "id": 9,
+      "title": "TTS Synthesis Latency (p50, p95, p99)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le, engine) (rate(audiobook_tts_synthesis_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{engine}} p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, engine) (rate(audiobook_tts_synthesis_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{engine}} p95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, engine) (rate(audiobook_tts_synthesis_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{engine}} p99",
+          "refId": "C"
+        }
+      ],
+      "unit": "s",
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 5},
+              {"color": "red", "value": 15}
+            ]
+          }
+        }
+      },
+      "gridPos": {"x": 0, "y": 32, "w": 12, "h": 8}
+    },
+    {
+      "id": 10,
+      "title": "TTS Synthesis Rate by Engine & Status",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum by (engine, status) (rate(audiobook_tts_synthesis_total[1m]))",
+          "legendFormat": "{{engine}} {{status}}",
+          "refId": "A"
+        }
+      ],
+      "unit": "reqps",
+      "gridPos": {"x": 12, "y": 32, "w": 12, "h": 8}
+    },
+    {
+      "id": 11,
+      "title": "TTS Error Rate (%)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(audiobook_tts_synthesis_total{status=\"error\"}[5m])) / sum(rate(audiobook_tts_synthesis_total[5m])) * 100",
+          "legendFormat": "TTS Error Rate %",
+          "refId": "A"
+        }
+      ],
+      "unit": "percent",
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 1},
+              {"color": "red", "value": 5}
+            ]
+          },
+          "min": 0,
+          "max": 10
+        }
+      },
+      "gridPos": {"x": 0, "y": 40, "w": 12, "h": 8}
+    },
+    {
+      "id": 12,
+      "title": "Pipeline Stage Duration P95 by Stage",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, stage) (rate(audiobook_pipeline_stage_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{stage}}",
+          "refId": "A"
+        }
+      ],
+      "unit": "s",
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 60},
+              {"color": "red", "value": 300}
+            ]
+          }
+        }
+      },
+      "gridPos": {"x": 12, "y": 40, "w": 12, "h": 8}
+    },
+    {
+      "id": 13,
+      "title": "Queue Depth by Queue",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "audiobook_queue_depth",
+          "legendFormat": "{{queue}}",
+          "refId": "A"
+        }
+      ],
+      "unit": "short",
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 50},
+              {"color": "red", "value": 100}
+            ]
+          }
+        }
+      },
+      "gridPos": {"x": 0, "y": 48, "w": 12, "h": 8}
+    },
+    {
+      "id": 14,
+      "title": "Pipeline Failure Rate (%)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(audiobook_pipeline_failures_total[5m])) / sum(rate(audiobook_pipeline_stage_duration_seconds_count[5m])) * 100",
+          "legendFormat": "Failure Rate %",
+          "refId": "A"
+        }
+      ],
+      "unit": "percent",
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 0.5},
+              {"color": "red", "value": 1}
+            ]
+          },
+          "min": 0,
+          "max": 5
+        }
+      },
+      "gridPos": {"x": 12, "y": 48, "w": 12, "h": 8}
+    },
+    {
+      "id": 15,
+      "title": "Daily Cost (USD)",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "increase(audiobook_cost_usd_daily[24h])",
+          "legendFormat": "Cost 24h",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 80},
+              {"color": "red", "value": 100}
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "gridPos": {"x": 0, "y": 56, "w": 6, "h": 4}
+    },
+    {
+      "id": 16,
+      "title": "LLM Cost Rate (USD/hour)",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(audiobook_llm_cost_usd_total[5m])) * 3600",
+          "legendFormat": "LLM Cost/hr",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD"
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "gridPos": {"x": 6, "y": 56, "w": 6, "h": 4}
+    },
+    {
+      "id": 17,
+      "title": "Free Tier Quota Remaining (%)",
+      "type": "gauge",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "audiobook_free_tier_quota_remaining",
+          "legendFormat": "Quota %",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "yellow", "value": 20},
+              {"color": "green", "value": 50}
+            ]
+          }
+        }
+      },
+      "options": {
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true
+      },
+      "gridPos": {"x": 12, "y": 56, "w": 6, "h": 4}
+    },
+    {
+      "id": 18,
+      "title": "Total LLM Tokens (24h)",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "increase(audiobook_llm_tokens_total[24h])",
+          "legendFormat": "Tokens 24h",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "gridPos": {"x": 18, "y": 56, "w": 6, "h": 4}
+    },
+    {
+      "id": 19,
+      "title": "Books Processed (24h)",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "increase(audiobook_books_processed_total[24h])",
+          "legendFormat": "Books 24h",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "gridPos": {"x": 0, "y": 60, "w": 6, "h": 4}
+    },
+    {
+      "id": 20,
+      "title": "Chapters Synthesized (24h)",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "increase(audiobook_chapters_synthesized_total[24h])",
+          "legendFormat": "Chapters 24h",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "gridPos": {"x": 6, "y": 60, "w": 6, "h": 4}
+    },
+    {
+      "id": 21,
+      "title": "Quality Check Failures (24h)",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "increase(audiobook_quality_check_failures_total[24h])",
+          "legendFormat": "Failures 24h",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 5},
+              {"color": "red", "value": 20}
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "gridPos": {"x": 12, "y": 60, "w": 6, "h": 4}
+    },
+    {
+      "id": 22,
+      "title": "Regenerations Triggered (24h)",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "increase(audiobook_regeneration_triggered_total[24h])",
+          "legendFormat": "Regens 24h",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 20},
+              {"color": "red", "value": 100}
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "gridPos": {"x": 18, "y": 60, "w": 6, "h": 4}
+    },
+    {
+      "id": 23,
+      "title": "Cost Breakdown by Provider (24h)",
+      "type": "piechart",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum by (provider) (increase(audiobook_cost_usd_daily[24h]))",
+          "legendFormat": "{{provider}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD"
+        }
+      },
+      "options": {
+        "displayLabels": ["name", "percent", "value"],
+        "pieType": "pie",
+        "reduceOptions": {
+          "values": false,
+          "calcs": ["lastNotNull"],
+          "fields": ""
+        }
+      },
+      "gridPos": {"x": 0, "y": 64, "w": 12, "h": 8}
+    },
+    {
+      "id": 24,
+      "title": "Token Usage by Model (24h)",
+      "type": "piechart",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum by (model) (increase(audiobook_llm_tokens_total[24h]))",
+          "legendFormat": "{{model}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      },
+      "options": {
+        "displayLabels": ["name", "percent", "value"],
+        "pieType": "pie",
+        "reduceOptions": {
+          "values": false,
+          "calcs": ["lastNotNull"],
+          "fields": ""
+        }
+      },
+      "gridPos": {"x": 12, "y": 64, "w": 12, "h": 8}
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "interval",
+        "type": "interval",
+        "label": "Interval",
+        "default": "5m",
+        "options": [
+          {"text": "1m", "value": "1m", "selected": false},
+          {"text": "5m", "value": "5m", "selected": true},
+          {"text": "15m", "value": "15m", "selected": false},
+          {"text": "1h", "value": "1h", "selected": false}
+        ]
+      }
+    ]
+  }
+}

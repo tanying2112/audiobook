@@ -10,7 +10,15 @@ export interface Project {
   author: string
   description?: string
   language?: string
+  /** Book genre — drives SOP reflection rule-bucketing (matches backend Project.genre). */
+  genre?: string
   status?: string
+  /** 当前 7 阶段之一 (extract/analyze/annotate/edit/audio_postprocess/synthesize/quality) */
+  current_stage?: string
+  /** 0-1 进度 */
+  progress?: number
+  total_cost_usd?: number
+  difficulty?: string
   created_at?: string
   updated_at?: string
 }
@@ -28,6 +36,8 @@ export interface Chapter {
   synthesize_status?: string
   quality_status?: string
   chapter_number?: number
+  /** 人工终审门：null=未在审 | pending_review | approved */
+  review_status?: string | null
 }
 
 export interface Paragraph {
@@ -47,9 +57,20 @@ export interface Paragraph {
   pitch_shift_semitones?: number
   needs_sfx?: boolean
   sfx_tags?: string[]
+  pause_before_ms?: number
+  pause_after_ms?: number
+  notes?: string
   confidence?: number
   status?: string
   audio_segment_id?: number
+  /** 人工终审覆盖：客户在合成前逐段强制指定（null=自动决策） */
+  manual_voice_id?: string | null
+  manual_engine?: string | null
+  // Phase 5: Extended fields for detail view
+  tts_edit_history?: any[]
+  quality_records?: any[]
+  routing_decision?: any
+  annotations_full?: any
 }
 
 export interface AudioSegment {
@@ -93,3 +114,25 @@ export interface PaginatedResponse<T> {
   page: number
   page_size: number
 }
+
+// Supported UI locales (mirrors SUPPORTED_LOCALES in i18n.js)
+export type SupportedLocale = 'zh-CN' | 'en-US'
+
+// Book Genre Type
+export type BookGenre =
+  | '古典小说'
+  | '现代小说'
+  | '武侠小说'
+  | '科幻小说'
+  | '奇幻小说'
+  | '历史小说'
+  | '悬疑小说'
+  | '言情小说'
+  | '传记文学'
+  | '散文随笔'
+  | '诗歌'
+  | '戏剧'
+  | '儿童文学'
+  | '青春文学'
+  | '其他'
+  | ''

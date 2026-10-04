@@ -1,7 +1,7 @@
 """templates.py 扩展测试 — 覆盖 _apply_*_template, list_templates 筛选路径, confirm, apply, progress 端点。"""
 
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -11,7 +11,7 @@ class TestTemplatesHelperFunctions:
 
     def _make_db(self):
         """创建 mock db session。"""
-        db = MagicMock()
+        db = AsyncMock()
         return db
 
     def _make_para(self):
@@ -24,7 +24,8 @@ class TestTemplatesHelperFunctions:
         pa.edited_text = None
         return pa
 
-    def test_apply_annotation_template(self):
+    @pytest.mark.asyncio
+    async def test_apply_annotation_template(self):
         """_apply_annotation_template 设置字段。"""
         from src.audiobook_studio.api.templates import _apply_annotation_template
 
@@ -45,7 +46,7 @@ class TestTemplatesHelperFunctions:
             "notes": "test",
             "difficulty": "A",
         }
-        _apply_annotation_template(db, pa, corrected)
+        await _apply_annotation_template(db, pa, corrected)
         assert pa.speaker_canonical_name == "张三"
         assert pa.is_dialogue is True
         assert pa.emotion == "happy"
@@ -53,16 +54,18 @@ class TestTemplatesHelperFunctions:
         db.add.assert_called()
         db.commit.assert_called()
 
-    def test_apply_annotation_template_minimal(self):
+    @pytest.mark.asyncio
+    async def test_apply_annotation_template_minimal(self):
         """_apply_annotation_template 最小字段。"""
         from src.audiobook_studio.api.templates import _apply_annotation_template
 
         db = self._make_db()
         pa = self._make_para()
-        _apply_annotation_template(db, pa, {"emotion": "sad"})
+        await _apply_annotation_template(db, pa, {"emotion": "sad"})
         assert pa.emotion == "sad"
 
-    def test_apply_edit_template(self):
+    @pytest.mark.asyncio
+    async def test_apply_edit_template(self):
         """_apply_edit_template 创建 TTSEdit 记录。"""
         from src.audiobook_studio.api.templates import _apply_edit_template
 
@@ -81,20 +84,22 @@ class TestTemplatesHelperFunctions:
             "llm_model": "test",
             "prompt_version": "v1",
         }
-        _apply_edit_template(db, pa, corrected)
+        await _apply_edit_template(db, pa, corrected)
         db.add.assert_called()
         db.commit.assert_called()
 
-    def test_apply_edit_template_minimal(self):
+    @pytest.mark.asyncio
+    async def test_apply_edit_template_minimal(self):
         """_apply_edit_template 最小字段。"""
         from src.audiobook_studio.api.templates import _apply_edit_template
 
         db = self._make_db()
         pa = self._make_para()
-        _apply_edit_template(db, pa, {})
+        await _apply_edit_template(db, pa, {})
         db.add.assert_called()
 
-    def test_apply_routing_template(self):
+    @pytest.mark.asyncio
+    async def test_apply_routing_template(self):
         """_apply_routing_template 创建 Routing 记录。"""
         from src.audiobook_studio.api.templates import _apply_routing_template
 
@@ -115,20 +120,22 @@ class TestTemplatesHelperFunctions:
             "voice": "v1",
             "confidence": 0.9,
         }
-        _apply_routing_template(db, pa, corrected)
+        await _apply_routing_template(db, pa, corrected)
         db.add.assert_called()
         db.commit.assert_called()
 
-    def test_apply_routing_template_minimal(self):
+    @pytest.mark.asyncio
+    async def test_apply_routing_template_minimal(self):
         """_apply_routing_template 最小字段。"""
         from src.audiobook_studio.api.templates import _apply_routing_template
 
         db = self._make_db()
         pa = self._make_para()
-        _apply_routing_template(db, pa, {})
+        await _apply_routing_template(db, pa, {})
         db.add.assert_called()
 
-    def test_apply_quality_template(self):
+    @pytest.mark.asyncio
+    async def test_apply_quality_template(self):
         """_apply_quality_template 创建 Quality 记录。"""
         from src.audiobook_studio.api.templates import _apply_quality_template
 
@@ -137,7 +144,11 @@ class TestTemplatesHelperFunctions:
         # Mock query chain for TTSEdit
         mock_tts_edit = MagicMock()
         mock_tts_edit.id = 42
-        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = mock_tts_edit
+        mock_scalars = MagicMock()
+        mock_scalars.first.return_value = mock_tts_edit
+        mock_result = MagicMock()
+        mock_result.scalars.return_value = mock_scalars
+        db.execute.return_value = mock_result
 
         corrected = {
             "speaker_clarity": 0.9,
@@ -155,19 +166,24 @@ class TestTemplatesHelperFunctions:
             "audio_file_path": "/audio.mp3",
             "audio_duration_ms": 60000,
         }
-        _apply_quality_template(db, pa, corrected)
+        await _apply_quality_template(db, pa, corrected)
         db.add.assert_called()
         db.commit.assert_called()
 
-    def test_apply_quality_template_no_tts_edit(self):
+    @pytest.mark.asyncio
+    async def test_apply_quality_template_no_tts_edit(self):
         """_apply_quality_template 无 TTSEdit 时跳过。"""
         from src.audiobook_studio.api.templates import _apply_quality_template
 
         db = self._make_db()
         pa = self._make_para()
-        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
+        mock_scalars = MagicMock()
+        mock_scalars.first.return_value = None
+        mock_result = MagicMock()
+        mock_result.scalars.return_value = mock_scalars
+        db.execute.return_value = mock_result
 
-        _apply_quality_template(db, pa, {"overall_score": 0.9})
+        await _apply_quality_template(db, pa, {"overall_score": 0.9})
         # Should not add quality record
         db.add.assert_not_called()
 
@@ -183,27 +199,34 @@ class TestTemplatesBackgroundTask:
         if hasattr(_apply_template_background, "progress"):
             _apply_template_background.progress = {}
 
-        # The function imports create_engine/sessionmaker locally
-        # so patch them at sqlalchemy level
-        with patch("sqlalchemy.create_engine") as mock_engine:
-            with patch("sqlalchemy.orm.sessionmaker") as mock_sm:
-                mock_session = MagicMock()
-                # Template not found → ValueError
-                mock_session.query.return_value.filter.return_value.first.return_value = None
-                mock_sm.return_value = MagicMock(return_value=mock_session)
+        # The function imports create_async_session locally
+        # so patch it at the database module
+        with patch("src.audiobook_studio.database.create_async_session") as mock_create:
+            mock_session = AsyncMock()
+            # Template not found → ValueError
+            mock_result = AsyncMock()
+            mock_result.scalar_one_or_none.return_value = None
+            mock_session.execute.return_value = mock_result
+            mock_create.return_value = mock_session
 
-                import asyncio
-                try:
-                    asyncio.run(_apply_template_background(
-                        project_id=1, template_id=999,
-                        scope="all", chapter_ids=None,
-                        pattern_filter=None, task_id="test_task_1",
-                    ))
-                except Exception:
-                    pass
+            import asyncio
 
-                # Check that progress was initialized
-                assert "test_task_1" in _apply_template_background.progress
+            try:
+                asyncio.run(
+                    _apply_template_background(
+                        project_id=1,
+                        template_id=999,
+                        scope="all",
+                        chapter_ids=None,
+                        pattern_filter=None,
+                        task_id="test_task_1",
+                    )
+                )
+            except Exception:
+                pass
+
+            # Check that progress was initialized
+            assert "test_task_1" in _apply_template_background.progress
 
     def test_apply_template_background_not_confirmed(self):
         """_apply_template_background 未确认的模板。"""
@@ -212,27 +235,34 @@ class TestTemplatesBackgroundTask:
         if hasattr(_apply_template_background, "progress"):
             _apply_template_background.progress = {}
 
-        with patch("sqlalchemy.create_engine"):
-            with patch("sqlalchemy.orm.sessionmaker") as mock_sm:
-                mock_session = MagicMock()
-                # Template exists but not confirmed
-                mock_template = MagicMock()
-                mock_template.processed = False
-                mock_template.promoted = False
-                mock_session.query.return_value.filter.return_value.first.return_value = mock_template
-                mock_sm.return_value = MagicMock(return_value=mock_session)
+        with patch("src.audiobook_studio.database.create_async_session") as mock_create:
+            mock_session = AsyncMock()
+            # Template exists but not confirmed
+            mock_template = MagicMock()
+            mock_template.processed = False
+            mock_template.promoted = False
+            mock_result = AsyncMock()
+            mock_result.scalar_one_or_none.return_value = mock_template
+            mock_session.execute.return_value = mock_result
+            mock_create.return_value = mock_session
 
-                import asyncio
-                try:
-                    asyncio.run(_apply_template_background(
-                        project_id=1, template_id=1,
-                        scope="all", chapter_ids=None,
-                        pattern_filter=None, task_id="test_task_2",
-                    ))
-                except Exception:
-                    pass
+            import asyncio
 
-                assert "test_task_2" in _apply_template_background.progress
+            try:
+                asyncio.run(
+                    _apply_template_background(
+                        project_id=1,
+                        template_id=1,
+                        scope="all",
+                        chapter_ids=None,
+                        pattern_filter=None,
+                        task_id="test_task_2",
+                    )
+                )
+            except Exception:
+                pass
+
+            assert "test_task_2" in _apply_template_background.progress
 
     def test_apply_template_background_chapter_scope(self):
         """_apply_template_background chapter scope。"""
@@ -241,36 +271,41 @@ class TestTemplatesBackgroundTask:
         if hasattr(_apply_template_background, "progress"):
             _apply_template_background.progress = {}
 
-        with patch("sqlalchemy.create_engine"):
-            with patch("sqlalchemy.orm.sessionmaker") as mock_sm:
-                mock_session = MagicMock()
-                # Template confirmed
-                mock_template = MagicMock()
-                mock_template.processed = True
-                mock_template.promoted = True
-                mock_template.stage = "annotate"
-                mock_template.corrected_output = {"emotion": "happy"}
+        with patch("src.audiobook_studio.database.create_async_session") as mock_create:
+            mock_session = AsyncMock()
+            # Template confirmed
+            mock_template = MagicMock()
+            mock_template.processed = True
+            mock_template.promoted = True
+            mock_template.stage = "annotate"
+            mock_template.corrected_output = {"emotion": "happy"}
 
-                # Two queries: first for template, second for paragraphs
-                q1 = MagicMock()
-                q1.filter.return_value.first.return_value = mock_template
-                q2 = MagicMock()
-                q2.filter.return_value.filter.return_value.all.return_value = []
+            # Two queries: first for template, second for paragraphs
+            mock_result1 = AsyncMock()
+            mock_result1.scalar_one_or_none.return_value = mock_template
+            mock_result2 = AsyncMock()
+            mock_result2.scalars.return_value.all.return_value = []
 
-                mock_session.query.side_effect = [q1, q2]
-                mock_sm.return_value = MagicMock(return_value=mock_session)
+            mock_session.execute.side_effect = [mock_result1, mock_result2]
+            mock_create.return_value = mock_session
 
-                import asyncio
-                try:
-                    asyncio.run(_apply_template_background(
-                        project_id=1, template_id=1,
-                        scope="chapter", chapter_ids=[1, 2],
-                        pattern_filter=None, task_id="test_task_3",
-                    ))
-                except Exception:
-                    pass
+            import asyncio
 
-                assert "test_task_3" in _apply_template_background.progress
+            try:
+                asyncio.run(
+                    _apply_template_background(
+                        project_id=1,
+                        template_id=1,
+                        scope="chapter",
+                        chapter_ids=[1, 2],
+                        pattern_filter=None,
+                        task_id="test_task_3",
+                    )
+                )
+            except Exception:
+                pass
+
+            assert "test_task_3" in _apply_template_background.progress
 
 
 class TestTemplatesAPISchemas:
@@ -279,6 +314,7 @@ class TestTemplatesAPISchemas:
     def test_template_list_response_defaults(self):
         """TemplateListResponse 默认值。"""
         from src.audiobook_studio.api.templates import TemplateListResponse
+
         resp = TemplateListResponse()
         assert resp.templates == []
         assert resp.total_count == 0
@@ -287,6 +323,7 @@ class TestTemplatesAPISchemas:
     def test_template_confirm_request(self):
         """TemplateConfirmRequest 创建。"""
         from src.audiobook_studio.api.templates import TemplateConfirmRequest
+
         req = TemplateConfirmRequest(action="confirm", pattern_tags=["tag1"])
         assert req.action == "confirm"
         assert req.pattern_tags == ["tag1"]
@@ -294,6 +331,7 @@ class TestTemplatesAPISchemas:
     def test_template_confirm_request_no_tags(self):
         """TemplateConfirmRequest 无 tags。"""
         from src.audiobook_studio.api.templates import TemplateConfirmRequest
+
         req = TemplateConfirmRequest(action="reject")
         assert req.action == "reject"
         assert req.pattern_tags is None
@@ -301,9 +339,12 @@ class TestTemplatesAPISchemas:
     def test_template_apply_request(self):
         """TemplateApplyRequest 创建。"""
         from src.audiobook_studio.api.templates import TemplateApplyRequest
+
         req = TemplateApplyRequest(
-            template_id=1, scope="chapter",
-            chapter_ids=[1, 2], pattern_filter=None,
+            template_id=1,
+            scope="chapter",
+            chapter_ids=[1, 2],
+            pattern_filter=None,
         )
         assert req.template_id == 1
         assert req.scope == "chapter"
@@ -312,6 +353,7 @@ class TestTemplatesAPISchemas:
     def test_template_apply_progress_defaults(self):
         """TemplateApplyProgress 默认值。"""
         from src.audiobook_studio.api.templates import TemplateApplyProgress
+
         p = TemplateApplyProgress()
         assert p.processed == 0
         assert p.total == 0
@@ -320,12 +362,19 @@ class TestTemplatesAPISchemas:
     def test_template_item_full(self):
         """TemplateItem 完整字段。"""
         from src.audiobook_studio.api.templates import TemplateItem
+
         item = TemplateItem(
-            id=1, feedback_id="fb-1", source="human_edit",
-            stage="annotate", pattern_tags=["tag1"],
-            diff_summary="diff", rationale="reason",
+            id=1,
+            feedback_id="fb-1",
+            source="human_edit",
+            stage="annotate",
+            pattern_tags=["tag1"],
+            diff_summary="diff",
+            rationale="reason",
             created_at="2025-01-01T00:00:00",
-            input_snapshot={}, llm_output={}, corrected_output={},
+            input_snapshot={},
+            llm_output={},
+            corrected_output={},
         )
         assert item.id == 1
         assert item.source == "human_edit"

@@ -1,34 +1,78 @@
 # Audiobook Studio - TTS Module
 """Text-to-Speech engines and voice cloning."""
 
-from .engine import (
-    TTSEngine,
-    VoiceInfo,
-    SynthesisResult,
-    EngineRegistry,
-    get_engine_registry,
-    register_engine,
-    get_engine,
-    initialize_all_engines,
-    cleanup_all_engines,
-)
+from .circuit_breaker import CircuitBreaker
 from .clone import (
-    VoiceCloner,
-    VoiceSample,
-    VoicePrint,
     AudioQuality,
+    VoiceCloner,
+    VoiceCloningManager,
+    VoicePrint,
+    VoiceSample,
     clone_voice,
     load_voice_print,
 )
+from .edge_tts_engine import EdgeTTSEngine, create_edge_tts_engine
+from .edge_tts_port import EdgeTTSPort, create_edge_tts_port
+from .engine import (
+    TTS_HEALTH_ENGINES,
+    EngineRegistry,
+    SynthesisResult,
+    TTSEngine,
+    VoiceInfo,
+    cleanup_all_engines,
+    initialize_all_engines,
+    probe_tts_engines,
+)
+from .fake_port import FakeRemoteTTSPort, MockRemoteTTSPort
 from .kokoro_backend import KokoroBackend, create_kokoro_backend
-from .voxcpm2_backend import VoxCPM2Backend, create_voxcpmp2_backend
+from .kokoro_port import KokoroPort, create_kokoro_port
 from .model_downloader import (
+    FALLBACK_FILES,
+    REQUIRED_FILES,
+    download_all_models,
     ensure_models_available,
     get_model_paths,
     verify_models,
-    download_all_models,
-    REQUIRED_FILES,
-    FALLBACK_FILES,
+)
+from .piper_backend import PiperBackend, create_piper_backend
+from .piper_models import (
+    DEFAULT_PIPER_VOICE,
+    PIPER_DEFAULT_MODEL_DIR,
+    detect_piper_availability,
+    ensure_piper_models,
+    list_piper_voices,
+)
+from .port import RemoteTTSPort, TTSProsody, TTSStatus, TTSTaskPayload, TTSTaskResult, TTSTaskStatus, TTSVoiceAnchor
+from .port_factory import create_configured_registry, create_engine, engine_context, get_default_engine, get_port
+from .rate_limiter import (
+    DEFAULT_TTS_RATE_LIMITS,
+    ProviderRateLimiter,
+    RateLimitConfig,
+    TTSRateLimiter,
+    create_tts_rate_limiter,
+    get_tts_rate_limiter,
+)
+from .remote_voxcpm2_client import RemoteVoxCPM2Client, RemoteVoxCPM2Config, create_remote_voxcpm2_client
+from .remote_voxcpm2_port import (
+    PortConnectionError,
+    PortError,
+    PortRemoteError,
+    PortTimeoutError,
+    RemoteVoxCPM2Port,
+    RemoteVoxCPM2PortConfig,
+    create_remote_voxcpm2_port,
+)
+from .streaming import StreamingTTSConfig, StreamingTTSEngine, StreamingTTSResult, create_streaming_tts_engine
+from .voxcpm2_backend import VoxCPM2Backend, create_voxcpm2_backend
+from .zero_shot_clone import (
+    BaseZeroShotCloneEngine,
+    CosyVoiceCloneEngine,
+    OpenVoiceV2Engine,
+    XTTSv2Engine,
+    ZeroShotCloneConfig,
+    ZeroShotCloneEngine,
+    ZeroShotCloneResult,
+    create_zero_shot_clone_engine,
 )
 
 __all__ = [
@@ -37,23 +81,81 @@ __all__ = [
     "VoiceInfo",
     "SynthesisResult",
     "EngineRegistry",
-    "get_engine_registry",
-    "register_engine",
-    "get_engine",
     "initialize_all_engines",
     "cleanup_all_engines",
-    # Voice cloning
+    "probe_tts_engines",
+    "TTS_HEALTH_ENGINES",
+    # Voice cloning (legacy)
     "VoiceCloner",
+    "VoiceCloningManager",
     "VoiceSample",
     "VoicePrint",
     "AudioQuality",
     "clone_voice",
     "load_voice_print",
+    # Zero-Shot Voice Cloning (P2-4)
+    "ZeroShotCloneConfig",
+    "ZeroShotCloneResult",
+    "BaseZeroShotCloneEngine",
+    "XTTSv2Engine",
+    "OpenVoiceV2Engine",
+    "CosyVoiceCloneEngine",
+    "ZeroShotCloneEngine",
+    "create_zero_shot_clone_engine",
     # Backends
     "KokoroBackend",
     "create_kokoro_backend",
+    "PiperBackend",
+    "create_piper_backend",
+    "DEFAULT_PIPER_VOICE",
+    "PIPER_DEFAULT_MODEL_DIR",
+    "detect_piper_availability",
+    "ensure_piper_models",
+    "list_piper_voices",
     "VoxCPM2Backend",
-    "create_voxcpmp2_backend",
+    "create_voxcpm2_backend",
+    # Streaming TTS (P2-3)
+    "StreamingTTSEngine",
+    "StreamingTTSConfig",
+    "StreamingTTSResult",
+    "create_streaming_tts_engine",
+    # Remote VoxCPM2 client (legacy)
+    "RemoteVoxCPM2Client",
+    "RemoteVoxCPM2Config",
+    "create_remote_voxcpm2_client",
+    # Port Contract (Hermes-Celery boundary)
+    "TTSStatus",
+    "TTSVoiceAnchor",
+    "TTSProsody",
+    "TTSTaskPayload",
+    "TTSTaskResult",
+    "TTSTaskStatus",
+    "RemoteTTSPort",
+    # Port Implementations
+    "FakeRemoteTTSPort",
+    "MockRemoteTTSPort",
+    "RemoteVoxCPM2Port",
+    "RemoteVoxCPM2PortConfig",
+    "create_remote_voxcpm2_port",
+    "EdgeTTSPort",
+    "create_edge_tts_port",
+    "KokoroPort",
+    "create_kokoro_port",
+    # New Engine Registry
+    "create_engine",
+    "create_configured_registry",
+    "engine_context",
+    "get_default_engine",
+    "get_port",
+    # Circuit Breaker
+    "CircuitBreaker",
+    # Rate Limiter
+    "TTSRateLimiter",
+    "RateLimitConfig",
+    "ProviderRateLimiter",
+    "create_tts_rate_limiter",
+    "get_tts_rate_limiter",
+    "DEFAULT_TTS_RATE_LIMITS",
     # Model Downloader
     "ensure_models_available",
     "get_model_paths",

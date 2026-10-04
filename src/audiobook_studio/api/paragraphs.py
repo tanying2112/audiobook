@@ -1,75 +1,37 @@
-"""FastAPI router for ``Paragraph`` CRUD operations (legacy API)."""
+"""FastAPI router for ``Paragraph`` CRUD operations (async SQLAlchemy 2.0)."""
 
-from typing import List, Optional, Dict, Any
+import logging
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, status
+from fastapi.responses import FileResponse
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..exceptions import DomainError
+from ..models.audio_segment import AudioSegment
 from ..models.paragraph import Paragraph
-from ..models.tts_edit import TTSEdit
-from ..models.routing import Routing
 from ..models.quality import Quality
+from ..models.routing import Routing
+from ..models.tts_edit import TTSEdit
 from ..schemas.legacy import Paragraph as ParagraphSchema
-from .dependencies import get_db
+from ..storage import audio_dir
+from .dependencies import get_async_db
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/paragraphs", tags=["paragraphs"])
 
 
-@router.post("/", response_model=ParagraphSchema, status_code=status.HTTP_201_CREATED)
-def create_paragraph(paragraph: ParagraphSchema, db: Session = Depends(get_db)):
-    db_par = Paragraph(**paragraph.model_dump())
-    db.add(db_par)
-    db.commit()
-    db.refresh(db_par)
-    return db_par.to_schema()
+# ── Pydantic schemas for API responses ────────────────────────────────────────
 
-
-@router.get("/", response_model=List[ParagraphSchema])
-def list_paragraphs(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    items = db.query(Paragraph).offset(skip).limit(limit).all()
-    return [p.to_schema() for p in items]
-
-
-@router.get("/{paragraph_id}", response_model=ParagraphSchema)
-def get_paragraph(paragraph_id: int, db: Session = Depends(get_db)):
-    p = db.query(Paragraph).filter(Paragraph.id == paragraph_id).first()
-    if not p:
-        raise HTTPException(status_code=404, detail="Paragraph not found")
-    return p.to_schema()
-
-
-@router.put("/{paragraph_id}", response_model=ParagraphSchema)
-def update_paragraph(
-    paragraph_id: int, payload: ParagraphSchema, db: Session = Depends(get_db)
-):
-    p = db.query(Paragraph).filter(Paragraph.id == paragraph_id).first()
-    if not p:
-        raise HTTPException(status_code=404, detail="Paragraph not found")
-    for field, value in payload.model_dump().items():
-        setattr(p, field, value)
-    db.commit()
-    db.refresh(p)
-    return p.to_schema()
-
-
-@router.delete("/{paragraph_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_paragraph(paragraph_id: int, db: Session = Depends(get_db)):
-    p = db.query(Paragraph).filter(Paragraph.id == paragraph_id).first()
-    if not p:
-        raise HTTPException(status_code=404, detail="Paragraph not found")
-    db.delete(p)
-    db.commit()
-    return None
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Paragraph Detail Endpoint (P0-5: Aggregated endpoint with _embedded data)
-# ─────────────────────────────────────────────────────────────────────────────
 
 class ParagraphAnnotationDetail(BaseModel):
     """Paragraph annotation details."""
+
     speaker_canonical_name: Optional[str] = None
     is_dialogue: bool = False
     emotion: Optional[str] = None
@@ -85,6 +47,7 @@ class ParagraphAnnotationDetail(BaseModel):
 
 class ParagraphTTSEditDetail(BaseModel):
     """Paragraph TTS edit details."""
+
     changes_made: List[str] = Field(default_factory=list)
     edited_text: Optional[str] = None
     edit_reason: Optional[str] = None
@@ -92,6 +55,7 @@ class ParagraphTTSEditDetail(BaseModel):
 
 class ParagraphRoutingDetail(BaseModel):
     """Paragraph TTS routing details."""
+
     engine_choice: str = "kokoro"
     voice_id: str = "kokoro_narrator"
     fallback_engine: str = "edge"
@@ -102,6 +66,7 @@ class ParagraphRoutingDetail(BaseModel):
 
 class ParagraphQualityDetail(BaseModel):
     """Paragraph quality check details."""
+
     overall_score: float = 0.5
     speaker_clarity: float = 0.5
     emotion_match: float = 0.5
@@ -118,11 +83,12 @@ class ParagraphDetailOut(BaseModel):
 
     This endpoint joins:
     - Paragraph base data
-    - Annotation (speaker/emotion/etc.)
-    - TTS Edit decisions
-    - Routing decisions
-    - Quality scores
+    - ParagraphAnnotation (speaker/emotion/etc.)
+    - TTSEdit (edit decisions)
+    - Routing (TTS engine/voice selection)
+    - Quality (scores, issues, suggestions)
     """
+
     id: int
     chapter_id: int
     paragraph_index: int
@@ -134,7 +100,7 @@ class ParagraphDetailOut(BaseModel):
     embedded_data: Dict[str, Any] = Field(
         default_factory=dict,
         description="Aggregated data from all related tables",
-        alias="_embedded"
+        alias="_embedded",
     )
 
     # Convenience fields (flattened from embedded)
@@ -148,10 +114,93 @@ class ParagraphDetailOut(BaseModel):
     updated_at: Optional[str] = None
 
 
+# ── Paragraph CRUD ────────────────────────────────────────────────────────────
+
+
+@router.post("/", response_model=ParagraphSchema, status_code=status.HTTP_201_CREATED)
+async def create_paragraph(paragraph: ParagraphSchema, db: AsyncSession = Depends(get_async_db)):
+    """Create a new paragraph."""
+    db_par = Paragraph(**paragraph.model_dump())
+    db.add(db_par)
+    await db.commit()
+    await db.refresh(db_par)
+    return db_par.to_schema()
+
+
+@router.get("/", response_model=List[Dict[str, Any]])
+async def list_paragraphs(skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_async_db)):
+    """List all paragraphs.
+
+    返回扁平化完整字段（含标注/编辑/路由/质检），供前端 ChapterTimeline 直接展示，
+    避免 N+1 次 detail 查询。
+    """
+    result = await db.execute(select(Paragraph).offset(skip).limit(limit))
+    items = result.scalars().all()
+    return [p.to_full_dict() for p in items]
+
+
+@router.get("/{paragraph_id}", response_model=ParagraphSchema)
+async def get_paragraph(paragraph_id: int, db: AsyncSession = Depends(get_async_db)):
+    """Get a paragraph by ID."""
+    result = await db.execute(select(Paragraph).where(Paragraph.id == paragraph_id))
+    p = result.scalar_one_or_none()
+    if not p:
+        raise DomainError(
+            message="Paragraph not found",
+            error_code="NOT_FOUND",
+            stage="paragraphs",
+            context={"paragraph_id": paragraph_id},
+        )
+    return p.to_schema()
+
+
+@router.put("/{paragraph_id}", response_model=ParagraphSchema)
+async def update_paragraph(paragraph_id: int, payload: ParagraphSchema, db: AsyncSession = Depends(get_async_db)):
+    """Update a paragraph."""
+    result = await db.execute(select(Paragraph).where(Paragraph.id == paragraph_id))
+    p = result.scalar_one_or_none()
+    if not p:
+        raise DomainError(
+            message="Paragraph not found",
+            error_code="NOT_FOUND",
+            stage="paragraphs",
+            context={"paragraph_id": paragraph_id},
+        )
+    # Exclude id and other read-only fields from update
+    update_data = {k: v for k, v in payload.model_dump().items() if k not in ("id",) and v is not None}
+    for field, value in update_data.items():
+        setattr(p, field, value)
+    await db.commit()
+    await db.refresh(p)
+    return p.to_schema()
+
+
+@router.delete("/{paragraph_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_paragraph(paragraph_id: int, db: AsyncSession = Depends(get_async_db)):
+    """Delete a paragraph."""
+    result = await db.execute(select(Paragraph).where(Paragraph.id == paragraph_id))
+    p = result.scalar_one_or_none()
+    if not p:
+        raise DomainError(
+            message="Paragraph not found",
+            error_code="NOT_FOUND",
+            stage="paragraphs",
+            context={"paragraph_id": paragraph_id},
+        )
+    await db.delete(p)
+    await db.commit()
+    return None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Paragraph Detail Endpoint (P0-5: Aggregated endpoint with _embedded data)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
 @router.get("/{paragraph_id}/detail", response_model=ParagraphDetailOut)
-def get_paragraph_detail(
+async def get_paragraph_detail(
     paragraph_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     Get paragraph with full embedded data.
@@ -167,56 +216,67 @@ def get_paragraph_detail(
     For list views, use GET /paragraphs/ (limited fields).
     """
     # Get base paragraph
-    p = db.query(Paragraph).filter(Paragraph.id == paragraph_id).first()
+    result = await db.execute(select(Paragraph).where(Paragraph.id == paragraph_id))
+    p = result.scalar_one_or_none()
     if not p:
-        raise HTTPException(status_code=404, detail="Paragraph not found")
+        raise DomainError(
+            message="Paragraph not found",
+            error_code="NOT_FOUND",
+            stage="paragraphs",
+            context={"paragraph_id": paragraph_id},
+        )
 
     # Get latest TTS edit
-    tts_edit_record = db.query(TTSEdit).filter(TTSEdit.paragraph_id == paragraph_id).order_by(TTSEdit.id.desc()).first()
+    result = await db.execute(select(TTSEdit).where(TTSEdit.paragraph_id == paragraph_id).order_by(TTSEdit.id.desc()))
+    tts_edit_record = result.scalars().first()
+
     # Get latest Routing
-    routing_record = db.query(Routing).filter(Routing.paragraph_id == paragraph_id).order_by(Routing.id.desc()).first()
+    result = await db.execute(select(Routing).where(Routing.paragraph_id == paragraph_id).order_by(Routing.id.desc()))
+    routing_record = result.scalars().first()
+
     # Get latest Quality
-    quality_record = db.query(Quality).filter(Quality.paragraph_id == paragraph_id).order_by(Quality.id.desc()).first()
+    result = await db.execute(select(Quality).where(Quality.paragraph_id == paragraph_id).order_by(Quality.id.desc()))
+    quality_record = result.scalars().first()
 
     # Build annotation data from paragraph attributes (with fallback to placeholder defaults)
     annotation_data = {
-        "speaker_canonical_name": getattr(p, 'speaker_canonical_name', getattr(p, 'speaker', None)),
-        "is_dialogue": getattr(p, 'is_dialogue', False),
-        "emotion": getattr(p, 'emotion', "neutral"),
-        "emotion_intensity": getattr(p, 'emotion_intensity', 0.5),
-        "speech_rate": getattr(p, 'speech_rate', 1.0),
-        "pitch_shift_semitones": getattr(p, 'pitch_shift_semitones', 0),
-        "pause_before_ms": getattr(p, 'pause_before_ms', 300),
-        "pause_after_ms": getattr(p, 'pause_after_ms', 500),
-        "confidence": getattr(p, 'confidence', 0.9),
-        "difficulty": getattr(p, 'edit_difficulty', getattr(p, 'difficulty', 'B')),
-        "forbid_edit": getattr(p, 'edit_forbid_edit', getattr(p, 'difficulty', 'B') == 'A'),
+        "speaker_canonical_name": getattr(p, "speaker_canonical_name", getattr(p, "speaker", None)),
+        "is_dialogue": getattr(p, "is_dialogue", False),
+        "emotion": getattr(p, "emotion", "neutral"),
+        "emotion_intensity": getattr(p, "emotion_intensity", 0.5),
+        "speech_rate": getattr(p, "speech_rate", 1.0),
+        "pitch_shift_semitones": getattr(p, "pitch_shift_semitones", 0),
+        "pause_before_ms": getattr(p, "pause_before_ms", 300),
+        "pause_after_ms": getattr(p, "pause_after_ms", 500),
+        "confidence": getattr(p, "confidence", 0.9),
+        "difficulty": getattr(p, "edit_difficulty", getattr(p, "difficulty", "B")),
+        "forbid_edit": getattr(p, "edit_forbid_edit", getattr(p, "difficulty", "B") == "A"),
     }
 
     # Build tts_edit data
     if tts_edit_record:
         tts_edit_data = {
-            "changes_made": tts_edit_record.changes_made if hasattr(tts_edit_record, 'changes_made') else [],
-            "edited_text": getattr(tts_edit_record, 'edited_text', None),
-            "edit_reason": getattr(tts_edit_record, 'rationale', None),
+            "changes_made": (tts_edit_record.changes_made if hasattr(tts_edit_record, "changes_made") else []),
+            "edited_text": getattr(tts_edit_record, "edited_text", None),
+            "edit_reason": getattr(tts_edit_record, "rationale", None),
         }
     else:
         # Fallback to paragraph's edited_text or text, and empty changes_made, no edit_reason
         tts_edit_data = {
             "changes_made": [],
-            "edited_text": getattr(p, 'edited_text', p.text if hasattr(p, 'text') else None),
+            "edited_text": getattr(p, "edited_text", p.text if hasattr(p, "text") else None),
             "edit_reason": None,
         }
 
     # Build routing data
     if routing_record:
         routing_data = {
-            "engine_choice": getattr(routing_record, 'engine_choice', 'kokoro'),
-            "voice_id": getattr(routing_record, 'voice_id', 'kokoro_narrator'),
-            "fallback_engine": getattr(routing_record, 'fallback_engine', 'edge'),
-            "estimated_cost_usd": getattr(routing_record, 'estimated_cost_usd', 0.001),
-            "estimated_duration_ms": getattr(routing_record, 'estimated_duration_ms', 5000),
-            "reasoning": getattr(routing_record, 'reasoning', None),
+            "engine_choice": getattr(routing_record, "engine_choice", "kokoro"),
+            "voice_id": getattr(routing_record, "voice_id", "kokoro_narrator"),
+            "fallback_engine": getattr(routing_record, "fallback_engine", "edge"),
+            "estimated_cost_usd": getattr(routing_record, "estimated_cost_usd", 0.001),
+            "estimated_duration_ms": getattr(routing_record, "estimated_duration_ms", 5000),
+            "reasoning": getattr(routing_record, "reasoning", None),
         }
     else:
         routing_data = {
@@ -231,14 +291,14 @@ def get_paragraph_detail(
     # Build quality data
     if quality_record:
         quality_data = {
-            "overall_score": getattr(quality_record, 'overall_score', 0.5),
-            "speaker_clarity": getattr(quality_record, 'speaker_clarity', 0.5),
-            "emotion_match": getattr(quality_record, 'emotion_match', 0.5),
-            "prosody_naturalness": getattr(quality_record, 'prosody_naturalness', 0.5),
-            "text_audio_alignment": getattr(quality_record, 'text_audio_alignment', 0.5),
-            "needs_regeneration": getattr(quality_record, 'needs_regeneration', False),
-            "issues": getattr(quality_record, 'issues', []),
-            "fix_suggestions": getattr(quality_record, 'fix_suggestions', []),
+            "overall_score": getattr(quality_record, "overall_score", 0.5),
+            "speaker_clarity": getattr(quality_record, "speaker_clarity", 0.5),
+            "emotion_match": getattr(quality_record, "emotion_match", 0.5),
+            "prosody_naturalness": getattr(quality_record, "prosody_naturalness", 0.5),
+            "text_audio_alignment": getattr(quality_record, "text_audio_alignment", 0.5),
+            "needs_regeneration": getattr(quality_record, "needs_regeneration", False),
+            "issues": getattr(quality_record, "issues", []),
+            "fix_suggestions": getattr(quality_record, "fix_suggestions", []),
         }
     else:
         quality_data = {
@@ -274,9 +334,9 @@ def get_paragraph_detail(
     # Prepare the response
     return ParagraphDetailOut(
         id=p.id,
-        chapter_id=getattr(p, 'chapter_id', 0),
-        paragraph_index=getattr(p, 'index', 0),
-        original_text=getattr(p, 'text', getattr(p, 'original_text', '')),
+        chapter_id=getattr(p, "chapter_id", 0),
+        paragraph_index=getattr(p, "index", 0),
+        original_text=getattr(p, "text", getattr(p, "original_text", "")),
         edited_text=embedded["tts_edit"]["edited_text"],
         status=status,
         embedded_data=embedded,
@@ -284,6 +344,162 @@ def get_paragraph_detail(
         tts_edit=ParagraphTTSEditDetail(**tts_edit_data),
         routing=ParagraphRoutingDetail(**routing_data),
         quality=ParagraphQualityDetail(**quality_data),
-        created_at=getattr(p, 'created_at', datetime.now()).isoformat() if hasattr(p, 'created_at') else None,
-        updated_at=getattr(p, 'updated_at', datetime.now()).isoformat() if hasattr(p, 'updated_at') else None,
+        created_at=(getattr(p, "created_at", datetime.now()).isoformat() if hasattr(p, "created_at") else None),
+        updated_at=(getattr(p, "updated_at", datetime.now()).isoformat() if hasattr(p, "updated_at") else None),
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Audio serving endpoint (P0-3)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.get("/{paragraph_id}/audio")
+async def serve_paragraph_audio(paragraph_id: int, db: AsyncSession = Depends(get_async_db)):
+    """Serve the audio file for a paragraph.
+
+    Looks up the AudioSegment record, then serves the file from storage.
+    Returns 404 if no audio has been generated for this paragraph.
+    """
+    result = await db.execute(
+        select(AudioSegment).where(
+            AudioSegment.paragraph_id == paragraph_id,
+            AudioSegment.is_current.is_(True),
+        )
+    )
+    segment = result.scalar_one_or_none()
+    if not segment:
+        raise DomainError(
+            message="No audio found for this paragraph",
+            error_code="NOT_FOUND",
+            stage="paragraphs",
+            context={"paragraph_id": paragraph_id},
+        )
+
+    file_path = Path(segment.file_path)
+    if not file_path.is_absolute():
+        # Resolve relative paths against storage root
+        file_path = audio_dir(segment.project_id) / file_path.name
+
+    if not file_path.exists():
+        raise DomainError(
+            message="Audio file not found on disk",
+            error_code="FILE_NOT_FOUND",
+            stage="paragraphs",
+            context={"paragraph_id": paragraph_id, "file_path": str(file_path)},
+        )
+
+    media_type = "audio/mpeg" if segment.format == "mp3" else "audio/wav"
+    return FileResponse(
+        path=str(file_path),
+        media_type=media_type,
+        filename=f"paragraph_{paragraph_id}.{segment.format}",
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Audio segments list endpoint (P0-3)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class AudioSegmentOut(BaseModel):
+    id: int
+    file_path: str
+    format: str = "mp3"
+    duration_ms: Optional[int] = None
+    engine: Optional[str] = None
+    voice_id: Optional[str] = None
+    status: str = "pending"
+    version: int = 1
+    is_current: bool = True
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+@router.get("/{paragraph_id}/audio-segments", response_model=List[AudioSegmentOut])
+async def list_paragraph_audio_segments(paragraph_id: int, db: AsyncSession = Depends(get_async_db)):
+    """List all audio segments for a paragraph (including old versions)."""
+    result = await db.execute(
+        select(AudioSegment).where(AudioSegment.paragraph_id == paragraph_id).order_by(AudioSegment.version.desc())
+    )
+    segments = result.scalars().all()
+    return segments
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Quality results endpoint (P0-4)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class QualityResultOut(BaseModel):
+    id: int
+    paragraph_id: Optional[int] = None
+    tts_edit_id: Optional[int] = None
+    overall_score: Optional[float] = None
+    speaker_clarity: Optional[float] = None
+    emotion_match: Optional[float] = None
+    prosody_naturalness: Optional[float] = None
+    text_audio_alignment: Optional[float] = None
+    needs_regeneration: bool = False
+    issues: Optional[list] = None
+    fix_suggestions: Optional[list] = None
+    judge_model: Optional[str] = None
+    judge_prompt_version: Optional[str] = None
+    audio_file_path: Optional[str] = None
+    audio_duration_ms: Optional[int] = None
+    created_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+@router.get("/{paragraph_id}/quality", response_model=List[QualityResultOut])
+async def get_paragraph_quality(paragraph_id: int, db: AsyncSession = Depends(get_async_db)):
+    """Get quality check results for a paragraph."""
+    result = await db.execute(select(Quality).where(Quality.paragraph_id == paragraph_id).order_by(Quality.id.desc()))
+    qualities = result.scalars().all()
+    return qualities
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Regeneration endpoint (P0-5)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.post("/{paragraph_id}/regenerate")
+async def trigger_paragraph_regeneration(paragraph_id: int, db: AsyncSession = Depends(get_async_db)):
+    """Trigger audio regeneration for a single paragraph.
+
+    Marks the paragraph's audio for re-synthesis.
+    The actual synthesis will be picked up by the next pipeline run.
+    """
+    result = await db.execute(select(Paragraph).where(Paragraph.id == paragraph_id))
+    p = result.scalar_one_or_none()
+    if not p:
+        raise DomainError(
+            message="Paragraph not found",
+            error_code="NOT_FOUND",
+            stage="paragraphs",
+            context={"paragraph_id": paragraph_id},
+        )
+
+    # Mark current audio segment as not current
+    result = await db.execute(
+        select(AudioSegment).where(
+            AudioSegment.paragraph_id == paragraph_id,
+            AudioSegment.is_current.is_(True),
+        )
+    )
+    current_segment = result.scalar_one_or_none()
+    if current_segment:
+        current_segment.is_current = False
+        await db.commit()
+
+    # Reset paragraph status to trigger re-synthesis
+    p.status = "edited"
+    await db.commit()
+
+    return {
+        "status": "queued",
+        "paragraph_id": paragraph_id,
+        "message": "Paragraph marked for regeneration",
+    }

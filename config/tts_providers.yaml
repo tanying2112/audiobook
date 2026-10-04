@@ -1,0 +1,69 @@
+# TTS Provider Registry (S2-4, extended P0)
+#
+# Piper is the preferred LOCAL engine (priority 0). Kokoro is the fallback
+# local engine (priority 1). Edge-TTS (free cloud) is the last-resort fallback
+# (priority 2). Lower priority number == higher precedence.
+#
+# P0 capability model: each provider now also declares `capabilities`
+# (cloning / emotion / languages / min_compute) and `license` (P2.11 honesty).
+# `select_engine()` in providers_config.py uses these to pick an engine by what
+# it can actually do and whether the host can run it (CPU vs GPU).
+#
+# GPU backend gate: GPU-only engines (F5-TTS / CosyVoice2 / Dia, added later in
+# Track B) are skipped unless a GPU tier is deployed. Default OFF so free/no-GPU
+# hosts (sandbox, CI, CPU prod) never select an engine they cannot run.
+# Override via env ENABLE_GPU_BACKENDS=true when a GPU host is available.
+
+enable_gpu_backends: false
+
+providers:
+  - name: piper
+    engine: piper
+    priority: 0
+    enabled: true
+    default_voice: zh_CN-huayan-medium
+    auto_download: true          # fetch zh_CN-huayan-medium.onnx on first use
+    model_dir: models/piper
+    # Binary resolution order: PIPER_BIN env -> `piper` on PATH -> `piper-tts`
+    # Install: `pip install piper-tts`
+    capabilities:
+      cloning: false
+      emotion: false
+      languages: [zh, en]
+      min_compute: cpu
+    license:
+      commercial_use: true
+      name: "Piper (MIT/Apache; some voices CC-BY)"
+      verified_at: "2025-01-01"
+
+  - name: kokoro
+    engine: kokoro
+    priority: 1
+    enabled: true
+    # Fallback local engine (already bundled via model_downloader P0-2).
+    capabilities:
+      cloning: false
+      emotion: false
+      languages: [zh, en]
+      min_compute: cpu
+    license:
+      commercial_use: true
+      name: "Kokoro-82M Apache-2.0"
+      verified_at: "2025-01-01"
+
+  - name: edge_tts
+    engine: edge_tts
+    priority: 2
+    enabled: true
+    # Free Microsoft cloud TTS; used only when no local engine is available.
+    capabilities:
+      cloning: false
+      emotion: false
+      languages: [zh, en]
+      min_compute: cpu
+    license:
+      # Free cloud TTS but governed by Microsoft ToS (not an open license);
+      # commercial_use left None (unverified) per P2.11 honesty — warn, don't fake.
+      commercial_use: null
+      name: "Edge-TTS (Microsoft cloud, ToS-restricted)"
+      verified_at: null

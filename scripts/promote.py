@@ -15,19 +15,19 @@ import argparse
 import json
 import logging
 import sys
-from pathlib import Path
 from datetime import datetime, timezone
+from pathlib import Path
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.audiobook_studio.feedback.release import (
+    CanaryConfig,
+    CanaryMetrics,
+    CanaryRelease,
     PromotionGate,
     PromotionGateResult,
     PromotionMetrics,
-    CanaryRelease,
-    CanaryConfig,
-    CanaryMetrics,
     VersionStore,
 )
 
@@ -142,18 +142,24 @@ def cmd_evaluate(args):
         quality_score_ratio=args.quality,
         human_preference_score=args.human,
     )
-    print(json.dumps({
-        "stage": args.stage,
-        "passed": result.passed,
-        "failed_criteria": result.failed_criteria,
-        "metrics": {
-            "format_compliance_rate": result.metrics.format_compliance_rate,
-            "golden_dataset_pass_rate": result.metrics.golden_dataset_pass_rate,
-            "quality_score_ratio": result.metrics.quality_score_ratio,
-            "human_preference_score": result.metrics.human_preference_score,
-        },
-        "timestamp": result.timestamp.isoformat(),
-    }, indent=2, ensure_ascii=False))
+    print(
+        json.dumps(
+            {
+                "stage": args.stage,
+                "passed": result.passed,
+                "failed_criteria": result.failed_criteria,
+                "metrics": {
+                    "format_compliance_rate": result.metrics.format_compliance_rate,
+                    "golden_dataset_pass_rate": result.metrics.golden_dataset_pass_rate,
+                    "quality_score_ratio": result.metrics.quality_score_ratio,
+                    "human_preference_score": result.metrics.human_preference_score,
+                },
+                "timestamp": result.timestamp.isoformat(),
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
     return 0 if result.passed else 1
 
 
@@ -203,7 +209,7 @@ def cmd_canary_complete(args):
     if success:
         # Also update version store
         try:
-            version_num = int(args.version.lstrip('v'))
+            version_num = int(args.version.lstrip("v"))
             store = VersionStore()
             store.promote_version(args.stage, version_num)
             print(f"✅ Completed canary and promoted {args.stage} to v{version_num}")
@@ -258,7 +264,9 @@ def cmd_history(args):
     history = store.get_rollback_history(args.stage, args.limit)
     if history:
         for entry in history:
-            print(f"  {entry['timestamp']} | {entry['stage']} | {entry['action']} | v{entry['from_version']} → v{entry['to_version']} | {'✅' if entry['success'] else '❌'}")
+            print(
+                f"  {entry['timestamp']} | {entry['stage']} | {entry['action']} | v{entry['from_version']} → v{entry['to_version']} | {'✅' if entry['success'] else '❌'}"
+            )
     else:
         print("No rollback history")
     return 0

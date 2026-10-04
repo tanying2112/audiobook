@@ -7,7 +7,6 @@ in production.
 
 import json
 import logging
-import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -91,11 +90,8 @@ class PerformanceCollector:
             "stage": stage,
             "count": len(stage_records),
             "success_count": len(successful),
-            "success_rate": (
-                len(successful) / len(stage_records) if stage_records else 0
-            ),
-            "avg_latency_ms": sum(r.latency_ms for r in stage_records)
-            / len(stage_records),
+            "success_rate": (len(successful) / len(stage_records) if stage_records else 0),
+            "avg_latency_ms": sum(r.latency_ms for r in stage_records) / len(stage_records),
             "total_cost_usd": sum(r.cost_usd for r in stage_records),
             "avg_quality_score": (
                 sum(r.quality_score for r in successful if r.quality_score is not None)

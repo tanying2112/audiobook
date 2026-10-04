@@ -97,7 +97,7 @@ class TestBaselineRecorder:
         """Test that storage directory is created."""
         with tempfile.TemporaryDirectory() as tmpdir:
             storage_path = Path(tmpdir) / "baselines"
-            recorder = BaselineRecorder(storage_dir=str(storage_path))
+            BaselineRecorder(storage_dir=str(storage_path))
             assert storage_path.exists()
 
     def test_record_performance(self):
@@ -183,10 +183,26 @@ class TestBaselineRecorder:
             now = time.time()
 
             recorder.record_performance(
-                PerformanceMetric(timestamp=now, stage="annotate", latency_ms=100, tokens_in=10, tokens_out=5, cost_usd=0.001, success=True)
+                PerformanceMetric(
+                    timestamp=now,
+                    stage="annotate",
+                    latency_ms=100,
+                    tokens_in=10,
+                    tokens_out=5,
+                    cost_usd=0.001,
+                    success=True,
+                )
             )
             recorder.record_performance(
-                PerformanceMetric(timestamp=now, stage="synthesize", latency_ms=500, tokens_in=0, tokens_out=0, cost_usd=0.0, success=True)
+                PerformanceMetric(
+                    timestamp=now,
+                    stage="synthesize",
+                    latency_ms=500,
+                    tokens_in=0,
+                    tokens_out=0,
+                    cost_usd=0.0,
+                    success=True,
+                )
             )
 
             annotate_baseline = recorder.get_performance_baseline("annotate")
@@ -202,10 +218,26 @@ class TestBaselineRecorder:
             now = time.time()
 
             recorder.record_performance(
-                PerformanceMetric(timestamp=now, stage="test", latency_ms=100, tokens_in=10, tokens_out=5, cost_usd=0.001, success=True)
+                PerformanceMetric(
+                    timestamp=now,
+                    stage="test",
+                    latency_ms=100,
+                    tokens_in=10,
+                    tokens_out=5,
+                    cost_usd=0.001,
+                    success=True,
+                )
             )
             recorder.record_performance(
-                PerformanceMetric(timestamp=now, stage="test", latency_ms=200, tokens_in=10, tokens_out=5, cost_usd=0.001, success=False)
+                PerformanceMetric(
+                    timestamp=now,
+                    stage="test",
+                    latency_ms=200,
+                    tokens_in=10,
+                    tokens_out=5,
+                    cost_usd=0.001,
+                    success=False,
+                )
             )
 
             baseline = recorder.get_performance_baseline("test")
@@ -220,11 +252,27 @@ class TestBaselineRecorder:
 
             # Old metric (48 hours ago)
             recorder.record_performance(
-                PerformanceMetric(timestamp=now - 48 * 3600, stage="test", latency_ms=100, tokens_in=10, tokens_out=5, cost_usd=0.001, success=True)
+                PerformanceMetric(
+                    timestamp=now - 48 * 3600,
+                    stage="test",
+                    latency_ms=100,
+                    tokens_in=10,
+                    tokens_out=5,
+                    cost_usd=0.001,
+                    success=True,
+                )
             )
             # Recent metric (1 hour ago)
             recorder.record_performance(
-                PerformanceMetric(timestamp=now - 1 * 3600, stage="test", latency_ms=200, tokens_in=10, tokens_out=5, cost_usd=0.001, success=True)
+                PerformanceMetric(
+                    timestamp=now - 1 * 3600,
+                    stage="test",
+                    latency_ms=200,
+                    tokens_in=10,
+                    tokens_out=5,
+                    cost_usd=0.001,
+                    success=True,
+                )
             )
 
             # Lookback 24 hours - should only get recent
@@ -420,16 +468,31 @@ class TestBaselineRecorder:
             now = time.time()
 
             recorder.record_performance(
-                PerformanceMetric(timestamp=now, stage="annotate", latency_ms=100, tokens_in=10, tokens_out=5, cost_usd=0.001, success=True)
+                PerformanceMetric(
+                    timestamp=now,
+                    stage="annotate",
+                    latency_ms=100,
+                    tokens_in=10,
+                    tokens_out=5,
+                    cost_usd=0.001,
+                    success=True,
+                )
             )
             recorder.record_growth(
-                GrowthMetric(timestamp=now, metric_name="test_metric", value=42.0, unit="units", tags={})
+                GrowthMetric(
+                    timestamp=now,
+                    metric_name="test_metric",
+                    value=42.0,
+                    unit="units",
+                    tags={},
+                )
             )
 
             recorder.save_baselines()
 
             assert recorder.baseline_file.exists()
             import json
+
             with open(recorder.baseline_file) as f:
                 baselines = json.load(f)
             assert "performance_annotate" in baselines
@@ -442,10 +505,26 @@ class TestBaselineRecorder:
             now = time.time()
 
             recorder.record_performance(
-                PerformanceMetric(timestamp=now - 100, stage="test", latency_ms=100, tokens_in=10, tokens_out=5, cost_usd=0.001, success=True)
+                PerformanceMetric(
+                    timestamp=now - 100,
+                    stage="test",
+                    latency_ms=100,
+                    tokens_in=10,
+                    tokens_out=5,
+                    cost_usd=0.001,
+                    success=True,
+                )
             )
             recorder.record_performance(
-                PerformanceMetric(timestamp=now, stage="test", latency_ms=200, tokens_in=10, tokens_out=5, cost_usd=0.001, success=True)
+                PerformanceMetric(
+                    timestamp=now,
+                    stage="test",
+                    latency_ms=200,
+                    tokens_in=10,
+                    tokens_out=5,
+                    cost_usd=0.001,
+                    success=True,
+                )
             )
 
             summary = recorder.get_summary()
@@ -464,6 +543,7 @@ class TestConvenienceFunctions:
         with tempfile.TemporaryDirectory() as tmpdir:
             # Patch the global recorder to use our temp dir
             import src.audiobook_studio.monitoring.baseline as baseline_mod
+
             original_recorder = baseline_mod._recorder
             baseline_mod._recorder = BaselineRecorder(storage_dir=tmpdir)
 
@@ -491,6 +571,7 @@ class TestConvenienceFunctions:
         """Test record_growth_metric convenience function."""
         with tempfile.TemporaryDirectory() as tmpdir:
             import src.audiobook_studio.monitoring.baseline as baseline_mod
+
             original_recorder = baseline_mod._recorder
             baseline_mod._recorder = BaselineRecorder(storage_dir=tmpdir)
 
@@ -511,6 +592,7 @@ class TestConvenienceFunctions:
     def test_get_baseline_recorder_singleton(self):
         """Test get_baseline_recorder returns singleton."""
         import src.audiobook_studio.monitoring.baseline as baseline_mod
+
         original_recorder = baseline_mod._recorder
         baseline_mod._recorder = None
 

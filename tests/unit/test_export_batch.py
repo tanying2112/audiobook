@@ -1,5 +1,6 @@
 """Tests for Batch Exporter module."""
 
+import subprocess
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -174,16 +175,24 @@ class TestCollectAudioFiles:
         assert all("seg" in str(f) for f in files)
 
     def test_collect_files_skips_missing(self):
-        chapter_data = [
-            {
-                "audio_segments": [
-                    MagicMock(file_path="/path/seg1.mp3", id=1),
-                    MagicMock(file_path="/path/missing.mp3", id=2),
-                ],
-            },
-        ]
+        import tempfile
+        from pathlib import Path
 
-        with patch("pathlib.Path.exists", side_effect=[True, False]):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            seg1 = Path(tmpdir) / "seg1.mp3"
+            seg1.write_bytes(b"fake")
+            missing = Path(tmpdir) / "missing.mp3"
+            # Don't create missing.mp3
+
+            chapter_data = [
+                {
+                    "audio_segments": [
+                        MagicMock(file_path=str(seg1), id=1),
+                        MagicMock(file_path=str(missing), id=2),
+                    ],
+                },
+            ]
+
             files = _collect_audio_files(chapter_data)
 
         assert len(files) == 1
@@ -196,8 +205,20 @@ class TestBuildSubtitleEntries:
         chapter_data = [
             {
                 "paragraphs": [
-                    MagicMock(id=1, order=1, text="First paragraph", original_text=None, character_name="Narrator"),
-                    MagicMock(id=2, order=2, text="Second paragraph", original_text=None, character_name="Character"),
+                    MagicMock(
+                        id=1,
+                        index=1,
+                        text="First paragraph",
+                        original_text=None,
+                        speaker_canonical_name="Narrator",
+                    ),
+                    MagicMock(
+                        id=2,
+                        index=2,
+                        text="Second paragraph",
+                        original_text=None,
+                        speaker_canonical_name="Character",
+                    ),
                 ],
                 "audio_segments": [
                     MagicMock(paragraph_id=1, file_path="/path/seg1.mp3", duration_ms=3000),
@@ -206,7 +227,10 @@ class TestBuildSubtitleEntries:
             },
         ]
 
-        with patch("src.audiobook_studio.export.batch_exporter.get_duration_sync", side_effect=[3000, 4000]):
+        with patch(
+            "src.audiobook_studio.export.batch_exporter.get_duration_sync",
+            side_effect=[3000, 4000],
+        ):
             entries = _build_subtitle_entries(chapter_data)
 
         assert len(entries) == 2
@@ -219,11 +243,17 @@ class TestBuildSubtitleEntries:
         assert entries[1].start_ms == 3000
         assert entries[1].end_ms == 7000
 
-    def test_build_entries_uses_original_text(self):
+    def test_build_entries_text_fallback(self):
         chapter_data = [
             {
                 "paragraphs": [
-                    MagicMock(id=1, order=1, text=None, original_text="Original text", character_name="Narrator"),
+                    MagicMock(
+                        id=1,
+                        index=1,
+                        text="Paragraph text",
+                        original_text=None,
+                        speaker_canonical_name="Narrator",
+                    ),
                 ],
                 "audio_segments": [
                     MagicMock(paragraph_id=1, file_path="/path/seg1.mp3", duration_ms=2000),
@@ -231,16 +261,19 @@ class TestBuildSubtitleEntries:
             },
         ]
 
-        with patch("src.audiobook_studio.export.batch_exporter.get_duration_sync", return_value=2000):
+        with patch(
+            "src.audiobook_studio.export.batch_exporter.get_duration_sync",
+            return_value=2000,
+        ):
             entries = _build_subtitle_entries(chapter_data)
 
-        assert entries[0].text == "Original text"
+        assert entries[0].text == "Paragraph text"
 
     def test_build_entries_no_duration_fallback(self):
         chapter_data = [
             {
                 "paragraphs": [
-                    MagicMock(id=1, order=1, text="No audio", character_name="Narrator"),
+                    MagicMock(id=1, index=1, text="No audio", speaker_canonical_name="Narrator"),
                 ],
                 "audio_segments": [],
             },
@@ -326,11 +359,14 @@ class TestExportChapter:
             "audio_segments": [],
         }
 
-        with patch("src.audiobook_studio.export.batch_exporter._collect_chapter_data", return_value={
-            "chapter": mock_chapter,
-            "paragraphs": [],
-            "audio_segments": [],
-        }):
+        with patch(
+            "src.audiobook_studio.export.batch_exporter._collect_chapter_data",
+            return_value={
+                "chapter": mock_chapter,
+                "paragraphs": [],
+                "audio_segments": [],
+            },
+        ):
             result = export_chapter(1, 1, mock_session)
 
         assert result is None
@@ -338,3 +374,300 @@ class TestExportChapter:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestExportProjectSuccess:
+    """Test successful project export scenarios."""
+
+    def test_export_project_success_m4b_only(self):
+        """Test successful project export with M4B format only."""
+        # Setup
+        mock_session = MagicMock()
+
+        mock_chapter = MagicMock()
+        mock_chapter.id = 1
+        mock_chapter.index = 1
+        mock_chapter.title = "Chapter 1"
+
+        mock_paragraph = MagicMock()
+        mock_paragraph.index = 1
+        mock_paragraph.text = "Test paragraph"
+
+        mock_project = MagicMock()
+        mock_project.id = 1
+        mock_project.slug = "test-book"
+        mock_project.chapters = [mock_chapter]
+        mock_session.query.return_value.filter_by.return_value.first.return_value = mock_project
+
+        import src.audiobook_studio.export.batch_exporter as be_mod
+        from src.audiobook_studio.export.batch_exporter import ExportFormat, ExportJob
+
+        job = ExportJob(project_id=1, formats=[ExportFormat.M4B], output_dir="/tmp/test")
+
+        # Mock the helper functions
+        with (
+            patch.object(be_mod, "_collect_chapter_data") as mock_collect,
+            patch.object(be_mod, "_collect_audio_files") as mock_audio_files,
+            patch.object(be_mod, "build_m4b") as mock_build_m4b,
+            patch("src.audiobook_studio.export.srt.generate_srt"),
+            patch("zipfile.ZipFile"),
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.stat", return_value=type("obj", (object,), {"st_size": 1024, "st_mode": 0o040755})()),
+        ):
+            # Mock subprocess.run for ffprobe/ffmpeg calls inside build_m4b
+            def mock_subprocess_run(*args, **kwargs):
+                if args and len(args) > 0 and "ffprobe" in str(args[0]):
+                    return subprocess.CompletedProcess(args=args[0], returncode=0, stdout="5.0", stderr="")
+                return subprocess.CompletedProcess(args=args[0], returncode=0, stdout="", stderr="")
+
+            with patch("subprocess.run", side_effect=mock_subprocess_run):
+
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    fake_audio = Path(tmpdir) / "fake.mp3"
+                    fake_audio.write_bytes(b"fake audio content")
+
+                    mock_collect.return_value = {
+                        "chapter": mock_chapter,
+                        "paragraphs": [MagicMock(id=1, index=1, text="para", sfx_tags=[])],
+                        "audio_segments": [MagicMock(file_path=str(fake_audio), duration_ms=5000, id=1)],
+                        "chapter_data": {},
+                    }
+                    mock_audio_files.return_value = [fake_audio]
+
+                    # Execute
+                    result = export_project(1, mock_session, job)
+
+                # Verify
+                assert result.progress.name == "COMPLETE"
+                assert "m4b" in result.output_paths
+                mock_build_m4b.assert_called()
+
+    def test_export_project_success_with_chapters(self):
+        """Test successful project export with chapters containing audio."""
+        # Setup
+        mock_session = MagicMock()
+
+        mock_chapter = MagicMock()
+        mock_chapter.id = 1
+        mock_chapter.index = 1
+        mock_chapter.title = "First Chapter"
+
+        mock_paragraph = MagicMock()
+        mock_paragraph.index = 1
+        mock_paragraph.text = "Test paragraph"
+        mock_paragraph.order = 1
+
+        mock_project = MagicMock()
+        mock_project.id = 1
+        mock_project.slug = "test-book"
+        mock_project.chapters = [mock_chapter]
+        mock_session.query.return_value.filter_by.return_value.first.return_value = mock_project
+
+        from src.audiobook_studio.export.batch_exporter import ExportFormat, ExportJob
+
+        job = ExportJob(project_id=1, formats=[ExportFormat.M4B, ExportFormat.SRT], output_dir="/tmp/test")
+
+        # Mock the helper functions
+        with (
+            patch("src.audiobook_studio.export.batch_exporter._collect_chapter_data") as mock_collect,
+            patch("src.audiobook_studio.export.batch_exporter._collect_audio_files") as mock_audio,
+            patch("src.audiobook_studio.export.batch_exporter.build_m4b") as mock_build_m4b,
+            patch("src.audiobook_studio.export.batch_exporter.generate_srt") as mock_gen_srt,
+            patch("zipfile.ZipFile"),
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.stat", return_value=type("obj", (object,), {"st_size": 1024, "st_mode": 0o040755})()),
+        ):
+            # Mock subprocess.run for ffprobe/ffmpeg calls inside build_m4b
+            def mock_subprocess_run(*args, **kwargs):
+                if args and len(args) > 0 and "ffprobe" in str(args[0]):
+                    return subprocess.CompletedProcess(args=args[0], returncode=0, stdout="5.0", stderr="")
+                return subprocess.CompletedProcess(args=args[0], returncode=0, stdout="", stderr="")
+
+            with patch("subprocess.run", side_effect=mock_subprocess_run):
+
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    fake_audio = Path(tmpdir) / "seg.mp3"
+                    fake_audio.write_bytes(b"fake audio")
+
+                    mock_audio.return_value = [fake_audio]
+
+                    mock_collect.return_value = {
+                        "chapter": mock_chapter,
+                        "paragraphs": [mock_paragraph],
+                        "audio_segments": [MagicMock(file_path=str(fake_audio), duration_ms=5000, id=1)],
+                        "chapter_data": {},
+                    }
+
+                    # Execute
+                    result = export_project(1, mock_session, job)
+
+                # Verify
+                assert result.progress.name == "COMPLETE"
+                assert "m4b" in result.output_paths
+                assert "srt" in result.output_paths
+                assert mock_build_m4b.called
+                assert mock_gen_srt.called
+
+
+class TestExportChapterSuccess:
+    """Test successful chapter export scenarios."""
+
+    def test_export_chapter_success(self):
+        """Test successful chapter export."""
+        # Setup
+        mock_session = MagicMock()
+
+        mock_chapter = MagicMock()
+        mock_chapter.id = 1
+        mock_chapter.index = 1
+        mock_chapter.title = "Test Chapter"
+
+        mock_paragraph = MagicMock()
+        mock_paragraph.index = 1
+        mock_paragraph.text = "Test paragraph"
+        mock_paragraph.order = 1
+
+        mock_session.query.return_value.filter.return_value.first.return_value = mock_chapter
+
+        # Mock the helper functions
+        with (
+            patch("src.audiobook_studio.export.batch_exporter._collect_chapter_data") as mock_collect,
+            patch("src.audiobook_studio.export.batch_exporter.get_duration_sync") as mock_get_duration,
+            patch("src.audiobook_studio.export.batch_exporter.build_m4b") as mock_build_m4b,
+            patch("pathlib.Path.exists", return_value=True),
+        ):
+
+            seg1 = MagicMock(file_path="/fake/path1.mp3", duration_ms=3000)
+            seg1.id = 1
+            seg2 = MagicMock(file_path="/fake/path2.mp3", duration_ms=4000)
+            seg2.id = 2
+
+            mock_collect.return_value = {
+                "chapter": mock_chapter,
+                "paragraphs": [mock_paragraph],
+                "audio_segments": [seg1, seg2],
+            }
+
+            mock_get_duration.side_effect = [3000, 4000]
+
+            # Execute
+            result = export_chapter(1, 1, mock_session, "/tmp/test")
+
+            # Verify
+            assert result is not None
+            assert "ch01_Test_Chapter.m4b" in result or "ch01_Test Chapter.m4b" in result
+            mock_build_m4b.assert_called_once()
+
+    def test_export_chapter_missing_audio_files(self):
+        """Test chapter export when audio files are missing."""
+        # Setup
+        mock_session = MagicMock()
+
+        mock_chapter = MagicMock()
+        mock_chapter.id = 1
+        mock_chapter.index = 1
+        mock_chapter.title = "Test Chapter"
+
+        mock_paragraph = MagicMock()
+        mock_paragraph.index = 1
+        mock_paragraph.text = "Test paragraph"
+        mock_paragraph.order = 1
+
+        mock_session.query.return_value.filter.return_value.first.return_value = mock_chapter
+
+        # Mock the helper functions - Path.exists returns False for missing files
+        seg1 = MagicMock()
+        seg1.id = 1
+        seg1.file_path = "/nonexistent/path1.mp3"
+        seg1.duration_ms = 3000
+        seg2 = MagicMock()
+        seg2.id = 2
+        seg2.file_path = "/nonexistent/path2.mp3"
+        seg2.duration_ms = 4000
+
+        with (
+            patch("src.audiobook_studio.export.batch_exporter._collect_chapter_data") as mock_collect,
+            patch("pathlib.Path.exists", return_value=False),
+        ):
+
+            mock_collect.return_value = {
+                "chapter": mock_chapter,
+                "paragraphs": [mock_paragraph],
+                "audio_segments": [seg1, seg2],
+            }
+
+            # Execute
+            result = export_chapter(1, 1, mock_session, "/tmp/test")
+
+            # Verify - should return None when no audio files exist
+            assert result is None
+
+
+class TestExportErrorHandling:
+    """Test error handling in export functions."""
+
+    def test_export_project_database_error(self):
+        """Test project export handles database errors gracefully."""
+        # Setup
+        mock_session = MagicMock()
+
+        mock_session.query.return_value.filter_by.return_value.first.side_effect = Exception("DB connection failed")
+
+        from src.audiobook_studio.export.batch_exporter import ExportFormat, ExportJob
+
+        job = ExportJob(project_id=1, formats=[ExportFormat.M4B], output_dir="/tmp/test")
+
+        # Execute
+        result = export_project(1, mock_session, job)
+
+        # Verify
+        assert result.progress.name == "FAILED"
+        assert "DB connection failed" in result.error
+
+    def test_export_project_build_error(self):
+        """Test project export handles build errors gracefully."""
+        # Setup
+        mock_session = MagicMock()
+
+        mock_project = MagicMock()
+        mock_project.id = 1
+        mock_project.slug = "test-book"
+        mock_project.chapters = [MagicMock(id=1)]
+        mock_session.query.return_value.filter_by.return_value.first.return_value = mock_project
+
+        import src.audiobook_studio.export.batch_exporter as be_mod
+        from src.audiobook_studio.export.batch_exporter import ExportFormat, ExportJob
+
+        job = ExportJob(project_id=1, formats=[ExportFormat.M4B], output_dir="/tmp/test")
+
+        # Mock the helper functions to raise an exception during build
+        with (
+            patch.object(be_mod, "_collect_chapter_data") as mock_collect,
+            patch.object(be_mod, "_collect_audio_files") as mock_collect_audio,
+            patch.object(be_mod, "build_m4b") as mock_build_m4b,
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.stat", return_value=type("obj", (object,), {"st_size": 1024, "st_mode": 0o040755})()),
+        ):
+            # Mock subprocess.run for ffprobe/ffmpeg calls inside build_m4b
+            def mock_subprocess_run(*args, **kwargs):
+                if args and len(args) > 0 and "ffprobe" in str(args[0]):
+                    return subprocess.CompletedProcess(args=args[0], returncode=0, stdout="5.0", stderr="")
+                return subprocess.CompletedProcess(args=args[0], returncode=0, stdout="", stderr="")
+
+            with patch("subprocess.run", side_effect=mock_subprocess_run):
+
+                mock_collect.return_value = {
+                    "chapter": MagicMock(id=1, index=1, title="Chapter 1"),
+                    "paragraphs": [MagicMock(id=1, index=1, text="para", sfx_tags=[])],
+                    "audio_segments": [MagicMock(file_path="/fake/path.mp3", duration_ms=5000, id=1)],
+                    "chapter_data": {},
+                }
+                mock_collect_audio.return_value = [Path("/fake/path.mp3")]
+                mock_build_m4b.side_effect = Exception("FFmpeg failed")
+
+                # Execute
+                result = export_project(1, mock_session, job)
+
+                # Verify
+                assert result.progress.name == "FAILED"
+                assert "FFmpeg failed" in result.error

@@ -30,7 +30,10 @@ class AudioFinalizeParams(BaseModel):
 
     # Loudnorm (EBU R128)
     apply_loudnorm: bool = Field(default=True, description="是否应用 EBU R128 响度标准化")
-    loudnorm_target_i: LoudnormTargetI = Field(default=-20.0, description="目标综合响度 (LUFS)，EBU R128 建议 -23，有声书常用 -20")
+    loudnorm_target_i: LoudnormTargetI = Field(
+        default=-20.0,
+        description="目标综合响度 (LUFS)，EBU R128 建议 -23，有声书常用 -20",
+    )
     loudnorm_target_lra: LoudnormTargetLRA = Field(default=7.0, description="目标响度范围 (LU)")
     loudnorm_target_tp: LoudnormTargetTP = Field(default=-2.0, description="目标真峰值")
 

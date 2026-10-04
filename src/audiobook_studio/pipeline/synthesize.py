@@ -1,44 +1,195 @@
-"""Pipeline Stage 5: Synthesize - Audio synthesis orchestration.
+"""Pipeline Stage 5: Synthesize - Audio synthesis orchestration via RemoteTTSPort.
 
-Routes to TTS engines (Kokoro/Edge/Human Clone), performs incremental synthesis
-with crossfade stitching, outputs audio segments with metadata.
+This pipeline routes TTS synthesis requests through the RemoteTTSPort contract,
+which isolates the internal orchestration layer from the external Hermes
+scheduling layer (Redis state machine + R2 object storage).
+
+All synthesis engines (Kokoro, Edge, Azure, GCP, VoxCPM2, etc.) are accessed
+via the Port abstraction. The pipeline never makes direct HTTP calls or
+manages engine clients directly.
 """
 
+from __future__ import annotations
+
+import asyncio
 import hashlib
 import json
 import logging
 import os
-import subprocess
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Coroutine, Dict, List, Optional, cast
 
+from ..api.websocket import emit_pipeline_event
+from ..audio_quality import QualityReport, check_all_segments, save_quality_report
+from ..config.acoustic_mapping import get_emotion_map
+from ..config.hardware_profile import HardwareProfile, get_hardware_profile
+from ..export.pool import run_ffmpeg
 from ..llm import LLMRouter, create_router
-from ..config.hardware_profile import get_hardware_profile, HardwareProfile
-from ..monitoring import record_stage_performance
-from ..monitoring.langfuse_client import (
-    is_enabled,
-    observe_quality_check,
-    observe_tts_synthesis,
-    trace_function,
-)
-from ..schemas import (
-    AudioPostProcessParams,
-    ParagraphAnnotation,
-    TtsRoutingDecision,
-    TtsRoutingInput,
-)
+from ..monitoring.langfuse_client import is_enabled, observe_tts_synthesis, trace_function
+from ..monitoring.telemetry import record_tts_quality_check, record_tts_retry, record_tts_segment
+from ..pipeline.progress_emitter import emit_paragraph_complete, emit_stage_exit, emit_stage_progress
+from ..schemas import CharacterVoiceBinding, ParagraphAnnotation, TtsRoutingDecision, TtsRoutingInput
+from ..security import safe_subprocess_args
+from ..tts import RemoteTTSPort, TTSProsody, TTSStatus, TTSTaskPayload, TTSTaskResult, TTSVoiceAnchor
+from ..tts.audio_semantic_cache import AudioSemanticCache, get_audio_semantic_cache
+from ..tts.clone import CloningConfig, VoiceCloningManager
+from ..tts.fake_port import FakeRemoteTTSPort
+from ..tts.streaming import StreamingTTSConfig, create_streaming_tts_engine
 from ..utils.ffmpeg_probe import get_duration_sync
-from ..tts import (
-    TTSEngine,
-    VoiceInfo,
-    SynthesisResult,
-    EngineRegistry,
-)
-from ..di import get_app_container
 
 logger = logging.getLogger(__name__)
+
+
+# 提取阶段 (pipeline/extract.py) 将图片理解结果以 "[插图: {…json…}]" 块并入段落
+# 文本，供分析/标注阶段参考。JSON 内容可能跨行，故用 DOTALL 非贪婪匹配到块尾 "]"。
+# 块可能被截断（无闭合 "]" 直到段尾），故结尾允许 "]" 或字符串结束。
+_IMAGE_PLACEHOLDER_RE = re.compile(r"\[插图[:：].*?(?:\]|$)", re.DOTALL)
+
+
+def _strip_image_placeholders(text: str) -> str:
+    """Remove ``[插图: ...]`` image-understanding blocks from paragraph text
+    before TTS. Returns the remaining speakable text (whitespace-normalized);
+    an empty string means the paragraph is image-only."""
+    if not text:
+        return ""
+    cleaned = _IMAGE_PLACEHOLDER_RE.sub(" ", text)
+    return " ".join(cleaned.split())
+
+
+# Edge-TTS voice ID -> Kokoro voice ID mapping
+_EDGE_TO_KOKORO: Dict[str, str] = {
+    "zh-CN-XiaoxiaoNeural": "zf_xiaoxiao",
+    "zh-CN-YunxiNeural": "zm_yunxi",
+    "zh-CN-YunjianNeural": "zm_yunjian",
+    "zh-CN-XiaoyiNeural": "zf_xiaoni",
+    "zh-CN-XiaochenNeural": "zf_xiaoxuan",
+    "zh-CN-XiaohanNeural": "zf_xiaobei",
+    "zh-CN-XiaomengNeural": "zf_xiaoxuan",
+    "zh-CN-XiaomoNeural": "zf_xiaoxiao",
+    "zh-CN-XiaoqiuNeural": "zf_xiaoxiao",
+    "zh-CN-XiaoruiNeural": "zf_xiaoxiao",
+    "zh-CN-XiaoshuangNeural": "zf_xiaoxiao",
+    "zh-CN-XiaoxuanNeural": "zf_xiaoxuan",
+    "zh-CN-YangxiNeural": "zm_yunyang",
+    "zh-CN-YangyangNeural": "zm_yunyang",
+    "zh-CN-YunhaoNeural": "zm_yunjian",
+    "zh-CN-YunzeNeural": "zm_yunjian",
+    "en-US-AriaNeural": "zf_xiaoxiao",
+    "en-US-JennyNeural": "zf_xiaoxiao",
+    "en-US-GuyNeural": "zm_yunjian",
+    "en-US-ChristopherNeural": "zm_yunjian",
+    "en-US-EricNeural": "zm_yunjian",
+    "en-US-RogerNeural": "zm_yunjian",
+    "en-US-SteffanNeural": "zm_yunjian",
+    "ja-JP-NanamiNeural": "zf_xiaoxiao",
+    "ja-JP-KeitaNeural": "zm_yunjian",
+    "ko-KR-SunHiNeural": "zf_xiaoxiao",
+    "ko-KR-InJoonNeural": "zm_yunjian",
+}
+
+
+def _normalize_voice_id(voice_id: str, engine_choice: str, *, strict: bool = False) -> str:
+    """Pick a voice_id understood by the chosen TTS engine.
+
+    Edge-TTS voice IDs (e.g. ``zh-CN-XiaoxiaoNeural``) are the default stored in
+    the book analyse stage. Kokoro uses a different naming scheme (e.g.
+    ``zf_xiaoxiao``). If a non-native voice_id is passed to Kokoro it rejects
+    the voice and silently fails synthesis. This helper cross-maps when
+    possible and otherwise falls back to a safe default for the engine.
+
+    P1.9 red-line #1 (主路径真实性): introducing ``strict`` decouples the two
+    legitimate intents that previously collided in a single silent-fallback:
+
+    * ``strict=False`` (default) — production-safe: an unknown voice_id (not in
+      either naming scheme) is replaced with the engine's canonical narrator
+      voice (Kokoro ``zf_xiaoxiao`` / Edge ``zh-CN-XiaoxiaoNeural``) and
+      ``"default"`` resolves to the same. This matches the old behaviour and
+      keeps a misconfigured book from silently failing synthesis. Use it for
+      the engine-facing call (``_synthesize_via_port``) where the routing layer
+      has *already* decided what to trust.
+
+    * ``strict=True`` — pass-through: an unknown voice_id (e.g. a caller-supplied
+      ``suggested_voice_id`` for a custom/clone voice, or a test fixture ID) is
+      returned **as-is**, NOT swallowed into the narrator default. Edge↔Kokoro
+      cross-mapping still applies when an ID is recognised and needs translating
+      to the chosen engine's scheme; ``strict`` only governs what happens to IDs
+      the engine does not know. The routing decision uses this when an explicit
+      ``character_voice_map`` binding was matched — the user explicitly named a
+      voice, so we honour it instead of overriding it. Unknown → engine still
+      owns the final accept/reject (it may raise honestly at synthesis time,
+      which is preferable to silently swapping voices).
+    """
+    if voice_id == "default":
+        if engine_choice == "kokoro":
+            return "zf_xiaoxiao"
+        if engine_choice == "piper":
+            return "zh_CN-huayan-medium"
+        return "zh-CN-XiaoxiaoNeural"
+    if engine_choice == "kokoro":
+        # Map Edge voice_id to Kokoro equivalent; pass through if it's already a
+        # Kokoro ID, else default to ``zf_xiaoxiao``.
+        if voice_id in _EDGE_TO_KOKORO:
+            return _EDGE_TO_KOKORO[voice_id]
+        # Already a Kokoro ID? accept as-is.
+        if voice_id in (
+            "zf_xiaobei",
+            "zf_xiaoni",
+            "zf_xiaoxuan",
+            "zf_xiaoxiao",
+            "zm_yunjian",
+            "zm_yunxi",
+            "zm_yunxia",
+            "zm_yunyang",
+        ):
+            return voice_id
+        # Unknown — in strict mode honour it (caller explicitly named a voice,
+        # e.g. a custom voice ID); the engine owns the honest accept/reject.
+        # Otherwise fall back to the canonical narrator voice (production-safe).
+        if strict:
+            return voice_id
+        return "zf_xiaoxiao"
+    if engine_choice == "piper":
+        # Piper's Chinese preset pool is tiny (``zh_CN-huayan-medium`` narrator +
+        # ``zh_CN-shaoer-medium`` child); the analyse stage writes Edge-TTS voice
+        # IDs which piper rejects. Piper IDs use an underscore scheme (``zh_CN-*``)
+        # vs Edge's hyphen (``zh-CN-*``), so cross-map Edge IDs to the piper
+        # narrator default and pass piper IDs through as-is.
+        if voice_id.startswith("zh_CN-"):
+            return voice_id
+        if voice_id.startswith("zh-"):
+            return "zh_CN-huayan-medium"
+        # Unknown (e.g. a custom voice ID) — strict honours it, non-strict falls
+        # back to the piper narrator default (same contract as kokoro/edge).
+        return voice_id if strict else "zh_CN-huayan-medium"
+    # engine_choice == "edge": Edge accepts its own IDs and ignores Kokoro IDs;
+    # map Kokoro IDs back to Edge if we get one (edge case).
+    if not voice_id.startswith("zh-"):
+        # Unknown / Kokoro-style ID on edge engine. Strict mode honours it
+        # (edge may reject honestly); non-strict falls back to the Edge default.
+        return voice_id if strict else "zh-CN-XiaoxiaoNeural"
+    return voice_id
+
+
+def _port_engine_name(port: RemoteTTSPort) -> str:
+    """Return the active engine name (kokoro/edge/voxcpm2/...) for a port.
+
+    ``port_factory.get_port()`` returns an ``EnginePortAdapter`` wrapping the
+    default ``TTSEngine``; we infer the engine kind from the wrapped object's
+    class name because the routing ``engine_choice`` field is only advisory
+    and may disagree with the production port in degraded local-only setups.
+    """
+    inner = getattr(port, "engine", None)
+    if inner is None:
+        return "kokoro"  # safe default; matches the production Kokoro link
+    cls = inner.__class__.__name__.lower()
+    for tag in ("kokoro", "edge", "voxcpm2"):
+        if tag in cls:
+            return tag
+    # Unknown engine class — default to kokoro normalization.
+    return "kokoro"
 
 
 @dataclass
@@ -52,142 +203,143 @@ class AudioSegment:
     voice_id: str
     text_hash: str  # For incremental regeneration detection
 
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "segment_id": self.segment_id,
+            "file_path": self.file_path,
+            "duration_ms": self.duration_ms,
+            "engine": self.engine,
+            "voice_id": self.voice_id,
+            "text_hash": self.text_hash,
+        }
+
 
 class SynthesizePipeline:
-    """Pipeline for audio synthesis with incremental regeneration."""
+    """Pipeline for audio synthesis with incremental regeneration via RemoteTTSPort.
+
+    This pipeline submits synthesis tasks to the Hermes scheduling layer via
+    the RemoteTTSPort abstraction and polls for completion. It does NOT contain
+    any engine-specific logic - all engines are hidden behind the Port.
+    """
 
     # Default crossfade duration in milliseconds between segments
     DEFAULT_CROSSFADE_MS = 50
 
+    # Configurable crossfade duration (can be overridden via CROSSFADE_MS env var)
+    @classmethod
+    def get_crossfade_ms(cls) -> int:
+        """Get crossfade duration from environment or default."""
+        import os
+
+        try:
+            return int(os.environ.get("CROSSFADE_MS", cls.DEFAULT_CROSSFADE_MS))
+        except ValueError:
+            return cls.DEFAULT_CROSSFADE_MS
+
     def __init__(
         self,
-        router=None,
-        output_dir="./output",
+        router: Optional[LLMRouter] = None,
+        output_dir: str = "./output",
         mock_mode: Optional[bool] = None,
         hardware_profile: Optional[HardwareProfile] = None,
+        port: Optional[RemoteTTSPort] = None,
+        crossfade_ms: Optional[int] = None,
     ):
-        self.mock_mode = mock_mode if mock_mode is not None else os.environ.get("MOCK_LLM", "false").lower() == "true"
+        """Initialize the synthesis pipeline.
 
-        # Create router (mock mode controlled by MOCK_LLM env var)
+        Args:
+            router: Optional LLM router for routing decisions (not yet used for TTS).
+            output_dir: Directory for output audio files and metadata.
+            mock_mode: If True, uses mock synthesis. Defaults to MOCK_LLM env var.
+            hardware_profile: Hardware profile for engine selection.
+            port: RemoteTTSPort instance. If None, uses global default via get_port().
+            crossfade_ms: Crossfade duration in ms for segment stitching.
+                          Defaults to CROSSFADE_MS env var or DEFAULT_CROSSFADE_MS.
+        """
+        if mock_mode is not None:
+            self.mock_mode = mock_mode
+        else:
+            self.mock_mode = os.environ.get("MOCK_LLM", "false").lower() == "true"
+
+        # Create router
         if router is None:
-            old_mock = os.environ.get("MOCK_LLM")
-            if self.mock_mode:
-                os.environ["MOCK_LLM"] = "true"
             self.router = create_router()
-            if old_mock is None:
-                os.environ.pop("MOCK_LLM", None)
-            else:
-                os.environ["MOCK_LLM"] = old_mock
         else:
             self.router = router
 
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Hardware profile for TTS engine selection
+        # Hardware profile for TTS engine selection (used by Hermes for routing)
         self.hardware_profile = hardware_profile or get_hardware_profile()
 
+        # Voice cloning manager (for local voice cloning if needed)
+        self.voice_cloning_manager = VoiceCloningManager(
+            CloningConfig(
+                model_path="./models/kokoro-onnx",
+                output_dir=str(self.output_dir / "cloned"),
+            )
+        )
+
+        # Remote TTS Port - the single abstraction for all synthesis
+        # Use mock port for mock_mode, lazy initialization for real port
+        self._port: Optional[RemoteTTSPort]
+        self._pending_port: Optional["Coroutine[Any, Any, RemoteTTSPort]"]
+        if port is not None:
+            self._port = port
+        elif self.mock_mode:
+            # Use FakeRemoteTTSPort for testing - synchronous, no async init needed
+            self._port = FakeRemoteTTSPort()
+        else:
+            # Lazy initialization: port will be created on first use
+            self._port = None
+            self._pending_port = self._create_port()
+
+        # Crossfade duration for segment stitching
+        if crossfade_ms is not None:
+            self.crossfade_ms = crossfade_ms
+        else:
+            self.crossfade_ms = self.get_crossfade_ms()
+
+        # Audio semantic cache for TTS segment caching
+        self._audio_cache: Optional[AudioSemanticCache] = None
+        self._cache_enabled = os.environ.get("AUDIO_SEMANTIC_CACHE_ENABLED", "false").lower() == "true"
+        if self._cache_enabled:
+            self._audio_cache = get_audio_semantic_cache()
         # Track existing segments for incremental synthesis
-        self.existing_segments = {}
+        self.existing_segments: dict[str, AudioSegment] = {}
         self._mock_segment_counter = 0
 
-    # Common Edge-TTS voice mapping (short → full SSML format)
-    EDGE_VOICE_MAP = {
-        "zh-CN-XiaoxiaoNeural": "Microsoft Server Speech Text to Speech Voice (zh-CN, XiaoxiaoNeural)",
-        "zh-CN-YunxiNeural": "Microsoft Server Speech Text to Speech Voice (zh-CN, YunxiNeural)",
-        "zh-CN-YunjianNeural": "Microsoft Server Speech Text to Speech Voice (zh-CN, YunjianNeural)",
-        "zh-CN-XiaoyiNeural": "Microsoft Server Speech Text to Speech Voice (zh-CN, XiaoyiNeural)",
-        "zh-CN-YunyangNeural": "Microsoft Server Speech Text to Speech Voice (zh-CN, YunyangNeural)",
-        "zh-CN-XiaochenNeural": "Microsoft Server Speech Text to Speech Voice (zh-CN, XiaochenNeural)",
-        "zh-CN-XiaohanNeural": "Microsoft Server Speech Text to Speech Voice (zh-CN, XiaohanNeural)",
-        "zh-CN-XiaomengNeural": "Microsoft Server Speech Text to Speech Voice (zh-CN, XiaomengNeural)",
-        "zh-CN-XiaomoNeural": "Microsoft Server Speech Text to Speech Voice (zh-CN, XiaomoNeural)",
-        "zh-CN-XiaoqiuNeural": "Microsoft Server Speech Text to Speech Voice (zh-CN, XiaoqiuNeural)",
-        "zh-CN-XiaoruiNeural": "Microsoft Server Speech Text to Speech Voice (zh-CN, XiaoruiNeural)",
-        "zh-CN-XiaoshuangNeural": "Microsoft Server Speech Text to Speech Voice (zh-CN, XiaoshuangNeural)",
-        "en-US-AriaNeural": "Microsoft Server Speech Text to Speech Voice (en-US, AriaNeural)",
-        "en-US-GuyNeural": "Microsoft Server Speech Text to Speech Voice (en-US, GuyNeural)",
-        "en-US-JennyNeural": "Microsoft Server Speech Text to Speech Voice (en-US, JennyNeural)",
-    }
+        logger.info(f"SynthesizePipeline initialized with mock_mode={self.mock_mode}, crossfade_ms={self.crossfade_ms}")
 
-    # Azure TTS voice mapping (neural voices)
-    AZURE_VOICE_MAP = {
-        "zh-CN-XiaoxiaoNeural": "Microsoft Server Speech Text to Speech Voice (zh-CN, XiaoxiaoNeural)",
-        "zh-CN-YunxiNeural": "Microsoft Server Speech Text to Speech Voice (zh-CN, YunxiNeural)",
-        "zh-CN-YunjianNeural": "Microsoft Server Speech Text to Speech Voice (zh-CN, YunjianNeural)",
-        "zh-CN-XiaoyiNeural": "Microsoft Server Speech Text to Speech Voice (zh-CN, XiaoyiNeural)",
-        "zh-CN-YunyangNeural": "Microsoft Server Speech Text to Speech Voice (zh-CN, YunyangNeural)",
-        "zh-CN-XiaochenNeural": "Microsoft Server Speech Text to Speech Voice (zh-CN, XiaochenNeural)",
-        "zh-CN-XiaohanNeural": "Microsoft Server Speech Text to Speech Voice (zh-CN, XiaohanNeural)",
-        "zh-CN-XiaomengNeural": "Microsoft Server Speech Text to Speech Voice (zh-CN, XiaomengNeural)",
-        "zh-CN-XiaomoNeural": "Microsoft Server Speech Text to Speech Voice (zh-CN, XiaomoNeural)",
-        "zh-CN-XiaoqiuNeural": "Microsoft Server Speech Text to Speech Voice (zh-CN, XiaoqiuNeural)",
-        "zh-CN-XiaoruiNeural": "Microsoft Server Speech Text to Speech Voice (zh-CN, XiaoruiNeural)",
-        "zh-CN-XiaoshuangNeural": "Microsoft Server Speech Text to Speech Voice (zh-CN, XiaoshuangNeural)",
-        "en-US-AriaNeural": "Microsoft Server Speech Text to Speech Voice (en-US, AriaNeural)",
-        "en-US-GuyNeural": "Microsoft Server Speech Text to Speech Voice (en-US, GuyNeural)",
-        "en-US-JennyNeural": "Microsoft Server Speech Text to Speech Voice (en-US, JennyNeural)",
-    }
+    async def _create_port(self) -> RemoteTTSPort:
+        """Create a new port instance via DI container."""
+        from ..tts.port_factory import get_port
 
-    # GCP TTS voice mapping
-    GCP_VOICE_MAP = {
-        "zh-CN-Standard-A": "cmn-CN-Standard-A",
-        "zh-CN-Standard-B": "cmn-CN-Standard-B",
-        "zh-CN-Standard-C": "cmn-CN-Standard-C",
-        "zh-CN-Standard-D": "cmn-CN-Standard-D",
-        "zh-CN-Wavenet-A": "cmn-CN-Wavenet-A",
-        "zh-CN-Wavenet-B": "cmn-CN-Wavenet-B",
-        "zh-CN-Wavenet-C": "cmn-CN-Wavenet-C",
-        "zh-CN-Wavenet-D": "cmn-CN-Wavenet-D",
-        "zh-CN-Neural2-A": "cmn-CN-Neural2-A",
-        "zh-CN-Neural2-B": "cmn-CN-Neural2-B",
-        "zh-CN-Neural2-C": "cmn-CN-Neural2-C",
-        "zh-CN-Neural2-D": "cmn-CN-Neural2-D",
-        "en-US-Standard-A": "en-US-Standard-A",
-        "en-US-Standard-B": "en-US-Standard-B",
-        "en-US-Standard-C": "en-US-Standard-C",
-        "en-US-Standard-D": "en-US-Standard-D",
-        "en-US-Wavenet-A": "en-US-Wavenet-A",
-        "en-US-Wavenet-B": "en-US-Wavenet-B",
-        "en-US-Wavenet-C": "en-US-Wavenet-C",
-        "en-US-Wavenet-D": "en-US-Wavenet-D",
-        "en-US-Neural2-A": "en-US-Neural2-A",
-        "en-US-Neural2-B": "en-US-Neural2-B",
-        "en-US-Neural2-C": "en-US-Neural2-C",
-        "en-US-Neural2-D": "en-US-Neural2-D",
-    }
+        return await get_port()
 
-    def _resolve_edge_voice(self, voice_id: str) -> str:
-        """Resolve a short voice ID to Edge-TTS full SSML format."""
-        # Already in full format
-        if voice_id.startswith("Microsoft Server Speech Text to Speech Voice"):
-            return voice_id
-        # Check mapping
-        if voice_id in self.EDGE_VOICE_MAP:
-            return self.EDGE_VOICE_MAP[voice_id]
-        # Try to build dynamically: normalize short name to proper casing
-        # Common pattern: zh-CN-Name → Microsoft Server Speech Text to Speech Voice (zh-CN, Name)
-        if voice_id.count("-") >= 2:
-            parts = voice_id.rsplit("-", 1)
-            region = parts[0]
-            name = parts[1].capitalize()
-            mapped = f"Microsoft Server Speech Text to Speech Voice ({region}, {name})"
-            logger.info(f"Resolved voice '{voice_id}' → '{mapped}'")
-            return mapped
-        # Last resort: return as-is and let edge-tts handle it
-        logger.warning(f"Unable to resolve voice '{voice_id}', using raw value")
-        return voice_id
+    async def _get_port(self) -> RemoteTTSPort:
+        """Lazily initialize and return the RemoteTTSPort."""
+        if self._port is None:
+            # Lazy initialization for real port
+            if hasattr(self, "_pending_port") and self._pending_port is not None:
+                self._port = await self._pending_port
+                self._pending_port = None
+            else:
+                # Create new port via DI
+                self._port = await self._create_port()
+        return self._port
 
     def _text_hash(self, text: str) -> str:
-        return hashlib.md5(text.encode()).hexdigest()[:12]
+        # Use SHA256 with usedforsecurity=False for cache key generation (non-cryptographic)
+        return hashlib.sha256(text.encode(), usedforsecurity=False).hexdigest()[:12]
 
     def _metadata_path(self, segment_id: str) -> Path:
         """Return the sidecar metadata path for a synthesized segment."""
         return self.output_dir / f"{segment_id}.json"
 
-    def _load_existing_segment_from_disk(
-        self, segment_id: str, text_hash: str
-    ) -> Optional[AudioSegment]:
+    def _load_existing_segment_from_disk(self, segment_id: str, text_hash: str) -> Optional[AudioSegment]:
         """Load an existing segment from disk if its text hash matches."""
         metadata_path = self._metadata_path(segment_id)
         if not metadata_path.exists():
@@ -204,9 +356,7 @@ class SynthesizePipeline:
 
         file_path = metadata.get("file_path")
         if not file_path or not Path(file_path).exists():
-            logger.warning(
-                "Existing segment file missing for %s, ignoring metadata", segment_id
-            )
+            logger.warning("Existing segment file missing for %s, ignoring metadata", segment_id)
             return None
 
         return AudioSegment(
@@ -238,247 +388,747 @@ class SynthesizePipeline:
                 encoding="utf-8",
             )
         except OSError as exc:
-            logger.warning(
-                "Unable to persist segment metadata %s: %s", metadata_path, exc
-            )
+            logger.warning("Unable to persist segment metadata %s: %s", metadata_path, exc)
 
-    def _synthesize_kokoro(
-        self, text: str, voice_id: str, prosody: dict, output_path: Path
-    ) -> int:
-        """Synthesize using Kokoro-ONNX (local). Falls back to Edge-TTS if unavailable."""
-        # Mock mode: create dummy file
-        if self.mock_mode:
-            output_path.write_bytes(b"MP3 dummy kokoro")
-            return 3000
+    def _build_payload(self, text: str, voice_id: str, prosody: dict[str, Any]) -> TTSTaskPayload:
+        """Build a TTSTaskPayload from synthesis parameters."""
+        # Convert prosody dict to TTSProsody
+        # P2.15: 透传 seed (若 prosody_overrides 带 seed 则注入 TTSProsody.seed → backend → generate)。
+        _raw_seed = prosody.get("seed")
+        # 容错: 非整数 → 透传 None (避免非 int 进 generate 链路, 诚实降级)。
+        seed_val = int(_raw_seed) if isinstance(_raw_seed, (int, float)) else None
+        tts_prosody = TTSProsody(
+            rate=float(prosody.get("rate", 1.0)),
+            pitch=float(prosody.get("pitch", 0.0)),
+            volume=float(prosody.get("volume", 0.0)),
+            emotion=prosody.get("emotion"),
+            seed=seed_val,
+        )
 
-        # kokoro-onnx is optional; fall back to edge-tts if not installed
-        try:
-            import kokoro  # noqa: F811
+        # Create voice anchor - the Hermes layer will resolve voice_id to actual profile
+        voice_anchor = TTSVoiceAnchor(
+            voice_id=voice_id,
+            speaker_name=None,
+            language="zh-CN",  # TODO: infer from text or prosody
+        )
 
-            # TODO: implement real kokoro-onnx synthesis
-            logger.warning(
-                "Kokoro-ONNX not fully integrated yet, falling back to Edge-TTS"
-            )
-            return self._synthesize_edge(text, voice_id, prosody, output_path)
-        except ImportError:
-            logger.info("kokoro-onnx not installed, falling back to Edge-TTS")
-            return self._synthesize_edge(text, voice_id, prosody, output_path)
-        except Exception as e:
-            logger.error(f"Kokoro synthesis failed: {e}")
-            return self._synthesize_edge(text, voice_id, prosody, output_path)
+        return TTSTaskPayload(
+            text=text,
+            voice_anchor=voice_anchor,
+            prosody=tts_prosody,
+            metadata={
+                "source": "synthesize_pipeline",
+                "prosody_raw": prosody,
+            },
+        )
 
-    def _synthesize_edge(
-        self, text: str, voice_id: str, prosody: dict, output_path: Path
-    ) -> int:
-        """Synthesize using Edge-TTS (cloud). Returns duration_ms."""
-        # Mock mode: create dummy file
-        if self.mock_mode:
-            output_path.write_bytes(b"MP3 dummy edge")
-            return 2800
+    async def _synthesize_via_port(
+        self,
+        text: str,
+        voice_id: str,
+        prosody: dict[str, Any],
+        output_path: Path,
+        segment_id: str,
+    ) -> tuple[int, str]:
+        """Synthesize text to audio via RemoteTTSPort.
 
-        try:
-            import asyncio
+        Submits task to Hermes layer, polls for completion, downloads result.
 
-            import edge_tts
+        Args:
+            text: Text to synthesize.
+            voice_id: Voice identifier.
+            prosody: Prosody parameters.
+            output_path: Local path to save audio.
+            segment_id: Unique segment identifier for task tracking.
 
-            async def _synthesize():
-                resolved_voice = self._resolve_edge_voice(voice_id)
-                communicate = edge_tts.Communicate(text, resolved_voice)
-                await communicate.save(str(output_path))
+        Returns:
+            Tuple of (duration_ms, engine_name).
 
-            asyncio.run(_synthesize())
+        Raises:
+            RuntimeError: If synthesis fails or times out.
+        """
+        # Build payload
+        port = await self._get_port()
+        # The routing decision may have tagged ``engine_choice`` based on cost
+        # preferences, but the production port is whichever engine the
+        # registry defaults to (Kokoro today). Re-normalize voice_id against
+        # the port's real engine so we never feed an Edge voice_id to
+        # Kokoro (or vice versa). See ADR-005 / fallback-chain.
+        actual_engine = _port_engine_name(port)
+        voice_id = _normalize_voice_id(voice_id, actual_engine)
+        payload = self._build_payload(text, voice_id, prosody)
 
-            # If output file wasn't created (e.g., asyncio.run was mocked), use fallback
-            if not output_path.exists():
-                raise RuntimeError("Synthesis did not create output file")
+        # Check audio semantic cache first (Tier 1: exact, Tier 2: semantic)
+        if self._cache_enabled and self._audio_cache:
+            cached = self._audio_cache.get(text, voice_id, prosody)
+            if cached:
+                cached_audio_path, cached_duration_ms, cache_meta = cached
+                logger.info(
+                    f"Audio cache hit for segment {segment_id}: type={cache_meta.get('cache_type')}, "
+                    f"similarity={cache_meta.get('similarity', 1.0):.3f}, duration={cached_duration_ms}ms"
+                )
+                # Copy cached audio to output path
+                import shutil
 
-            # Get duration using utility
+                shutil.copy2(cached_audio_path, output_path)
+                engine = cache_meta.get("engine", "cache")
+                return cached_duration_ms, engine
+
+        # Submit to Hermes layer
+        task_id = f"{segment_id}-{int(time.time() * 1000)}"
+        logger.info(
+            "Submitting synthesis task %s for segment %s (engine=%s, voice=%s)",
+            task_id,
+            segment_id,
+            actual_engine,
+            voice_id,
+        )
+        accepted = await port.submit(task_id, payload)
+        if not accepted:
+            raise RuntimeError(f"Task {task_id} rejected by scheduling layer (duplicate or unavailable)")
+
+        # Poll for completion
+        poll_interval = 0.5  # seconds
+        max_wait = 300  # 5 minutes max
+        waited = 0.0
+        result: Optional[TTSTaskResult] = None
+
+        while waited < max_wait:
+            status = await port.get_status(task_id)
+            logger.debug(f"Task {task_id} status: {status.status.value}, progress: {status.progress}")
+
+            if status.status == TTSStatus.DONE:
+                # Get full result
+                result = await port.get_result(task_id)
+                break
+            elif status.status == TTSStatus.FAILED:
+                error_msg = status.error_message or "Unknown error"
+                raise RuntimeError(f"Synthesis failed: {error_msg}")
+            elif status.status in (TTSStatus.PENDING, TTSStatus.RUNNING):
+                await asyncio.sleep(poll_interval)
+                waited += poll_interval
+                continue
+            else:
+                raise RuntimeError(f"Unknown task status: {status.status}")
+
+        # If the poll loop exited without a DONE break (timeout), result is
+        # still None — there is no synthesis to download.
+        if result is None:
+            raise RuntimeError(f"Synthesis task {task_id} timed out after {max_wait}s")
+
+        # Download audio from R2/path to local output_path
+        if result.audio_path:
+            # If audio_path is an R2 key, we need to download it
+            # For now, assume it's a local path or we have a download helper
+            await self._download_audio(result.audio_path, output_path)
+        else:
+            raise RuntimeError("Synthesis completed but no audio path returned")
+
+        # Get duration
+        duration_ms = result.duration_ms or get_duration_sync(output_path)
+
+        # Store in audio semantic cache for future reuse
+        if self._cache_enabled and self._audio_cache:
             try:
-                return get_duration_sync(output_path)
-            except (FileNotFoundError, ValueError) as e:
-                logger.warning(
-                    f"ffprobe unavailable or failed ({e}), estimating duration from text"
+                self._audio_cache.put(
+                    text=text,
+                    voice_id=voice_id,
+                    prosody=prosody,
+                    audio_path=str(output_path),
+                    duration_ms=duration_ms,
+                    metadata={"engine": engine, "segment_id": segment_id},
+                )
+            except Exception as e:
+                logger.warning(f"Failed to store audio in semantic cache: {e}")
+
+        # Engine name from metadata, falling back to the port's real engine
+        # name. ``TTSTaskResult`` itself does not carry metadata, but some
+        # port implementations (e.g. the Edge port) attach an extra
+        # ``metadata`` dict to the returned result. Never report the legacy
+        # "hermes" default when a different engine actually ran.
+        result_meta: Optional[dict[str, Any]] = getattr(result, "metadata", None)
+        engine = (result_meta.get("engine") if result_meta else None) or actual_engine
+
+        logger.info(f"Segment {segment_id} synthesized via {engine}: {duration_ms}ms")
+        return duration_ms, engine
+
+    async def _download_audio(self, source_path: str, dest_path: Path) -> None:
+        """Download audio from source (R2/local) to destination.
+
+        For the fake port, source_path might be a local path.
+        For the real Hermes port, it would be an R2 object key.
+        """
+        source = Path(source_path)
+        if source.exists():
+            # Local file - copy
+            import shutil
+
+            shutil.copy2(source, dest_path)
+        else:
+            # Remote path (R2 key) - would need R2 client
+            # For fake port, it generates local files
+            # TODO: Implement R2 download for production Hermes port
+            logger.warning(f"Remote audio path not implemented: {source_path}")
+            # In testing with fake port, the fake port creates local files
+            # This is a placeholder for real implementation
+            raise NotImplementedError(f"Remote audio download from {source_path} not implemented")
+
+    async def _synthesize_streaming(
+        self,
+        text: str,
+        voice_id: str,
+        prosody: dict[str, Any],
+        output_path: Path,
+        segment_id: str,
+        project_id: int,
+        chapter_index: int,
+        paragraph_index: int,
+        progress_callback: callable = None,
+    ) -> tuple[int, str]:
+        """Synthesize text to audio via Streaming TTS engine with WebSocket progress.
+
+        This method provides first-byte latency < 500ms by streaming audio chunks
+        in real-time via WebSocket to the frontend.
+
+        Args:
+            text: Text to synthesize.
+            voice_id: Voice identifier.
+            prosody: Prosody parameters.
+            output_path: Local path to save complete audio.
+            segment_id: Unique segment identifier for task tracking.
+            project_id: Project ID for WebSocket events.
+            chapter_index: Chapter index for progress.
+            paragraph_index: Paragraph index for progress.
+            progress_callback: Optional callback for chunk-level progress.
+
+        Returns:
+            Tuple of (duration_ms, engine_name).
+
+        Raises:
+            RuntimeError: If synthesis fails or times out.
+        """
+        # Determine streaming engine from environment or config
+        streaming_engine = os.getenv("STREAMING_TTS_ENGINE", "cosyvoice_stream")
+        streaming_host = os.getenv("STREAMING_TTS_HOST", "localhost")
+        streaming_port = int(os.getenv("STREAMING_TTS_PORT", "5000"))
+
+        # Check if streaming is enabled
+        if os.getenv("ENABLE_STREAMING_TTS", "false").lower() != "true":
+            logger.info("Streaming TTS not enabled, falling back to port synthesis")
+            return await self._synthesize_via_port(text, voice_id, prosody, output_path, segment_id)
+
+        # Build streaming config
+        config = StreamingTTSConfig(
+            engine=streaming_engine,
+            host=streaming_host,
+            port=streaming_port,
+            sample_rate=24000,
+            chunk_size_ms=100,
+            voice_id=voice_id,
+            speed=prosody.get("rate", 1.0),
+        )
+
+        # Create streaming engine
+        try:
+            streaming_engine_instance = create_streaming_tts_engine(config)
+        except Exception as e:
+            logger.warning(f"Failed to create streaming engine: {e}, falling back to port")
+            return await self._synthesize_via_port(text, voice_id, prosody, output_path, segment_id)
+
+        # Stream synthesis with WebSocket progress
+        import io
+
+        audio_buffer = io.BytesIO()
+        first_chunk = True
+        first_byte_latency_ms = 0
+        start_time = time.time()
+
+        try:
+            # Use async streaming for real-time WebSocket updates
+            chunk_index = 0
+            async for chunk in streaming_engine_instance.synthesize_stream_async(text, voice_id=voice_id, **prosody):
+                # Write chunk to buffer
+                audio_buffer.write(chunk.audio_data)
+
+                # Calculate latency for first chunk
+                if first_chunk:
+                    first_byte_latency_ms = int((time.time() - start_time) * 1000)
+                    first_chunk = False
+                    logger.info(f"Streaming TTS first-byte latency: {first_byte_latency_ms}ms for {segment_id}")
+
+                    # Emit first-byte event
+                    try:
+                        loop = asyncio.get_running_loop()
+                        loop.create_task(
+                            emit_pipeline_event(
+                                project_id=project_id,
+                                event_type="first_byte",
+                                chapter_id=chapter_index,
+                                paragraph_index=paragraph_index,
+                                data={
+                                    "segment_id": segment_id,
+                                    "latency_ms": first_byte_latency_ms,
+                                    "engine": streaming_engine,
+                                },
+                            )
+                        )
+                    except RuntimeError:
+                        pass
+
+                # Emit chunk progress via WebSocket
+                if progress_callback:
+                    try:
+                        progress_callback(chunk_index, chunk.is_final, chunk.latency_ms)
+                    except Exception as e:
+                        logger.debug(f"Progress callback error: {e}")
+
+                # Emit WebSocket event for real-time progress
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(
+                        emit_pipeline_event(
+                            project_id=project_id,
+                            event_type="stream_chunk",
+                            chapter_id=chapter_index,
+                            paragraph_index=paragraph_index,
+                            progress=0.5 if not chunk.is_final else 1.0,
+                            data={
+                                "segment_id": segment_id,
+                                "chunk_index": chunk_index,
+                                "is_final": chunk.is_final,
+                                "latency_ms": chunk.latency_ms,
+                            },
+                        )
+                    )
+                except RuntimeError:
+                    pass
+
+                chunk_index += 1
+
+                if chunk.is_final:
+                    break
+
+            # Save complete audio to file
+            audio_data = audio_buffer.getvalue()
+            output_path.write_bytes(audio_data)
+
+            # Get duration
+            duration_ms = get_duration_sync(output_path)
+
+            logger.info(
+                f"Streaming synthesis complete: {segment_id} via {streaming_engine}, "
+                f"{duration_ms}ms, first-byte={first_byte_latency_ms}ms, chunks={chunk_index}"
+            )
+
+            return duration_ms, streaming_engine
+
+        except Exception as e:
+            logger.error(f"Streaming synthesis failed for {segment_id}: {e}")
+            # Fallback to port synthesis
+            logger.info("Falling back to port synthesis")
+            return await self._synthesize_via_port(text, voice_id, prosody, output_path, segment_id)
+
+    @trace_function(name="pipeline.synthesize.run", stage="synthesize")  # type: ignore[untyped-decorator]  # trace_function (monitoring/) returns Callable[...,Any] w/o preserving the wrapped signature; fix lives outside this file's scope.
+    async def run(self, inputs: List[TtsRoutingInput]) -> List[AudioSegment]:
+        """Synthesize multiple paragraphs incrementally with quality gate.
+
+        For each input, checks if regeneration is needed (text changed),
+        submits synthesis via Port, runs quality checks with auto-retry (max 2),
+        and returns audio segments. Produces quality_report.json.
+
+        Args:
+            inputs: List of TtsRoutingInput with text, voice, and prosody.
+
+        Returns:
+            List of AudioSegment with file paths and metadata.
+        """
+        from ..monitoring import record_stage_performance
+
+        # P2.12: 发音字典一次性加载 (项目级覆盖全局); 注音替换无条目时原样透传 (向后兼容)。
+        # 字典加载失败 → 降级 warn 且 registry 为空 → apply 等价原样透传, 主路径不崩。
+        from ..tts.pronunciation_dict import apply_pronunciation_dict, load_pronunciation_dict
+
+        pronunciation_registry = load_pronunciation_dict()
+
+        logger.info(f"Synthesizing {len(inputs)} paragraphs via Port")
+
+        segments: list[AudioSegment] = []
+        segment_files: list[Path] = []
+        segment_ids: list[str] = []
+
+        for i, inp in enumerate(inputs):
+            decision = self._make_routing_decision(inp)
+
+            # 提取阶段会把图片理解结果以 "[插图: {…json…}]" 块并入段落文本，
+            # 供分析/标注等文本阶段参考；这些块（含整段 JSON caption）不是可朗读
+            # 内容，进 TTS 前必须剥离 —— 否则 Kokoro 会把 JSON 读出来，且中英混杂
+            # 的长 JSON 会超过 510 音素上下文窗口直接崩掉整章合成（2026-09-04 E2E
+            # 实测: 14_ch5_p6）。剥离后为空 ⇒ 纯图片段落，无语音内容，跳过并记录。
+            inp.text = _strip_image_placeholders(inp.text)
+            if not inp.text:
+                logger.info(
+                    f"Segment {decision.segment_id}: no speakable text after stripping "
+                    "image placeholder blocks; skipping synthesis for this paragraph"
+                )
+                continue
+
+            # P2.12: 合成前按字典对 inp.text 做注音替换 (在 hash 前, 保证 cache 键与
+            # 实际合成文本幂等一致; 无条目原样透传, 不破主路径)。就地改 inp.text 局部副本安全。
+            inp.text = apply_pronunciation_dict(inp.text, pronunciation_registry)
+
+            # Check if regeneration needed (text changed)
+            text_hash = self._text_hash(inp.text)
+            segment_id = decision.segment_id
+
+            # Emit stage progress for each paragraph
+            if inputs:
+                project_id = inputs[0].book_id
+                chapter_index = inputs[0].chapter_index
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(
+                        emit_stage_progress(
+                            stage="synthesize",
+                            project_id=project_id,
+                            chapter_index=chapter_index,
+                            current=i + 1,
+                            total=len(inputs),
+                            message=f"Synthesizing paragraph {i + 1}/{len(inputs)}",
+                        )
+                    )
+                except RuntimeError:
+                    pass  # Silently skip if no event loop
+
+            if segment_id in self.existing_segments:
+                existing = self.existing_segments[segment_id]
+                if existing.text_hash == text_hash:
+                    logger.info(f"Segment {segment_id} unchanged, skipping")
+                    segments.append(existing)
+
+                    # Emit paragraph complete for cached segment
+                    if inputs:
+                        project_id = inputs[0].book_id
+                        chapter_index = inputs[0].chapter_index
+                        try:
+                            loop = asyncio.get_running_loop()
+                            loop.create_task(
+                                emit_paragraph_complete(
+                                    project_id=project_id,
+                                    chapter_index=chapter_index,
+                                    paragraph_index=inp.paragraph_index,
+                                    total_paragraphs=len(inputs),
+                                )
+                            )
+                        except RuntimeError:
+                            pass
+                    continue
+
+            disk_existing = self._load_existing_segment_from_disk(segment_id, text_hash)
+            if disk_existing is not None:
+                self.existing_segments[segment_id] = disk_existing
+                logger.info(f"Segment {segment_id} loaded from disk, skipping")
+                segments.append(disk_existing)
+
+                # Emit paragraph complete for disk-cached segment
+                if inputs:
+                    project_id = inputs[0].book_id
+                    chapter_index = inputs[0].chapter_index
+                    try:
+                        loop = asyncio.get_running_loop()
+                        loop.create_task(
+                            emit_paragraph_complete(
+                                project_id=project_id,
+                                chapter_index=chapter_index,
+                                paragraph_index=inp.paragraph_index,
+                                total_paragraphs=len(inputs),
+                            )
+                        )
+                    except RuntimeError:
+                        pass
+                continue
+
+            # Synthesize via Port
+            output_path = self.output_dir / f"{segment_id}.wav"
+
+            success = False
+            duration = 0
+            # ``engine`` starts as the routing-decision Literal but is later
+            # overwritten with the real engine name (a plain ``str`` from
+            # ``_synthesize_via_port``, which may even report "hermes"), so
+            # type it as ``str`` rather than the narrow Literal.
+            engine: str = decision.engine_choice
+            synthesis_latency_ms: float = 0.0
+            cost_usd = 0.0
+            tokens_in = max(1, len(inp.text) // 4)
+            tokens_out = 0
+
+            try:
+                start_time = time.time()
+
+                # Check if streaming TTS is enabled for first-byte latency optimization
+                enable_streaming = os.getenv("ENABLE_STREAMING_TTS", "false").lower() == "true"
+
+                if enable_streaming:
+                    # Run streaming synthesis with WebSocket progress
+                    duration, engine = await self._synthesize_streaming(
+                        inp.text,
+                        decision.voice_id,
+                        decision.prosody_overrides or {},
+                        output_path,
+                        segment_id,
+                        project_id=inputs[0].book_id if inputs else 0,
+                        chapter_index=inputs[0].chapter_index if inputs else 0,
+                        paragraph_index=inp.paragraph_index,
+                    )
+                else:
+                    # Run async synthesis via port (legacy path)
+                    duration, engine = await self._synthesize_via_port(
+                        inp.text,
+                        decision.voice_id,
+                        decision.prosody_overrides or {},
+                        output_path,
+                        segment_id,
+                    )
+
+                synthesis_latency_ms = (time.time() - start_time) * 1000
+                success = True
+
+                # P2.13: 首段注册锚 — 角色在本章首次成功合成, 用本段真实音频作该章
+                # 参考音频 (VoiceAnchor.register_character 拷贝到 anchor 目录持久化)。
+                # §35 profile-lock 依赖此锚: 同章后续段锁 voice_id; §34 漂移门用它做基准
+                # vs 生成音频比对. 键 = chapter_index 顺序号 (与 quality_check 同源, 非
+                # DB chapter_id). 首段即锚保证每章起点一致, 跨段漂移有基准.
+                if success:
+                    try:
+                        from .voice_anchor import get_voice_anchor_manager
+
+                        va = get_voice_anchor_manager()
+                        char_name = inp.paragraph_annotation.speaker_canonical_name
+                        if (
+                            va.config.enabled
+                            and char_name
+                            and not va.has_anchor(char_name, chapter_index=inp.chapter_index)
+                        ):
+                            output_path_obj = Path(output_path)
+                            if output_path_obj.exists():
+                                va.register_character(
+                                    character_name=char_name,
+                                    voice_id=decision.voice_id,
+                                    reference_audio_path=str(output_path_obj),
+                                    chapter_index=inp.chapter_index,
+                                    paragraph_index=inp.paragraph_index,
+                                )
+                    except Exception as e:
+                        logger.debug(f"P2.13 voice anchor register failed for {segment_id}: {e}")
+
+                # Observe TTS synthesis for Langfuse tracing
+                if is_enabled():
+                    observe_tts_synthesis(
+                        voice_id=decision.voice_id,
+                        text_length=len(inp.text),
+                        audio_duration_ms=duration,
+                        latency_ms=synthesis_latency_ms,
+                        backend=engine,
+                    )
+
+                # Estimate token usage and cost
+                tokens_in = max(1, len(inp.text) // 4)
+                tokens_out = max(1, duration // 100)  # Rough approximation
+
+                # Cost estimation
+                if engine in ("kokoro", "hermes"):
+                    cost_usd = 0.0  # Local/free
+                elif engine == "edge":
+                    cost_usd = (len(inp.text) / 1_000_000) * 4.0
+                elif engine == "azure":
+                    cost_usd = 0.0  # Free tier
+                elif engine == "gcp":
+                    cost_usd = 0.0  # Free tier
+                else:
+                    cost_usd = 0.01  # Placeholder
+
+            except Exception as e:
+                logger.error(f"Synthesis failed for segment {segment_id}: {e}")
+                synthesis_latency_ms = (time.time() - start_time) * 1000 if "start_time" in locals() else 0
+                success = False
+                if engine == "kokoro":
+                    cost_usd = 0.0
+                elif engine == "edge":
+                    cost_usd = (len(inp.text) / 1_000_000) * 4.0
+                else:
+                    cost_usd = 0.01
+                raise  # Re-raise to maintain existing error handling
+            finally:
+                # Record performance metric (both success and failure)
+                record_stage_performance(
+                    stage=f"synthesize_{engine}",
+                    latency_ms=synthesis_latency_ms,
+                    tokens_in=tokens_in,
+                    tokens_out=tokens_out,
+                    cost_usd=cost_usd,
+                    success=success,
+                    quality_score=None,  # Will be filled by quality_check stage
+                    provider=engine,
+                    model=decision.voice_id,
+                    schema_compliance=None,
                 )
 
-            # Fallback: estimate duration from text length
-            # Chinese: ~3 chars/sec at normal speed, English: ~10 chars/sec
-            chinese_chars = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
-            english_chars = len(text) - chinese_chars
-            estimated_sec = (chinese_chars / 3.5) + (english_chars / 10)
-            estimated_ms = max(500, int(estimated_sec * 1000))
-            logger.info(
-                f"Estimated duration from text: {estimated_ms}ms ({len(text)} chars)"
-            )
-            return estimated_ms
+                # Record TTS telemetry
+                record_tts_segment(
+                    duration_ms=duration if success else 0,
+                    latency_ms=synthesis_latency_ms,
+                    provider=engine,
+                    cost_usd=cost_usd,
+                    success=success,
+                )
 
-        except ImportError:
-            logger.error("edge-tts not installed. Run: pip install edge-tts")
-            raise
-        except Exception as e:
-            logger.error(f"Edge-TTS synthesis failed: {e}")
-            raise
-
-    def _synthesize_azure(
-        self, text: str, voice_id: str, prosody: dict, output_path: Path
-    ) -> int:
-        """Synthesize using Azure Cognitive Services TTS. Returns duration_ms."""
-        # Mock mode: create dummy file
-        if self.mock_mode:
-            output_path.write_bytes(b"MP3 dummy azure")
-            return 2800
-
-        # Check for Azure credentials
-        azure_key = os.getenv("AZURE_TTS_KEY") or os.getenv("AZURE_SPEECH_KEY")
-        azure_region = os.getenv("AZURE_TTS_REGION") or os.getenv("AZURE_SPEECH_REGION")
-
-        if not azure_key or not azure_region:
-            logger.warning("Azure TTS credentials not configured (AZURE_TTS_KEY, AZURE_TTS_REGION)")
-            raise RuntimeError("Azure TTS not configured")
-
-        try:
-            import azure.cognitiveservices.speech as speechsdk
-
-            speech_config = speechsdk.SpeechConfig(subscription=azure_key, region=azure_region)
-            speech_config.set_speech_synthesis_output_format(
-                speechsdk.SpeechSynthesisOutputFormat.Audio16Khz32KBitRateMonoMp3
-            )
-            
-            # Resolve voice name - use the short form for Azure
-            azure_voice = voice_id
-            if voice_id in self.AZURE_VOICE_MAP:
-                azure_voice = self.AZURE_VOICE_MAP[voice_id]
-            elif voice_id.startswith("Microsoft Server Speech Text to Speech Voice"):
-                # Already in full format
-                pass
-            else:
-                # Try to convert to Azure format
-                if voice_id.count("-") >= 2:
-                    parts = voice_id.rsplit("-", 1)
-                    region = parts[0]
-                    name = parts[1].capitalize()
-                    azure_voice = f"Microsoft Server Speech Text to Speech Voice ({region}, {name})"
-            
-            speech_config.speech_synthesis_voice_name = azure_voice
-
-            # Apply prosody via SSML if provided
-            if prosody:
-                # Build SSML with prosody
-                rate = prosody.get("rate", "1.0")
-                pitch = prosody.get("pitch", "+0st")
-                volume = prosody.get("volume", "+0%")
-                ssml = f"""<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="zh-CN">
-                    <voice name="{azure_voice}">
-                        <prosody rate="{rate}" pitch="{pitch}" volume="{volume}">{text}</prosody>
-                    </voice>
-                </speak>"""
-            else:
-                ssml = f"""<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="zh-CN">
-                    <voice name="{azure_voice}">{text}</voice>
-                </speak>"""
-
-            audio_config = speechsdk.audio.AudioOutputConfig(filename=str(output_path))
-            synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=audio_config)
-            
-            result = synthesizer.speak_ssml_async(ssml).get()
-            
-            if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
-                logger.info(f"Azure TTS synthesis completed: {output_path}")
-                duration = get_duration_sync(output_path)
-                return duration
-            elif result.reason == speechsdk.ResultReason.Canceled:
-                cancellation = result.cancellation_details
-                logger.error(f"Azure TTS canceled: {cancellation.reason} - {cancellation.error_details}")
-                raise RuntimeError(f"Azure TTS canceled: {cancellation.error_details}")
-            else:
-                logger.error(f"Azure TTS failed: {result.reason}")
-                raise RuntimeError(f"Azure TTS failed: {result.reason}")
-
-        except ImportError:
-            logger.error("azure-cognitiveservices-speech not installed. Run: pip install azure-cognitiveservices-speech")
-            raise
-        except Exception as e:
-            logger.error(f"Azure TTS synthesis failed: {e}")
-            raise
-
-    def _synthesize_gcp(
-        self, text: str, voice_id: str, prosody: dict, output_path: Path
-    ) -> int:
-        """Synthesize using Google Cloud TTS. Returns duration_ms."""
-        # Mock mode: create dummy file
-        if self.mock_mode:
-            output_path.write_bytes(b"MP3 dummy gcp")
-            return 2800
-
-        # Check for GCP credentials
-        gcp_creds = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-        if not gcp_creds or not Path(gcp_creds).exists():
-            logger.warning("GCP credentials not configured (GOOGLE_APPLICATION_CREDENTIALS)")
-            raise RuntimeError("GCP TTS not configured")
-
-        try:
-            from google.cloud import texttospeech
-
-            client = texttospeech.TextToSpeechClient()
-
-            # Resolve voice name for GCP
-            gcp_voice = voice_id
-            if voice_id in self.GCP_VOICE_MAP:
-                gcp_voice = self.GCP_VOICE_MAP[voice_id]
-            
-            # Parse language code and voice name
-            # Format: "cmn-CN-Neural2-A" -> language_code="cmn-CN", name="cmn-CN-Neural2-A"
-            if "-" in gcp_voice and gcp_voice.startswith(("cmn-", "en-")):
-                parts = gcp_voice.split("-")
-                if len(parts) >= 3:
-                    language_code = "-".join(parts[:2])  # e.g., "cmn-CN"
-                else:
-                    language_code = "cmn-CN"
-            else:
-                language_code = "cmn-CN"
-
-            synthesis_input = texttospeech.SynthesisInput(text=text)
-
-            voice = texttospeech.VoiceSelectionParams(
-                language_code=language_code,
-                name=gcp_voice,
+            segment = AudioSegment(
+                segment_id=segment_id,
+                file_path=str(output_path),
+                duration_ms=duration,
+                engine=engine,
+                voice_id=decision.voice_id,
+                text_hash=text_hash,
             )
 
-            # Build audio config with prosody
-            audio_config_kwargs = {
-                "audio_encoding": texttospeech.AudioEncoding.MP3,
-                "speaking_rate": prosody.get("rate", 1.0),
-                "pitch": prosody.get("pitch", 0.0),  # semitones for GCP
-                "volume_gain_db": prosody.get("volume", 0.0),
+            self.existing_segments[segment_id] = segment
+            self._persist_segment_metadata(segment)
+            segments.append(segment)
+            segment_files.append(output_path)
+            segment_ids.append(segment_id)
+
+            # Emit paragraph complete for synthesized segment
+            if inputs:
+                project_id = inputs[0].book_id
+                chapter_index = inputs[0].chapter_index
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(
+                        emit_paragraph_complete(
+                            project_id=project_id,
+                            chapter_index=chapter_index,
+                            paragraph_index=inp.paragraph_index,
+                            total_paragraphs=len(inputs),
+                        )
+                    )
+                except RuntimeError:
+                    pass
+
+        # Quality Gate: Check all segments with auto-retry (max 2 retries)
+        if segment_files:
+            logger.info(f"Running quality checks on {len(segment_files)} segments...")
+
+            # Get project info for report
+            project_id = inputs[0].book_id if inputs else "unknown"
+            chapter_index = inputs[0].chapter_index if inputs else 0
+
+            # Define retry callback for quality failures
+            async def retry_callback(seg_id: str, attempt: int) -> Optional[Path]:
+                """Re-synthesize a failed segment."""
+                # Find the original input for this segment
+                seg_input = next((inp for inp in inputs if f"_p{inp.paragraph_index}" in seg_id), None)
+                if seg_input is None:
+                    logger.warning(f"No input found for segment {seg_id}")
+                    return None
+
+                decision = self._make_routing_decision(seg_input)
+                retry_output = self.output_dir / f"{seg_id}_retry{attempt}.wav"
+
+                try:
+                    logger.info(f"Retrying synthesis for {seg_id} (attempt {attempt})")
+                    retry_duration, retry_engine = await self._synthesize_via_port(
+                        seg_input.text,
+                        decision.voice_id,
+                        decision.prosody_overrides or {},
+                        retry_output,
+                        f"{seg_id}_retry{attempt}",
+                    )
+                    # Record retry telemetry
+                    record_tts_retry(fallback_from=decision.engine_choice)
+
+                    # Update segment with new file
+                    for seg in segments:
+                        if seg.segment_id == seg_id:
+                            seg.file_path = str(retry_output)
+                            seg.duration_ms = retry_duration
+                            seg.engine = retry_engine
+                            self._persist_segment_metadata(seg)
+                            break
+                    return retry_output
+                except Exception as e:
+                    logger.error(f"Retry synthesis failed for {seg_id}: {e}")
+                    return None
+
+            # P2.13: 透传 segment_id -> speaker_canonical_name 给质量层, 驱动
+            # VoiceAnchor 参考音频注入 + §36 嵌入缓存 + 漂移门 (单层映射, 与
+            # check_all_segments 的 speaker_map 同源, 键用 inp 决定的 segment_id 公式)。
+            speaker_map = {
+                f"{inp.book_id}_ch{inp.chapter_index}_p{inp.paragraph_index}": inp.paragraph_annotation.speaker_canonical_name
+                for inp in inputs
             }
-            audio_config = texttospeech.AudioConfig(**audio_config_kwargs)
 
-            response = client.synthesize_speech(
-                input=synthesis_input, voice=voice, audio_config=audio_config
+            # Run quality checks with auto-retry
+            quality_report: QualityReport = await check_all_segments(
+                segment_files=segment_files,
+                segment_ids=segment_ids,
+                project_id=project_id,
+                chapter_index=chapter_index,
+                max_retries=2,
+                retry_callback=retry_callback,
+                speaker_map=speaker_map,
             )
 
-            if response.audio_content:
-                output_path.write_bytes(response.audio_content)
-                logger.info(f"GCP TTS synthesis completed: {output_path}")
-                duration = get_duration_sync(output_path)
-                return duration
-            else:
-                logger.error("GCP TTS returned empty audio content")
-                raise RuntimeError("GCP TTS returned empty audio content")
+            # Save quality report
+            report_path = self.output_dir / "quality_report.json"
+            save_quality_report(quality_report, report_path)
 
-        except ImportError:
-            logger.error("google-cloud-texttospeech not installed. Run: pip install google-cloud-texttospeech")
-            raise
-        except Exception as e:
-            logger.error(f"GCP TTS synthesis failed: {e}")
-            raise
+            # Record quality check telemetry
+            for result in quality_report.segment_results:
+                record_tts_quality_check(result.passed)
 
-    def _crossfade_stitch(self, segments: List[AudioSegment], output_path: Path) -> int:
+            # Log quality results
+            logger.info(
+                f"Quality check complete: {quality_report.passed_segments}/{quality_report.total_segments} passed, "
+                f"overall={'PASSED' if quality_report.overall_passed else 'FAILED'}"
+            )
+            for result in quality_report.segment_results:
+                if getattr(result, "needs_manual_review", False):
+                    # 三振出局：已重合 max_retries 次仍不过 → 人工复核，不再无限重试（P0.2）
+                    logger.warning(
+                        f"  Segment {result.segment_id} needs MANUAL REVIEW "
+                        f"(3-strike exhausted, issues: {', '.join(result.issues)})"
+                    )
+                elif not result.passed:
+                    logger.warning(f"  Segment {result.segment_id} FAILED: {', '.join(result.issues)}")
+                else:
+                    logger.debug(f"  Segment {result.segment_id} passed")
+
+        # Stitch chapter-level audio (optional)
+        if len(segments) > 1:
+            chapter_output = self.output_dir / f"{inputs[0].book_id}_ch{inputs[0].chapter_index}.mp3"
+            await self._crossfade_stitch(segments, chapter_output)
+
+        # Emit stage exit for synthesize
+        if inputs:
+            project_id = inputs[0].book_id
+            chapter_index = inputs[0].chapter_index
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(
+                    emit_stage_exit(
+                        stage="synthesize",
+                        project_id=project_id,
+                        chapter_index=chapter_index,
+                        success=True,
+                    )
+                )
+            except RuntimeError:
+                pass
+
+        return segments
+
+    async def _crossfade_stitch(self, segments: List[AudioSegment], output_path: Path) -> int:
         """Stitch segments with crossfade using ffmpeg filter_complex. Returns total duration_ms."""
-        # Mock mode: return sum of durations
-        if self.mock_mode:
-            total_duration = sum(s.duration_ms for s in segments)
-            output_path.write_bytes(b"MP3 dummy crossfade")
-            return total_duration
 
         if not segments:
             logger.warning("No segments to stitch")
@@ -497,11 +1147,9 @@ class SynthesizePipeline:
             shutil.copy2(valid_segments[0].file_path, output_path)
             return valid_segments[0].duration_ms
 
-        # Trace the crossfade stitching operation
         try:
             # Build ffmpeg filter_complex for crossfade stitching
-            # Use acrossfade filter for smooth crossfades between segments
-            crossfade_ms = self.DEFAULT_CROSSFADE_MS
+            crossfade_ms = self.crossfade_ms
 
             # Build input arguments
             input_args = []
@@ -509,20 +1157,14 @@ class SynthesizePipeline:
                 input_args.extend(["-i", str(seg.file_path)])
 
             # Build filter complex: chain acrossfade filters
-            # [0:a][1:a]acrossfade=d=0.05:c1=tri:c2=tri[a01];
-            # [a01][2:a]acrossfade=d=0.05:c1=tri:c2=tri[a012]; ...
             filter_parts = []
             crossfade_sec = crossfade_ms / 1000.0
 
             for i in range(len(valid_segments) - 1):
                 if i == 0:
-                    filter_parts.append(
-                        f"[0:a][1:a]acrossfade=d={crossfade_sec}:c1=tri:c2=tri[a{i}{i+1}]"
-                    )
+                    filter_parts.append(f"[0:a][1:a]acrossfade=d={crossfade_sec}:c1=tri:c2=tri[a01]")
                 else:
-                    filter_parts.append(
-                        f"[a{0}{i}][{i+1}:a]acrossfade=d={crossfade_sec}:c1=tri:c2=tri[a{0}{i+1}]"
-                    )
+                    filter_parts.append(f"[a{0}{i}][{i+1}:a]acrossfade=d={crossfade_sec}:c1=tri:c2=tri[a{0}{i+1}]")
 
             filter_complex = ";".join(filter_parts)
             output_label = f"[a{0}{len(valid_segments)-1}]"
@@ -547,15 +1189,18 @@ class SynthesizePipeline:
                 ]
             )
 
-            logger.info(
-                f"Crossfade stitching {len(valid_segments)} segments with {crossfade_ms}ms crossfade"
-            )
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            # Validate command args for security
+            cmd = safe_subprocess_args(cmd)
+
+            logger.info(f"Crossfade stitching {len(valid_segments)} segments with {crossfade_ms}ms crossfade")
+            # Run under global semaphore with timeout
+            result = await run_ffmpeg(cmd, timeout=120)
 
             if result.returncode != 0:
-                logger.error(f"ffmpeg crossfade failed: {result.stderr}")
+                stderr_text = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
+                logger.error(f"ffmpeg crossfade failed: {stderr_text}")
                 # Fallback: simple concat without crossfade
-                return self._simple_concat(valid_segments, output_path)
+                return await self._simple_concat(valid_segments, output_path)
 
             # Get duration of output using ffprobe
             duration = get_duration_sync(output_path)
@@ -568,24 +1213,27 @@ class SynthesizePipeline:
             if is_enabled():
                 from ..monitoring.langfuse_client import trace
 
-                with trace("pipeline.synthesize.crossfade_stitch", metadata={
-                    "stage": "synthesize_stitch",
-                    "segment_count": len(valid_segments),
-                    "crossfade_ms": crossfade_ms,
-                    "output_duration_ms": duration,
-                }):
+                with trace(
+                    "pipeline.synthesize.crossfade_stitch",
+                    metadata={
+                        "stage": "synthesize_stitch",
+                        "segment_count": len(valid_segments),
+                        "crossfade_ms": crossfade_ms,
+                        "output_duration_ms": duration,
+                    },
+                ):
                     pass  # Context manager handles the trace
 
             return duration
 
         except FileNotFoundError:
             logger.error("ffmpeg not found for crossfade stitching")
-            return self._simple_concat(valid_segments, output_path)
+            return await self._simple_concat(valid_segments, output_path)
         except Exception as e:
             logger.error(f"Crossfade stitching failed: {e}")
-            return self._simple_concat(valid_segments, output_path)
+            return await self._simple_concat(valid_segments, output_path)
 
-    def _simple_concat(self, segments: List[AudioSegment], output_path: Path) -> int:
+    async def _simple_concat(self, segments: List[AudioSegment], output_path: Path) -> int:
         """Simple concatenation without crossfade as fallback."""
         try:
             import tempfile
@@ -609,385 +1257,534 @@ class SynthesizePipeline:
                     "copy",
                     str(output_path),
                 ]
-                subprocess.run(
-                    cmd, check=True, capture_output=True, text=True, timeout=60
-                )
+
+                # Validate command args for security
+                cmd = safe_subprocess_args(cmd)
+
+                # Run under global semaphore with timeout
+                result = await run_ffmpeg(cmd, timeout=60)
+                result.check_returncode()
 
             duration = get_duration_sync(output_path)
-            logger.info(
-                f"Simple concat {len(segments)} segments into {output_path.name}, total {duration}ms"
-            )
+            logger.info(f"Simple concat {len(segments)} segments into {output_path.name}, total {duration}ms")
             return duration
         except Exception as e:
             logger.error(f"Simple concat failed: {e}")
             return sum(s.duration_ms for s in segments)
 
-    @trace_function(name="pipeline.synthesize.run", stage="synthesize")
-    def run(self, inputs: List[TtsRoutingInput]) -> List[AudioSegment]:
-        """Synthesize multiple paragraphs incrementally."""
-        logger.info(f"Synthesizing {len(inputs)} paragraphs")
-
-        # Mock mode: return simulated segments without actual synthesis
-        if self.mock_mode:
-            segments = []
-            for inp in inputs:
-                decision = self._make_routing_decision(inp)
-                segment_id = decision.segment_id
-                text_hash = self._text_hash(inp.text)
-
-                # Check if already cached (incremental mode)
-                if segment_id in self.existing_segments:
-                    existing = self.existing_segments[segment_id]
-                    if existing.text_hash == text_hash:
-                        logger.info(f"Segment {segment_id} unchanged, skipping")
-                        segments.append(existing)
-                        continue
-
-                self._mock_segment_counter += 1
-                file_path = self.output_dir / f"{decision.segment_id}.mp3"
-                file_path.write_bytes(b"MP3 dummy data")
-                segment = AudioSegment(
-                    segment_id=decision.segment_id,
-                    file_path=str(file_path),
-                    duration_ms=decision.estimated_duration_ms or 5000,
-                    engine=decision.engine_choice or "kokoro",
-                    voice_id=decision.voice_id,
-                    text_hash=text_hash,
-                )
-                self.existing_segments[segment_id] = segment
-                segments.append(segment)
-            return segments
-
-        segments = []
-
-        for inp in inputs:
-            decision = self._make_routing_decision(inp)
-
-            # Check if regeneration needed (text changed)
-            text_hash = self._text_hash(inp.text)
-            segment_id = decision.segment_id
-
-            if segment_id in self.existing_segments:
-                existing = self.existing_segments[segment_id]
-                if existing.text_hash == text_hash:
-                    logger.info(f"Segment {segment_id} unchanged, skipping")
-                    segments.append(existing)
-                    continue
-
-            existing = self._load_existing_segment_from_disk(segment_id, text_hash)
-            if existing is not None:
-                self.existing_segments[segment_id] = existing
-                logger.info(f"Segment {segment_id} loaded from disk, skipping")
-                segments.append(existing)
-                continue
-
-            # Synthesize
-            output_path = self.output_dir / f"{segment_id}.mp3"
-
-            success = False
-            duration = 0
-            engine = decision.engine_choice
-            synthesis_latency_ms = 0
-            cost_usd = 0.0
-            tokens_in = max(1, len(inp.text) // 4)
-            tokens_out = 0
-
-            try:
-                start_time = time.time()
-                # Use hardware profile engine config
-                config = self._get_tts_engine_config()
-                primary_engine = config.get("engine", "kokoro")
-
-                # Override with routing decision if provided
-                engine = decision.engine_choice or primary_engine
-
-                # Get reference audio if available (for voice anchoring)
-                reference_audio = None
-                if decision.prosody_overrides and "reference_audio" in decision.prosody_overrides:
-                    reference_audio = decision.prosody_overrides.pop("reference_audio")
-
-                duration, actual_engine = self._try_synthesize_with_fallback(
-                    inp.text,
-                    decision.voice_id,
-                    decision.prosody_overrides or {},
-                    output_path,
-                    engine
-                )
-                engine = actual_engine
-                synthesis_latency_ms = (time.time() - start_time) * 1000
-                success = True
-
-                # Observe TTS synthesis for Langfuse tracing
-                if is_enabled():
-                    observe_tts_synthesis(
-                        voice_id=decision.voice_id,
-                        text_length=len(inp.text),
-                        audio_duration_ms=duration,
-                        latency_ms=synthesis_latency_ms,
-                        backend=engine,
-                    )
-
-                # Estimate token usage and cost
-                # For TTS, approximate: 1 token ≈ 4 characters
-                tokens_in = max(1, len(inp.text) // 4)
-                # Output tokens not really applicable for TTS, use duration as proxy
-                tokens_out = max(1, duration // 100)  # Rough approximation
-
-                # Calculate cost based on engine
-                if engine == "kokoro":
-                    cost_usd = 0.0  # Local, no cost
-                elif engine == "edge":
-                    # Azure Edge TTS pricing: ~$4 per 1 million characters
-                    # Approximate cost based on input text length
-                    cost_usd = (len(inp.text) / 1_000_000) * 4.0
-                elif engine == "azure":
-                    # Azure TTS free tier: 5M characters/month, then ~$4/M chars
-                    cost_usd = 0.0  # Free tier
-                elif engine == "gcp":
-                    # GCP TTS free tier: 1M characters/month, then ~$4/M chars
-                    cost_usd = 0.0  # Free tier
-                else:  # human_clone
-                    cost_usd = 0.01  # Placeholder for voice cloning
-
-            except Exception as e:
-                logger.error(f"Synthesis failed for segment {segment_id}: {e}")
-                synthesis_latency_ms = (
-                    (time.time() - start_time) * 1000 if "start_time" in locals() else 0
-                )
-                success = False
-                # Still record the failed attempt
-                if engine == "kokoro":
-                    cost_usd = 0.0
-                elif engine == "edge":
-                    cost_usd = (len(inp.text) / 1_000_000) * 4.0
-                else:
-                    cost_usd = 0.01
-                raise  # Re-raise to maintain existing error handling
-            finally:
-                # Record performance metric (both success and failure)
-                record_stage_performance(
-                    stage=f"synthesize_{engine}",
-                    latency_ms=synthesis_latency_ms,
-                    tokens_in=tokens_in,
-                    tokens_out=tokens_out,
-                    cost_usd=cost_usd,
-                    success=success,
-                    quality_score=None,  # Will be filled by quality_check stage
-                    provider=engine,
-                    model=decision.voice_id,
-                    schema_compliance=None,
-                )
-
-            segment = AudioSegment(
-                segment_id=segment_id,
-                file_path=str(output_path),
-                duration_ms=duration,
-                engine=engine,  # Use actual engine after fallback
-                voice_id=decision.voice_id,
-                text_hash=text_hash,
-            )
-
-            self.existing_segments[segment_id] = segment
-            self._persist_segment_metadata(segment)
-            segments.append(segment)
-
-        # Stitch chapter-level audio (optional)
-        if len(segments) > 1:
-            chapter_output = (
-                self.output_dir / f"{inputs[0].book_id}_ch{inputs[0].chapter_index}.mp3"
-            )
-            self._crossfade_stitch(segments, chapter_output)
-
-        return segments
-
-    def _get_tts_engine_config(self) -> dict:
-        """Get TTS engine configuration from hardware profile."""
-        if not self.hardware_profile:
-            return {"engine": "kokoro", "fallback_chain": []}
-        
-        tts = self.hardware_profile.tts
-        fallback_chain = self.hardware_profile.get_tts_fallback_chain()
-        
-        return {
-            "engine": tts.engine,
-            "model_path": tts.model_path,
-            "voices_path": tts.voices_path,
-            "dtype": tts.dtype,
-            "compile": tts.compile,
-            "voice_design_enabled": tts.voice_design_enabled,
-            "reference_audio_enabled": tts.reference_audio_enabled,
-            "sample_rate": tts.sample_rate,
-            "providers": tts.providers,
-            "session_options": tts.session_options,
-            "voice_presets": tts.voice_presets,
-            "fallback_chain": fallback_chain,
-            "batch_size": tts.batch_size,
-            "kv_cache_reuse": tts.kv_cache_reuse,
-        }
-
-    def _get_engine_for_synthesis(self, engine_name: str, config: dict) -> Optional[TTSEngine]:
-        """Get or create TTS engine instance via DI container."""
-        # Check if already cached
-        if not hasattr(self, '_engine_cache'):
-            self._engine_cache = {}
-
-        if engine_name in self._engine_cache:
-            return self._engine_cache[engine_name]
-
-        # Get or create engine from DI container registry
-        try:
-            from ..di import get_app_container
-            registry = get_app_container().get(EngineRegistry)
-
-            # Try to get existing engine from registry
-            engine = registry.get(engine_name)
-            if engine:
-                self._engine_cache[engine_name] = engine
-                return engine
-
-            # Create engine based on name
-            engine = None
-            if engine_name == "kokoro":
-                from ..tts import KokoroBackend, create_kokoro_backend
-                import asyncio
-                engine = asyncio.run(create_kokoro_backend(
-                    model_path=config.get("model_path"),
-                    voices_path=config.get("voices_path"),
-                    providers=config.get("providers"),
-                    session_options=config.get("session_options"),
-                ))
-            elif engine_name == "voxcpmp2":
-                from ..tts import VoxCPM2Backend, create_voxcpmp2_backend
-                import asyncio
-                engine = asyncio.run(create_voxcpmp2_backend(
-                    model_path=config.get("model_path"),
-                    dtype=config.get("dtype", "float16"),
-                    batch_size=config.get("batch_size", 4),
-                    kv_cache_reuse=config.get("kv_cache_reuse", True),
-                    compile_model=config.get("compile", True),
-                ))
-            elif engine_name in ("edge", "azure", "gcp"):
-                # Cloud engines - use legacy methods for now
-                pass
-            else:
-                logger.warning(f"Unknown engine: {engine_name}")
-                return None
-
-            if engine:
-                # Register with DI container registry for reuse
-                registry.register(engine, set_as_default=(engine_name == "kokoro"))
-                self._engine_cache[engine_name] = engine
-                return engine
-        except Exception as e:
-            logger.error(f"Failed to create/get engine {engine_name}: {e}")
-            return None
-
-        return None
-
-    async def _synthesize_with_engine(
-        self, engine: TTSEngine, text: str, voice_id: str, prosody: dict,
-        output_path: Path, reference_audio: Optional[str] = None
+    async def crossfade_replace_segment(
+        self,
+        chapter_audio_path: Path,
+        segment_index: int,
+        new_segment_path: Path,
+        output_path: Path,
+        segment_boundaries_ms: List[tuple[int, int]],
     ) -> int:
-        """Synthesize using a TTSEngine instance."""
-        import hashlib
+        """
+        Replace a single segment in chapter audio with crossfade at boundaries.
 
-        # Mock mode: return simulated value
-        if self.mock_mode:
-            output_path.write_bytes(b"MP3 dummy engine")
-            return 2800
+        Args:
+            chapter_audio_path: Path to full chapter audio file
+            segment_index: Index of segment to replace (0-based)
+            new_segment_path: Path to new segment audio
+            output_path: Output path for modified chapter audio
+            segment_boundaries_ms: List of (start_ms, end_ms) for each segment in chapter
+
+        Returns:
+            Total duration of output in ms
+        """
+
+        crossfade_ms = self.crossfade_ms
+
+        if not chapter_audio_path.exists():
+            logger.warning(f"Chapter audio not found: {chapter_audio_path}")
+            # Just copy new segment
+            import shutil
+
+            shutil.copy2(new_segment_path, output_path)
+            return get_duration_sync(new_segment_path)
+
+        if segment_index >= len(segment_boundaries_ms):
+            logger.warning(f"Segment index {segment_index} out of bounds")
+            import shutil
+
+            shutil.copy2(chapter_audio_path, output_path)
+            return get_duration_sync(chapter_audio_path)
+
+        start_ms, end_ms = segment_boundaries_ms[segment_index]
+
+        # Build ffmpeg filter complex for replacement with crossfade
+        # We need to:
+        # 1. Extract pre-replacement part (0 to start_ms - crossfade_ms/2)
+        # 2. Crossfade with new segment
+        # 3. Extract post-replacement part (end_ms + crossfade_ms/2 to end)
+
+        half_crossfade = crossfade_ms // 2
+        pre_end = max(0, start_ms - half_crossfade)
+        post_start = end_ms + half_crossfade
+
+        # Get total duration
+        total_duration = get_duration_sync(chapter_audio_path)
+        if total_duration <= post_start:
+            post_start = total_duration
 
         try:
-            result = await engine.synthesize(
-                text=text,
-                voice_id=voice_id,
-                output_path=output_path,
-                prosody=prosody,
-                reference_audio=reference_audio,
-            )
-            return result.duration_ms
-        except Exception as e:
-            logger.error(f"Engine {engine.engine_name} synthesis failed: {e}")
-            raise
+            input_args = [
+                "-i",
+                str(chapter_audio_path),
+                "-i",
+                str(new_segment_path),
+            ]
 
-    def _try_synthesize_with_fallback(
-        self, text: str, voice_id: str, prosody: dict, output_path: Path, engine: str
-    ) -> tuple[int, str]:
-        """Try synthesis with fallback chain from hardware profile."""
-        config = self._get_tts_engine_config()
-        engines_to_try = [engine] + [f.get("engine") for f in config.get("fallback_chain", [])]
-        
-        for eng in engines_to_try:
-            if not eng:
-                continue
-            try:
-                if eng == "kokoro" or eng == "voxcpmp2":
-                    # Use new engine abstraction
-                    tts_engine = self._get_engine_for_synthesis(eng, config)
-                    if tts_engine:
-                        import asyncio
-                        duration = asyncio.run(self._synthesize_with_engine(
-                            tts_engine, text, voice_id, prosody, output_path
-                        ))
-                        return duration, eng
-                elif eng == "edge":
-                    return self._synthesize_edge(text, voice_id, prosody, output_path), eng
-                elif eng == "azure":
-                    return self._synthesize_azure(text, voice_id, prosody, output_path), eng
-                elif eng == "gcp":
-                    return self._synthesize_gcp(text, voice_id, prosody, output_path), eng
-                elif eng == "cosyvoice":
-                    logger.warning("CosyVoice not yet implemented, falling back")
-                    continue
-            except Exception as e:
-                logger.warning(f"Engine {eng} failed: {e}, trying next...")
-                continue
-        
-        raise RuntimeError("All TTS engines in fallback chain failed")
+            filter_parts = []
+
+            # Extract pre part
+            if pre_end > 0:
+                filter_parts.append(f"[0:a]atrim=0:{pre_end/1000.0},asetpts=PTS-STARTPTS[pre]")
+            else:
+                filter_parts.append("[0:a]atrim=0:0,asetpts=PTS-STARTPTS[pre]")
+
+            # Extract post part
+            if post_start < total_duration:
+                filter_parts.append(
+                    f"[0:a]atrim={post_start/1000.0}:{total_duration/1000.0},asetpts=PTS-STARTPTS[post]"
+                )
+            else:
+                filter_parts.append("[0:a]atrim=0:0,asetpts=PTS-STARTPTS[post]")
+
+            # Crossfade pre with new segment
+            crossfade_sec = half_crossfade / 1000.0
+            filter_parts.append(f"[pre][1:a]acrossfade=d={crossfade_sec}:c1=tri:c2=tri[pre_new]")
+
+            # Crossfade new segment with post
+            if post_start < total_duration:
+                filter_parts.append(f"[1:a][post]acrossfade=d={crossfade_sec}:c1=tri:c2=tri[new_post]")
+                filter_parts.append("[pre_new][new_post]concat=n=2:v=0:a=1[out]")
+            else:
+                filter_parts.append("[pre_new]anull[out]")
+
+            filter_complex = ";".join(filter_parts)
+
+            cmd = (
+                [
+                    "ffmpeg",
+                    "-y",
+                ]
+                + input_args
+                + [
+                    "-filter_complex",
+                    filter_complex,
+                    "-map",
+                    "[out]",
+                    "-c:a",
+                    "libmp3lame",
+                    "-b:a",
+                    "128k",
+                    str(output_path),
+                ]
+            )
+
+            # Validate command args for security
+            cmd = safe_subprocess_args(cmd)
+
+            logger.info(
+                f"Crossfade replacing segment {segment_index} in {chapter_audio_path.name} with {crossfade_ms}ms crossfade"
+            )
+            result = await run_ffmpeg(cmd, timeout=120)
+            result.check_returncode()
+
+            duration = get_duration_sync(output_path)
+            logger.info(f"Crossfade replace complete: {output_path.name}, total {duration}ms")
+            return duration
+
+        except Exception as e:
+            logger.error(f"Crossfade replace failed: {e}")
+            return await self._simple_replace_segment(
+                chapter_audio_path, segment_index, new_segment_path, output_path, segment_boundaries_ms
+            )
+
+    async def _simple_replace_segment(
+        self,
+        chapter_audio_path: Path,
+        segment_index: int,
+        new_segment_path: Path,
+        output_path: Path,
+        segment_boundaries_ms: List[tuple[int, int]],
+    ) -> int:
+        """Simple segment replacement without crossfade as fallback."""
+        try:
+            start_ms, end_ms = segment_boundaries_ms[segment_index]
+            total_duration = get_duration_sync(chapter_audio_path)
+
+            # Build filter: pre + new + post
+            import tempfile
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                pre_path: Optional[Path] = Path(tmpdir) / "pre.mp3"
+                post_path: Optional[Path] = Path(tmpdir) / "post.mp3"
+
+                # Extract pre
+                if start_ms > 0:
+                    cmd_pre = [
+                        "ffmpeg",
+                        "-y",
+                        "-i",
+                        str(chapter_audio_path),
+                        "-ss",
+                        "0",
+                        "-to",
+                        f"{start_ms/1000.0}",
+                        "-c",
+                        "copy",
+                        str(pre_path),
+                    ]
+                    cmd_pre = safe_subprocess_args(cmd_pre)
+                    result = await run_ffmpeg(cmd_pre, timeout=60)
+                    result.check_returncode()
+                else:
+                    pre_path = None
+
+                # Extract post
+                if end_ms < total_duration:
+                    cmd_post = [
+                        "ffmpeg",
+                        "-y",
+                        "-i",
+                        str(chapter_audio_path),
+                        "-ss",
+                        f"{end_ms/1000.0}",
+                        "-c",
+                        "copy",
+                        str(post_path),
+                    ]
+                    cmd_post = safe_subprocess_args(cmd_post)
+                    result = await run_ffmpeg(cmd_post, timeout=60)
+                    result.check_returncode()
+                else:
+                    post_path = None
+
+                # Concat
+                concat_list = Path(tmpdir) / "concat.txt"
+                with open(concat_list, "w") as f:
+                    if pre_path and pre_path.exists():
+                        f.write(f"file '{pre_path.absolute()}'\n")
+                    f.write(f"file '{new_segment_path.absolute()}'\n")
+                    if post_path and post_path.exists():
+                        f.write(f"file '{post_path.absolute()}'\n")
+
+                cmd_concat = [
+                    "ffmpeg",
+                    "-y",
+                    "-f",
+                    "concat",
+                    "-safe",
+                    "0",
+                    "-i",
+                    str(concat_list),
+                    "-c",
+                    "copy",
+                    str(output_path),
+                ]
+                cmd_concat = safe_subprocess_args(cmd_concat)
+                result = await run_ffmpeg(cmd_concat, timeout=60)
+                result.check_returncode()
+
+            duration = get_duration_sync(output_path)
+            return duration
+        except Exception as e:
+            logger.error(f"Simple replace failed: {e}")
+            import shutil
+
+            shutil.copy2(chapter_audio_path, output_path)
+            return get_duration_sync(chapter_audio_path)
 
     def _make_routing_decision(self, inp: TtsRoutingInput) -> TtsRoutingDecision:
-        # Real routing via LLM
-        # Build prompt for routing decision
-        # ... (would use router.call with stage="route")
+        """Thin delegate to the module-level router.
 
-        # Fallback simple logic
-        from ..schemas import TtsRoutingDecision
+        The routing logic lives at module level (``make_tts_routing_decision``)
+        so the review-gate routing preview calls the exact same code the
+        synthesis path runs — the two can never drift.
+        """
+        return make_tts_routing_decision(inp)
 
-        char = next(
-            (
-                c
-                for c in inp.character_voice_map
-                if c.canonical_name == inp.paragraph_annotation.speaker_canonical_name
-            ),
-            None,
+    async def close(self) -> None:
+        """Close the port and release resources."""
+        if self._port:
+            try:
+                await self._port.close()
+            except RuntimeError:
+                # Event loop may be closed
+                pass
+            self._port = None
+
+
+def make_tts_routing_decision(inp: TtsRoutingInput) -> TtsRoutingDecision:
+    """Make TTS routing decision using capability-aware selector.
+
+    Module-level (extracted from ``SynthesizePipeline._make_routing_decision``)
+    so the review-gate preview runs the exact same routing code as synthesis.
+
+    Uses providers_config.select_engine() which considers:
+    - engine capabilities (cloning, emotion, languages, min_compute)
+    - GPU availability (via ENABLE_GPU_BACKENDS env)
+    - license honesty (commercial_use=None means unverified, not faked)
+    - priority ordering from config/tts_providers.yaml
+    """
+    from ..tts.providers_config import gpu_backends_enabled, select_engine
+
+    char = next(
+        (c for c in inp.character_voice_map if c.canonical_name == inp.paragraph_annotation.speaker_canonical_name),
+        None,
+    )
+    suggested = char.suggested_voice_id if char else None
+    voice_id: str = suggested or "default"
+
+    # Determine engine via capability-aware selector
+    # Language from paragraph annotation or default to zh-CN
+    lang = inp.paragraph_annotation.emotion or "zh-CN"  # rough fallback; ideally from text analysis
+    # prefer_local override still respected
+    prefer_local = inp.prefer_local if inp.prefer_local is not None else True  # default to local
+    # Emotion capability requested?
+    need_emotion = bool(inp.paragraph_annotation.emotion and inp.paragraph_annotation.emotion != "neutral")
+    need_clone = False  # cloning not used in standard pipeline
+
+    engine, mode = select_engine(
+        language=lang,
+        need_clone=need_clone,
+        need_emotion=need_emotion,
+        gpu_available=gpu_backends_enabled(),
+    )
+    # Map mode back to engine_choice/fallback for compatibility
+    if mode == "preset":
+        # Cloning requested but no GPU clone backend -> CPU preset engine
+        engine_choice = engine
+        fallback_engine = "edge"
+    else:
+        engine_choice = engine
+        fallback_engine = "edge" if engine != "edge" else "kokoro"
+
+    # If user explicitly asked for cloud, honor it (override local preference)
+    if inp.prefer_local is False:
+        engine_choice = "edge"
+        fallback_engine = "kokoro"
+
+    reasoning = f"Capability routing: {engine_choice} (mode={mode}), {fallback_engine} fallback (gpu={gpu_backends_enabled()}, need_emotion={need_emotion})"
+    # Voice IDs are engine-specific. The book analyse stage writes
+    # Edge-TTS voice IDs (``zh-CN-XiaoxiaoNeural`` etc.) since that is the
+    # default suggested_voice_id in CharacterVoiceBinding. Kokoro voices a
+    # disjoint set (``zf_xiaoxiao``/``zm_yunjian`` etc.). Without mapping,
+    # Kokoro rejects the Edge voice ID and synthesize fails silently.
+    # Map Edge voice IDs to Kokoro equivalents when engine_choice is
+    # kokoro; pass through Edge IDs (and Kokoro IDs) to their native engine.
+    #
+    # P1.9 strict pass-through (red-line #1): when an explicit
+    # ``character_voice_map`` binding was matched (``char is not None``) the
+    # user *named* a voice, so honour an unknown ID as-is instead of
+    # silently swapping it for the narrator default — the engine then owns
+    # the honest accept/reject at synthesis time. When no binding matched
+    # (``char is None``, voice_id == "default") keep the production-safe
+    # fallback. See ``_normalize_voice_id`` docstring for the contract.
+    voice_id = _normalize_voice_id(voice_id, engine_choice, strict=(char is not None))
+    # P1.9 red-line #1: ``prosody_overrides`` MUST carry the emotion-derived
+    # ``volume`` and the emotion tag itself, not just rate/pitch. The acoustic
+    # emotion map (``config.acoustic_mapping.get_emotion_map``) already maps
+    # each emotion -> (speed, volume_db, pitch_hz); the routing decision
+    # pre-existed for ``rate`` (speed) and ``pitch`` (semitones, already the
+    # right unit — do NOT use ``pitch_hz`` here, different unit). We add
+    # ``volume`` (the emotion's ``volume_db`` as a numeric dB float, matching
+    # ``TTSProsody.volume``) and ``emotion`` (the annotation's emotion tag,
+    # passed through so downstream engines that support emotion can use it and
+    # those that don't can ignore it).
+    annotation = inp.paragraph_annotation
+    emotion_tag = annotation.emotion
+    emotion_acoustic = get_emotion_map().get(emotion_tag)
+    volume_db = float(emotion_acoustic.volume_db) if emotion_acoustic is not None else 0.0
+
+    # P2.13: profile-lock — 角色在本章已注册声纹锚 (首段成功合成后) 时, 锁定
+    # voice_id 为首段锚的 voice_id, 防同章跨段声纹漂移. 锁是首段决定 (已过
+    # _normalize_voice_id 的 strict pass-through) 的固化, 不改变 P1.9 语义——
+    # 仍是 honour 该角色绑定最早选用, 而非旁路换 ID. 无锚 (首段或 VA 禁用) 时
+    # 保持上面 normalize 后的 voice_id. 同时把参考音频注入 prosody (§34 漂移门
+    # 用 quality_check 真主路径核对生成 vs 锚).
+    # NOTE (review-gate preview divergence): anchors are in-memory and only
+    # registered after a chapter's first successful synthesis, so a
+    # pre-synthesis preview shows the un-anchored voice; the orchestrator
+    # recomputes routing from paragraph fields at synthesis time anyway, so
+    # the frozen routing_* columns are an approval snapshot, not the
+    # synthesis-time source of truth.
+    ref_audio_for_prosody: Optional[str] = None
+    char_name = annotation.speaker_canonical_name
+    try:
+        from .voice_anchor import get_voice_anchor_manager
+
+        va = get_voice_anchor_manager()
+        if va.config.enabled and char_name and va.has_anchor(char_name, chapter_index=inp.chapter_index):
+            anchor = va.get_anchor(char_name, chapter_index=inp.chapter_index)
+            if anchor:
+                voice_id = anchor.voice_id
+                ref_audio_for_prosody = va.get_reference_audio(char_name, chapter_index=inp.chapter_index)
+    except Exception as e:
+        logger.debug(f"P2.13 profile-lock resolve failed for {char_name}: {e}")
+
+    # 人工终审覆盖 (Manual Review Gate)：客户在合成前逐段显式指定的
+    # voice/engine 胜过自动决策与 P2.13 声纹锚锁 —— 客户最终控制。
+    # voice 用 strict 归一化（客户点名的 ID 原样透传，引擎负责诚实的
+    # 接受/拒绝）；engine 直接覆盖 engine_choice 并重算 fallback。引擎
+    # 单独覆盖（未同时点名 voice）时把自动决策的 voice 按新引擎重归一化
+    # —— Edge↔Kokoro ID 交叉映射 —— 避免跨引擎非法 ID 流到合成。
+    if inp.manual_engine:
+        if inp.manual_engine != engine_choice and not inp.manual_voice_id:
+            voice_id = _normalize_voice_id(voice_id, inp.manual_engine, strict=(char is not None))
+        engine_choice = inp.manual_engine
+        fallback_engine = "kokoro" if engine_choice == "edge" else "edge"
+        reasoning += f"; manual engine override → {engine_choice}"
+    if inp.manual_voice_id:
+        voice_id = _normalize_voice_id(inp.manual_voice_id, engine_choice, strict=True)
+        reasoning += f"; manual voice override → {voice_id}"
+
+    prosody_overrides = {
+        "rate": float(annotation.speech_rate) if annotation.speech_rate else 1.0,
+        "pitch": (float(annotation.pitch_shift_semitones) if annotation.pitch_shift_semitones is not None else 0.0),
+        # emotion-derived volume (dB); angry>0, whisper<0, neutral=0.
+        "volume": volume_db,
+        # pass the emotion tag through for engines that support emotion
+        "emotion": emotion_tag,
+    }
+    # P2.13: 注入参考音频到 prosody (引擎若支持 reference_audio 则用于声纹对齐).
+    if ref_audio_for_prosody:
+        prosody_overrides["reference_audio"] = ref_audio_for_prosody
+
+    return TtsRoutingDecision(
+        segment_id=f"{inp.book_id}_ch{inp.chapter_index}_p{inp.paragraph_index}",
+        engine_choice=engine_choice,
+        voice_id=voice_id,
+        prosody_overrides=prosody_overrides,
+        fallback_engine=fallback_engine,
+        reasoning=reasoning,
+        estimated_cost_usd=0.0 if engine_choice in ("kokoro", "piper") else 0.001,
+        estimated_duration_ms=3000,
+    )
+
+
+def build_routing_input(
+    para: Optional[Any],
+    chapter: Optional[Any],
+    project_id: Optional[int],
+) -> Optional[TtsRoutingInput]:
+    """Build the exact ``TtsRoutingInput`` ``SynthesizeStage.run`` would build.
+
+    Shared by the synthesis path (``SynthesizeStage.run``) and the review-gate
+    routing preview so the two constructions can never drift. Mirrors the
+    historical inline construction verbatim, including the ``or`` coercions,
+    the default narrator voice-map fallback and ``prefer_local=False``.
+
+    Returns ``None`` for paragraphs with empty/whitespace text — the
+    ``edited_text == ""`` case (edit stage intentionally cleared a
+    cover/illustration caption) plus whitespace-only text. Those paragraphs
+    are skipped at synthesis time and ``TtsRoutingInput`` rejects empty
+    ``text`` (min_length=1), so the preview reports them as skipped instead.
+    """
+    paragraph_annotation: Optional[ParagraphAnnotation] = None
+    if para:
+        paragraph_annotation = ParagraphAnnotation(
+            paragraph_index=para.index,
+            speaker_canonical_name=para.speaker_canonical_name or "_narrator_",
+            is_dialogue=para.is_dialogue or False,
+            emotion=para.emotion or "neutral",
+            emotion_intensity=para.emotion_intensity or 0.5,
+            speech_rate=para.speech_rate or 1.0,
+            pitch_shift_semitones=para.pitch_shift_semitones or 0,
+            pause_before_ms=para.pause_before_ms or 300,
+            pause_after_ms=para.pause_after_ms or 500,
+            confidence=para.confidence or 0.9,
+            difficulty="B",
+            needs_sfx=para.needs_sfx or False,
+            sfx_tags=para.sfx_tags or [],
         )
-        voice_id = char.suggested_voice_id if char else "default"
 
-        return TtsRoutingDecision(
-            segment_id=f"{inp.book_id}_ch{inp.chapter_index}_p{inp.paragraph_index}",
-            engine_choice="kokoro" if inp.prefer_local else "edge",
-            voice_id=voice_id,
-            prosody_overrides={
-                "rate": str(inp.paragraph_annotation.speech_rate),
-                "pitch": f"{inp.paragraph_annotation.pitch_shift_semitones}st",
-            },
-            fallback_engine="edge",
-            reasoning="Mock mode: simulated routing decision" if self.mock_mode else "Auto routing: local preferred for Chinese, Edge for English",
-            estimated_cost_usd=0.0 if inp.prefer_local else 0.001,
-            estimated_duration_ms=3000,
+    # TtsRoutingInput.paragraph_annotation is non-Optional on the schema;
+    # synthesize a minimal default when no paragraph DB record was resolved
+    # so the contract stays satisfied (mirrors AnnotateStage's skip-stub).
+    if paragraph_annotation is None:
+        paragraph_annotation = ParagraphAnnotation(
+            paragraph_index=0,
+            speaker_canonical_name="_narrator_",
+            is_dialogue=False,
+            emotion="neutral",
+            emotion_intensity=0.0,
+            confidence=0.0,
+            notes="Skipped: no paragraph record for synthesis",
         )
+
+    # Build voice_map from chapter's analyzed_json
+    voice_map: List[CharacterVoiceBinding] = []
+    if chapter and chapter.analyzed_json:
+        raw = chapter.analyzed_json
+        if isinstance(raw, str):
+            raw = json.loads(raw)
+        voice_map = [CharacterVoiceBinding(**c) for c in raw.get("character_voice_map", [])]
+
+    if not voice_map:
+        voice_map = [
+            CharacterVoiceBinding(
+                canonical_name="_narrator_",
+                aliases=[],
+                gender="neutral",
+                age_range="adult",
+                suggested_voice_id="zh-CN-XiaoxiaoNeural",
+                sample_quote="旁白样本",
+            )
+        ]
+
+    # TTS 必须读 edit 阶段的产出：edited_text 非空 → 用编辑后文本；
+    # edited_text == "" → 编辑阶段有意清空（封面/扉页/插图说明等不可朗读
+    # 内容），跳过合成；edited_text is NULL → 该段未经过编辑，回退原始文本。
+    if para and para.edited_text is not None:
+        text = para.edited_text
+    else:
+        text = para.text if para else ""
+
+    if not text or not text.strip():
+        return None
+
+    return TtsRoutingInput(
+        paragraph_annotation=paragraph_annotation,
+        text=text,
+        character_voice_map=voice_map,
+        book_id=str(project_id) if project_id is not None else "",
+        chapter_index=chapter.index if chapter else 1,
+        paragraph_index=para.index if para else 0,
+        cumulative_cost_usd=0.0,
+        cost_limit_per_book=20.0,
+        cost_limit_per_chapter=5.0,
+        prefer_local=False,
+        # 人工终审覆盖 (Manual Review Gate)：getattr 容错 —— 测试替身/旧
+        # 段落对象无此属性时不覆盖，走自动决策。
+        manual_voice_id=(getattr(para, "manual_voice_id", None) if para else None),
+        manual_engine=(getattr(para, "manual_engine", None) if para else None),
+        contract_version=1,
+    )
 
 
 def synthesize_paragraphs(
     inputs: List[TtsRoutingInput],
     output_dir: str = "./output",
     mock_mode: bool = False,
-) -> List:
-    pipeline = SynthesizePipeline(output_dir=output_dir, mock_mode=mock_mode)
-    return pipeline.run(inputs)
+    port: Optional[RemoteTTSPort] = None,
+) -> List[AudioSegment]:
+    """Convenience function to synthesize paragraphs."""
+    pipeline = SynthesizePipeline(output_dir=output_dir, mock_mode=mock_mode, port=port)
+    try:
+        from ..utils.async_utils import run_async_safe
+
+        return cast(List[AudioSegment], run_async_safe(pipeline.run(inputs)))
+    finally:
+        from ..utils.async_utils import run_async_safe
+
+        run_async_safe(pipeline.close())
 
 
 if __name__ == "__main__":  # pragma: no cover
-    import sys
 
     logging.basicConfig(level=logging.INFO)
-    print("SynthesizePipeline ready")
+    logger.info("SynthesizePipeline ready")

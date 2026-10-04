@@ -1,5 +1,7 @@
 # 快速开始指南
 
+> **🎯 5分钟内完成首个有声书制作** — 本指南提供从零开始制作你的第一个有声书的最快路径。
+
 本指南帮助你在本地快速启动 **Audiobook Studio**，包括开发环境的搭建、数据库初始化以及运行 FastAPI 服务的完整步骤。文档假设你使用 macOS（或类 Unix 系统），如果你更倾向于 Docker 部署，也提供相应的指令。
 
 ---
@@ -175,6 +177,100 @@ curl http://127.0.0.1:8000/qualities/?skip=0&limit=5
 * `docs/agents.md` – 本项目使用的 AI Agent 规范
 * `docs/agents/collaboration.md` – 多 Agent 协作规范、任务接手、云上 VPS 与本地 Agent 混合协作流程
 * `docs/harness_specifications.md` – LLM 马具（Harness）设计规范
+
+## 5分钟快速制作首个有声书
+
+### 🚀 一键制作流程
+
+**前提**: 已完成上述安装步骤
+
+### 步骤 1: 准备文本文件
+
+```bash
+# 创建示例文本 (或者上传自己的 EPUB/TXT/Markdown)
+echo "这是第一章的第一段落。这是一段测试文本，用于制作有声书演示。" > data/test_novel.txt
+echo "这是第二段落。我们将从这个文本开始创作。" >> data/test_novel.txt
+```
+
+### 步骤 2: 创建项目并启动
+
+```bash
+# 启动 API 服务 (新终端)
+uvicorn src.audiobook_studio.main:app --reload
+
+# 创建书籍项目
+curl -X POST http://localhost:8000/api/projects/ \
+  -H "Content-Type: application/json" \
+  -d '{"title": "我的第一本有声书", "author": "Audiobook Studio"}'
+```
+
+### 步骤 3: 运行完整管线 (Mock 模式, 5分钟完成)
+
+```bash
+# 设置 Mock 模式 (无需 API Key, 使用内置模拟)
+export MOCK_LLM=true
+
+# 运行完整管线
+curl -X POST http://localhost:8000/api/auto-run/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "book_path": "data/test_novel.txt",
+    "target_difficulty": "B",
+    "quality_threshold": 0.7
+  }'
+```
+
+### 步骤 4: 下载成品
+
+```bash
+# 几分钟后, 下载 M4B 文件
+curl -X POST http://localhost:8000/api/export/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project_id": 1,
+    "format": "m4b",
+    "include_srt": true,
+    "include_cover": true
+  }' \
+  --output my_first_audiobook.m4b
+```
+
+### 🎤 声音克隆 (可选)
+
+要使用自定义声音:
+
+```bash
+# 准备 15秒清晰语音样本
+# 上传并克隆声音
+python -m audiobook_studio.tts.clone \
+  --name "my_voice" \
+  --sample /path/to/sample.wav
+```
+
+### 📊 检查进度
+
+```bash
+# 查看管线状态
+curl http://localhost:8000/api/auto-run/1/status
+
+# 查看质量报告
+curl http://localhost:8000/api/quality/
+```
+
+**恭喜!** 你已制作完成第一本有声书! 🎉
+
+---
+
+## 9. 下一步
+
+完成本地启动后，你可以继续阅读以下文档以深入了解项目功能：
+
+* `docs/architecture.md` – 项目整体架构概览
+* `docs/api.md` – 完整的 API 参考手册
+* `docs/agents.md` – 本项目使用的 AI Agent 规范
+* `docs/agents/collaboration.md` – 多 Agent 协作规范、任务接手、云上 VPS 与本地 Agent 混合协作流程
+* `docs/harness_specifications.md` – LLM 马具（Harness）设计规范
+* `docs/deployment.md` – 生产环境部署指南
 
 祝你开发愉快 🎧
 "

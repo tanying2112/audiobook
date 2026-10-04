@@ -1,14 +1,14 @@
 """Tests for feedback/kill_switch module."""
 
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import MagicMock, patch, mock_open
-from pathlib import Path
 
 from src.audiobook_studio.feedback.kill_switch import (
     DegradationLevel,
+    KillSwitch,
     KillSwitchConfig,
     ProviderHealth,
-    KillSwitch,
     get_kill_switch,
 )
 
@@ -260,7 +260,11 @@ class TestKillSwitch:
         ks = KillSwitch()
         # Mock rule_cache with voice mapping
         ks.rule_cache["voice_mapping"] = {
-            "narrator": {"engine": "azure", "voice_id": "zh-CN-YunyangNeural", "rate": 10}
+            "narrator": {
+                "engine": "azure",
+                "voice_id": "zh-CN-YunyangNeural",
+                "rate": 10,
+            }
         }
 
         input_data = {"character_name": "narrator"}
@@ -385,6 +389,7 @@ class TestGetKillSwitch:
     def test_singleton_returns_same_instance(self):
         # Reset global for clean test
         import src.audiobook_studio.feedback.kill_switch as ks_module
+
         ks_module._kill_switch = None
 
         ks1 = get_kill_switch()
@@ -394,6 +399,7 @@ class TestGetKillSwitch:
 
     def test_singleton_initializes_with_defaults(self):
         import src.audiobook_studio.feedback.kill_switch as ks_module
+
         ks_module._kill_switch = None
 
         ks = get_kill_switch()

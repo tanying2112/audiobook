@@ -7,9 +7,9 @@ D2 — SRT 字幕导出模块
 
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -174,18 +174,15 @@ def generate_srt(
     vtt_path.write_text("\n".join(vtt_lines), encoding="utf-8")
 
     entry_count = srt_index - 1
-    logger.info(
-        f"SRT created: {output_path} ({entry_count} entries, "
-        f"{output_path.stat().st_size / 1024:.1f} KB)"
-    )
+    logger.info(f"SRT created: {output_path} ({entry_count} entries, " f"{output_path.stat().st_size / 1024:.1f} KB)")
     logger.info(f"VTT also created: {vtt_path}")
 
     return output_path
 
 
 def build_subtitle_entries_from_paragraphs(
-    paragraphs: List[dict],
-    audio_segments: List[dict],
+    paragraphs: List[Dict[str, Any]],
+    audio_segments: List[Dict[str, Any]],
 ) -> List[SubtitleEntry]:
     """从段落和音频片段构建字幕条目.
 
@@ -198,7 +195,6 @@ def build_subtitle_entries_from_paragraphs(
     """
     # Build paragraph_id → duration mapping
     para_duration: dict[int, int] = {}
-    current_offset = 0
     para_order: List[int] = []
 
     for seg in audio_segments:

@@ -4,11 +4,11 @@
 def test_translation_imports():
     """Test that translation package exports are available."""
     from src.audiobook_studio.translation import (
-        MultilingualDubbingManager,
         CharacterVoice,
         EmotionMapping,
-        Segment,
         EmotionType,
+        MultilingualDubbingManager,
+        Segment,
     )
 
     assert MultilingualDubbingManager is not None

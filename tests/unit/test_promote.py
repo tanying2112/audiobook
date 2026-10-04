@@ -1,26 +1,18 @@
 """Tests for promote.py - Canary Release & Promotion Gate."""
 
-import pytest
 import json
 from datetime import datetime, timezone
-from pathlib import Path
-from unittest.mock import MagicMock, patch, mock_open
 
+import pytest
 from scripts.promote import (
-    PromotionGate,
-    PromotionGateResult,
-    PromotionMetrics,
     CanaryConfig,
     CanaryMetrics,
     CanaryRelease,
+    PromotionGate,
     VersionStore,
-    cmd_evaluate,
-    cmd_canary_start,
     cmd_canary_record,
-    cmd_canary_complete,
-    cmd_rollback,
-    cmd_status,
-    cmd_history,
+    cmd_canary_start,
+    cmd_evaluate,
 )
 
 
@@ -359,13 +351,14 @@ class TestCLICommands:
 
     def test_cmd_canary_record_with_rollback(self):
         # Need to start canary first - use same CanaryRelease instance
-        from src.audiobook_studio.feedback.release import CanaryRelease, CanaryConfig, CanaryMetrics
         from datetime import datetime, timezone
-        
+
+        from src.audiobook_studio.feedback.release import CanaryConfig, CanaryMetrics, CanaryRelease
+
         config = CanaryConfig(rollback_threshold=0.95)
         canary = CanaryRelease(config)
         canary.start_canary("edit_for_tts", "v2", 0.85)
-        
+
         # Now record metrics that should trigger rollback
         metrics = CanaryMetrics(
             version="v2",
@@ -378,7 +371,7 @@ class TestCLICommands:
             timestamp=datetime.now(timezone.utc),
         )
         canary.record_metrics("edit_for_tts", "v2", metrics)
-        
+
         # Check status
         status = canary.get_canary_status("edit_for_tts", "v2")
         assert status is not None

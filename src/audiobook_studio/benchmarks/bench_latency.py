@@ -6,36 +6,26 @@ Audiobook Studio — 性能基准测试：延迟
 Usage:
     python scripts/bench_latency.py [--baseline FILE] [--threshold PERCENT]
 
-性能基准目标：退化 ≤ 110%（即新性能不应超过基准的110%）
+性能基准目标：退化 ≤ 110%%（即新性能不应超过基准的110%%）
 """
 
 import argparse
 import json
+import logging
 import statistics
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 # 添加项目根目录到路径以便导入模块
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.audiobook_studio.llm import create_router
-from src.audiobook_studio.schemas import (
-    ExtractionInput,
-    ExtractionResult,
-    ParagraphAnnotation,
-    BookAnalysisOutput,
-    TtsEditOutput,
-    TtsRoutingDecision,
-    QualityJudgment,
-)
 
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Audiobook Studio 性能基准测试：延迟"
-    )
+def parse_args() -> argparse.Namespace:  # noqa: E303
+    parser = argparse.ArgumentParser(description="Audiobook Studio 性能基准测试：延迟")
     parser.add_argument(
         "--baseline",
         type=str,
@@ -45,7 +35,7 @@ def parse_args() -> argparse.Namespace:
         "--threshold",
         type=float,
         default=110.0,
-        help="性能退化阈值百分比（默认: 110.0，即允许退化到基准的110%）",
+        help="性能退化阈值百分比（默认: 110.0，即允许退化到基准的110%%）",
     )
     parser.add_argument(
         "--mock",
@@ -73,8 +63,9 @@ def load_baseline(baseline_path: Optional[str]) -> Optional[Dict[str, float]]:
 
     try:
         with open(baseline_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            return data.get("latency_ms", {})
+            data: Dict[str, Any] = json.load(f)
+            latency_data = data.get("latency_ms", {})
+            return latency_data if isinstance(latency_data, dict) else None
     except Exception as e:
         print(f"警告: 无法加载基准文件 {baseline_path}: {e}", file=sys.stderr)
         return None
@@ -83,10 +74,7 @@ def load_baseline(baseline_path: Optional[str]) -> Optional[Dict[str, float]]:
 def save_baseline(data: Dict[str, float], output_path: str) -> None:
     """保存基准性能数据。"""
     try:
-        result = {
-            "timestamp": time.time(),
-            "latency_ms": data
-        }
+        result = {"timestamp": time.time(), "latency_ms": data}
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(result, f, indent=2, ensure_ascii=False)
         print(f"基准数据已保存到: {output_path}")
@@ -98,7 +86,7 @@ def save_baseline(data: Dict[str, float], output_path: str) -> None:
 def measure_stage_latency(stage: str, mock: bool = False) -> float:
     """测量单个管线阶段的平均延迟（毫秒）。"""
     # 创建测试数据
-    test_data = _get_test_data_for_stage(stage)
+    _get_test_data_for_stage(stage)
 
     # 测量延迟
     latencies = []
@@ -148,8 +136,9 @@ def measure_stage_latency(stage: str, mock: bool = False) -> float:
             else:
                 time.sleep(0.05)  # 默认短延迟
 
-        except Exception:
+        except Exception as e:
             # 如果出错，使用一个惩罚性延迟值
+            logger.warning(f"Latency benchmark error: {e}")
             time.sleep(1.0)
 
         end_time = time.perf_counter()
@@ -159,7 +148,7 @@ def measure_stage_latency(stage: str, mock: bool = False) -> float:
     return statistics.mean(latencies)
 
 
-def _get_test_data_for_stage(stage: str) -> Dict:
+def _get_test_data_for_stage(stage: str) -> Dict[str, Any]:
     """为特定阶段获取测试数据。"""
     # 这里返回简化的测试数据，实际测试中应使用更真实的数据
     if stage == "extract":
@@ -179,8 +168,8 @@ def _get_test_data_for_stage(stage: str) -> Dict:
                 "pitch_shift_semitones": 0,
                 "pause_before_ms": 0,
                 "pause_after_ms": 0,
-                "confidence": 0.9
-            }
+                "confidence": 0.9,
+            },
         }
     elif stage == "edit":
         return {
@@ -195,10 +184,10 @@ def _get_test_data_for_stage(stage: str) -> Dict:
                 "pitch_shift_semitones": 0,
                 "pause_before_ms": 0,
                 "pause_after_ms": 0,
-                "confidence": 0.9
+                "confidence": 0.9,
             },
             "difficulty": "B",
-            "forbid_edit": False
+            "forbid_edit": False,
         }
     elif stage == "synthesize":
         return {
@@ -209,7 +198,7 @@ def _get_test_data_for_stage(stage: str) -> Dict:
             "emotion": "neutral",
             "emotion_intensity": 0.5,
             "speech_rate": 1.0,
-            "pitch_shift_semitones": 0
+            "pitch_shift_semitones": 0,
         }
     elif stage == "quality":
         return {
@@ -219,15 +208,15 @@ def _get_test_data_for_stage(stage: str) -> Dict:
             "text": "这是一个用于质量检测的测试段落。",
             "ground_truth_text": "这是一个用于质量检测的测试段落。",
             "audio_duration_ms": 3000,
-            "prosody_overrides": {}
+            "prosody_overrides": {},
         }
     else:
         return {}
 
 
-def evaluate_performance(current: Dict[str, float],
-                        baseline: Optional[Dict[str, float]],
-                        threshold: float) -> Tuple[bool, List[Dict]]:
+def evaluate_performance(
+    current: Dict[str, float], baseline: Optional[Dict[str, float]], threshold: float
+) -> Tuple[bool, List[Dict[str, Any]]]:
     """评估性能是否在可接受范围内。
 
     返回:
@@ -247,14 +236,16 @@ def evaluate_performance(current: Dict[str, float],
                 ratio = (current_latency / baseline_latency) * 100
                 if ratio > threshold:
                     passed = False
-                    issues.append({
-                        "stage": stage,
-                        "current_latency_ms": round(current_latency, 2),
-                        "baseline_latency_ms": round(baseline_latency, 2),
-                        "ratio_percent": round(ratio, 2),
-                        "threshold_percent": threshold,
-                        "status": "FAILED" if ratio > threshold else "PASSED"
-                    })
+                    issues.append(
+                        {
+                            "stage": stage,
+                            "current_latency_ms": round(current_latency, 2),
+                            "baseline_latency_ms": round(baseline_latency, 2),
+                            "ratio_percent": round(ratio, 2),
+                            "threshold_percent": threshold,
+                            "status": "FAILED" if ratio > threshold else "PASSED",
+                        }
+                    )
 
     return passed, issues
 
@@ -278,7 +269,7 @@ def main():
             print(f"  {stage}: {latency:.2f} ms")
         except Exception as e:
             print(f"  {stage}: 错误 - {e}")
-            current_latency[stage] = float('inf')
+            current_latency[stage] = float("inf")
 
     print()
 
@@ -303,11 +294,13 @@ def main():
         print("🚨 性能退化检测:")
         for issue in issues:
             status_emoji = "❌" if issue["status"] == "FAILED" else "✅"
-            print(f"  {status_emoji} {issue['stage']}: "
-                  f"{issue['current_latency_ms']} ms "
-                  f"(基准: {issue['baseline_latency_ms']} ms, "
-                  f"比率: {issue['ratio_percent']}% "
-                  f"(阈值: {issue['threshold_percent']}%)")
+            print(
+                f"  {status_emoji} {issue['stage']}: "
+                f"{issue['current_latency_ms']} ms "
+                f"(基准: {issue['baseline_latency_ms']} ms, "
+                f"比率: {issue['ratio_percent']}% "
+                f"(阈值: {issue['threshold_percent']}%)"
+            )
         print()
     else:
         print("✅ 所有阶段性能在可接受范围内")

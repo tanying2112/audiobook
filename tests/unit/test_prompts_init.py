@@ -4,16 +4,16 @@
 def test_prompts_imports():
     """Test that prompts package exports are available."""
     from src.audiobook_studio.prompts import (
-        PromptVersion,
-        PromptTemplate,
+        ExperimentType,
+        ExperimentVariant,
+        PromptExperiment,
+        PromptRegistry,
+        PromptRegistryState,
         PromptStage,
         PromptStatus,
-        PromptExperiment,
-        ExperimentVariant,
-        ExperimentType,
-        PromptRegistryState,
+        PromptTemplate,
+        PromptVersion,
         PromptVersionMetrics,
-        PromptRegistry,
         get_prompt_registry,
     )
 
@@ -32,7 +32,7 @@ def test_prompts_imports():
 
 def test_get_prompt_registry():
     """Test getting global prompt registry instance."""
-    from src.audiobook_studio.prompts import get_prompt_registry, PromptRegistry
+    from src.audiobook_studio.prompts import PromptRegistry, get_prompt_registry
 
     registry = get_prompt_registry()
     assert isinstance(registry, PromptRegistry)

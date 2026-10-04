@@ -130,6 +130,8 @@ def _apply_pattern_fixes(
             continue
 
         applied.append(tag)
+        # Actually apply the fix by appending to content
+        content = content.rstrip() + f"\n\n# 模式修复 [{tag}]:\n{fix_text}\n"
         logger.info(f"Applying pattern fix '{tag}' to {stage} prompt")
 
     return content, applied
@@ -207,8 +209,7 @@ def upgrade_prompt(
     new_path = _write_new_version(stage, updated_content, version, change_log)
 
     logger.info(
-        f"Prompt upgrade complete: {stage} v{version} → v{version + 1} "
-        f"({len(applied_fixes)} pattern fixes applied)"
+        f"Prompt upgrade complete: {stage} v{version} → v{version + 1} " f"({len(applied_fixes)} pattern fixes applied)"
     )
     return new_path
 
@@ -226,7 +227,6 @@ def batch_upgrade(
     Returns:
         stage → new_path mapping
     """
-    from .processor import AggregateAnalysis
 
     results: Dict[str, Path] = {}
 
@@ -252,15 +252,27 @@ def _map_pattern_to_stage(pattern: str) -> Optional[str]:
     """将 pattern_tag 映射到最可能所属的 pipeline stage."""
     # Edit patterns
     if pattern in (
-        "dialogue_attribution", "emotion_too_mild", "emotion_too_strong",
-        "emotion_wrong", "speaker_wrong", "pause_missing", "pause_too_long",
-        "sfx_missing", "sfx_wrong", "text_colloquial", "text_formal",
+        "dialogue_attribution",
+        "emotion_too_mild",
+        "emotion_too_strong",
+        "emotion_wrong",
+        "speaker_wrong",
+        "pause_missing",
+        "pause_too_long",
+        "sfx_missing",
+        "sfx_wrong",
+        "text_colloquial",
+        "text_formal",
     ):
         return "edit_for_tts"
     # Quality patterns
     if pattern in (
-        "clipping", "silence", "low_volume", "duration_mismatch",
-        "prosody_robotic", "prosody_flat",
+        "clipping",
+        "silence",
+        "low_volume",
+        "duration_mismatch",
+        "prosody_robotic",
+        "prosody_flat",
     ):
         return "quality_judge"
     # Structure patterns

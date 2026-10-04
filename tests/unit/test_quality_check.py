@@ -9,20 +9,14 @@ Tests match the ACTUAL API from src/audiobook_studio/pipeline/quality_check.py:
 
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
-from src.audiobook_studio.pipeline.quality_check import (
-    QualityCheckPipeline,
-    quality_check,
-    AudioAnalysisResult,
-)
-from src.audiobook_studio.schemas import (
-    QualityJudgment,
-    ParagraphAnnotation,
-)
+
+from src.audiobook_studio.pipeline.quality_check import AudioAnalysisResult, QualityCheckPipeline, quality_check
+from src.audiobook_studio.schemas import ParagraphAnnotation, QualityJudgment
 from src.audiobook_studio.schemas.quality import FixSuggestion
-from src.audiobook_studio.schemas.tts_routing import TtsRoutingDecision as TtsRoutingDecisionSchema, TtsRoutingDecision
+from src.audiobook_studio.schemas.tts_routing import TtsRoutingDecision as TtsRoutingDecisionSchema
 
 
 class TestQualityCheckPipeline:
@@ -40,6 +34,7 @@ class TestQualityCheckPipeline:
     def teardown_method(self):
         """Clean up test fixtures."""
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def create_mock_annotation(self, **overrides):
@@ -79,7 +74,6 @@ class TestQualityCheckPipeline:
 
     def test_init_default(self):
         """Test pipeline initialization with defaults."""
-        from src.audiobook_studio.llm import create_router, create_judge
 
         # Explicitly set mock_mode=False for deterministic test
         pipeline = QualityCheckPipeline(mock_mode=False)
@@ -177,17 +171,15 @@ class TestQualityCheckPipeline:
         annotation = self.create_mock_annotation()
         routing = self.create_mock_routing_decision()
 
-        inputs = [
-            (str(self.mock_audio_path), annotation, routing, "这是测试文本内容。")
-        ]
+        inputs = [(str(self.mock_audio_path), annotation, routing, "这是测试文本内容。")]
 
         results = self.pipeline.run(inputs)
 
         assert isinstance(results, list)
         assert len(results) == 1
         assert isinstance(results[0], QualityJudgment)
-        # Mock segment_id uses "mock_seg" prefix
-        assert results[0].segment_id.startswith("mock_")
+        # Mock mode uses the actual segment_id from routing decision
+        assert results[0].segment_id == routing.segment_id
         assert 0.0 <= results[0].overall_score <= 1.0
         assert 0.0 <= results[0].speaker_clarity <= 1.0
         assert 0.0 <= results[0].emotion_match <= 1.0
@@ -204,26 +196,17 @@ class TestQualityCheckPipeline:
             p.write_bytes(b"RIFF" + b"\x00" * 1000)
             audio_paths.append(str(p))
 
-        annotations = [
-            self.create_mock_annotation(paragraph_index=i)
-            for i in range(3)
-        ]
-        routings = [
-            self.create_mock_routing_decision(segment_id=f"book_001_ch1_p{i}")
-            for i in range(3)
-        ]
+        annotations = [self.create_mock_annotation(paragraph_index=i) for i in range(3)]
+        routings = [self.create_mock_routing_decision(segment_id=f"book_001_ch1_p{i}") for i in range(3)]
 
-        inputs = [
-            (audio_paths[i], annotations[i], routings[i], f"段落 {i} 内容。")
-            for i in range(3)
-        ]
+        inputs = [(audio_paths[i], annotations[i], routings[i], f"段落 {i} 内容。") for i in range(3)]
 
         results = self.pipeline.run(inputs)
 
         assert len(results) == 3
-        for result in results:
-            # Mock segment_id uses "mock_seg" prefix
-            assert result.segment_id.startswith("mock_seg")
+        for i, result in enumerate(results):
+            # Mock mode uses the actual segment_id from routing decision
+            assert result.segment_id == routings[i].segment_id
 
     def test_run_real_mode_calls_judge(self):
         """Test run() in real mode calls LLM judge."""
@@ -306,6 +289,7 @@ class TestQualityCheckEdgeCases:
 
     def teardown_method(self):
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def create_mock_annotation(self, **overrides):
@@ -364,9 +348,20 @@ class TestQualityCheckEdgeCases:
     def test_all_emotions(self):
         """Test quality check with all emotion types."""
         emotions = [
-            "neutral", "happy", "sad", "angry", "fearful",
-            "surprised", "disgusted", "tense", "tender", "contemplative",
-            "whisper", "cold_laugh", "sigh", "sarcastic",
+            "neutral",
+            "happy",
+            "sad",
+            "angry",
+            "fearful",
+            "surprised",
+            "disgusted",
+            "tense",
+            "tender",
+            "contemplative",
+            "whisper",
+            "cold_laugh",
+            "sigh",
+            "sarcastic",
         ]
         for emotion in emotions:
             annotation = self.create_mock_annotation(emotion=emotion)
@@ -421,8 +416,6 @@ class TestQualityCheckEdgeCases:
         assert "wrong_speaker" in results[0].issues
 
 
-
-
 class TestQualityCheckNonMockPathsExtended:
     """Extended tests for non-mock code paths for coverage."""
 
@@ -433,6 +426,7 @@ class TestQualityCheckNonMockPathsExtended:
     def teardown_method(self):
         """Clean up test fixtures."""
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_apply_hardware_profile_quality_config_no_thresholds(self):
@@ -464,6 +458,7 @@ class TestQualityCheckNonMockPathsExtended:
     def test_should_use_multimodal_judge_false_wrong_profile(self):
         """Test _should_use_multimodal_judge returns False for wrong profile types."""
         from unittest.mock import MagicMock
+
         pipeline = QualityCheckPipeline(mock_mode=True)
         pipeline.hardware_profile = MagicMock()
         pipeline.hardware_profile.active_profile = "edge_lite"
@@ -490,9 +485,7 @@ class TestQualityCheckNonMockPathsExtended:
             notes="Test",
             contract_version=1,
         )
-        prompt = pipeline._build_multimodal_prompt(
-            "test_seg_001", annotation, "参考文本内容", "base64data123"
-        )
+        prompt = pipeline._build_multimodal_prompt("test_seg_001", annotation, "参考文本内容", "base64data123")
         assert "test_seg_001" in prompt
         assert "张三" in prompt
         assert "happy" in prompt
@@ -526,6 +519,7 @@ class TestQualityCheckNonMockPathsExtended:
     def test_run_hard_quality_checks_real_mode(self):
         """Test _run_hard_quality_checks in real mode calls quality suite."""
         from unittest.mock import MagicMock
+
         pipeline = QualityCheckPipeline(mock_mode=False)
         audio_path = Path(self.temp_dir) / "test.mp3"
         audio_path.write_bytes(b"dummy audio")
@@ -543,7 +537,7 @@ class TestQualityCheckNonMockPathsExtended:
             result = pipeline._run_hard_quality_checks(
                 audio_path=audio_path,
                 reference_text="参考文本",
-                speaker_id="speaker_001"
+                speaker_id="speaker_001",
             )
             assert result.passed is True
 
@@ -577,7 +571,10 @@ class TestCheckOptionalDependencies:
         pipeline = QualityCheckPipeline(mock_mode=True)
         # Override available features to simulate no deps
         pipeline._available_features = {
-            "ffmpeg": True, "dnsmos": False, "asr": False, "speaker_sim": False,
+            "ffmpeg": True,
+            "dnsmos": False,
+            "asr": False,
+            "speaker_sim": False,
         }
         audio_path = Path(tempfile.mkdtemp()) / "test.mp3"
         audio_path.write_bytes(b"dummy")
@@ -592,7 +589,10 @@ class TestCheckOptionalDependencies:
         """Test _run_hard_quality_checks proceeds when at least one dep is available."""
         pipeline = QualityCheckPipeline(mock_mode=True)
         pipeline._available_features = {
-            "ffmpeg": True, "dnsmos": True, "asr": False, "speaker_sim": False,
+            "ffmpeg": True,
+            "dnsmos": True,
+            "asr": False,
+            "speaker_sim": False,
         }
         audio_path = Path(tempfile.mkdtemp()) / "test.mp3"
         audio_path.write_bytes(b"dummy")
@@ -604,7 +604,7 @@ class TestCheckOptionalDependencies:
         mock_result.speaker_sim = None
         mock_result.overall_message = "Partial checks passed"
         with patch.object(pipeline, "_quality_suite", mock_result):
-            result = pipeline._run_hard_quality_checks(
+            pipeline._run_hard_quality_checks(
                 audio_path=audio_path,
                 reference_text="参考文本",
             )
@@ -629,7 +629,10 @@ class TestCheckOptionalDependencies:
         pipeline = QualityCheckPipeline(judge=mock_judge, mock_mode=False)
         # Simulate no optional deps
         pipeline._available_features = {
-            "ffmpeg": True, "dnsmos": False, "asr": False, "speaker_sim": False,
+            "ffmpeg": True,
+            "dnsmos": False,
+            "asr": False,
+            "speaker_sim": False,
         }
 
         annotation = ParagraphAnnotation(
@@ -670,6 +673,7 @@ class TestCheckOptionalDependencies:
             mock_judge.judge_quality.assert_called_once()
         finally:
             import shutil
+
             shutil.rmtree(temp_dir, ignore_errors=True)
 
 

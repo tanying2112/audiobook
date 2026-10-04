@@ -1,14 +1,13 @@
 """LLM 模块扩展测试 — 补充 client.py 的覆盖率。"""
 
-import os
 import json
+import os
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch, PropertyMock
-from pydantic import BaseModel
+from unittest.mock import MagicMock, patch
 
 import pytest
-
+from pydantic import BaseModel
 
 # ===========================================================================
 # client.py — 补充缺失路径
@@ -90,9 +89,7 @@ class TestLLMClientExtended:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_file = Path(tmpdir) / "test_mock.jsonl"
-            mock_file.write_text(
-                json.dumps({"expected_output": {"a": 1}}) + "\n"
-            )
+            mock_file.write_text(json.dumps({"expected_output": {"a": 1}}) + "\n")
 
             with patch.dict("os.environ", {"MOCK_LLM": "true"}):
                 cfg = LLMClientConfig(model="test", mock_data_dir=tmpdir)
@@ -143,7 +140,7 @@ class TestLLMClientExtended:
         from src.audiobook_studio.llm.client import create_client
 
         with patch.dict("os.environ", {"MOCK_LLM": "true"}):
-            client = create_client(
+            create_client(
                 model="test",
                 langfuse_enabled=True,
                 langfuse_public_key="pk",
@@ -172,7 +169,7 @@ class TestLLMClientExtended:
         assert "gemini-2.0-flash" in MODEL_PRICING
         assert "gpt-4o" in MODEL_PRICING
         assert "groq/llama-3.1-70b-versatile" in MODEL_PRICING
-        for name, pricing in MODEL_PRICING.items():
+        for _name, pricing in MODEL_PRICING.items():
             assert "input" in pricing
             assert "output" in pricing
 
@@ -259,7 +256,12 @@ class TestLLMClientExtended:
         with patch.dict("os.environ", {"MOCK_LLM": "false"}):
             client = create_client(model="test", api_base="http://custom.api")
             mock_result = DummyModel(value="ok")
-            mock_result._raw_response = {"usage": {"prompt_tokens": 10, "completion_tokens": 5}}
+            # Create proper mock response structure
+            mock_raw_response = MagicMock()
+            mock_raw_response.usage = MagicMock()
+            mock_raw_response.usage.model_dump.return_value = {"prompt_tokens": 10, "completion_tokens": 5}
+            mock_raw_response.choices = [MagicMock(message=MagicMock(content=mock_result.model_dump_json()))]
+            mock_result._raw_response = mock_raw_response
             client._client = MagicMock()
             client._client.chat.completions.create.return_value = mock_result
             result = client.call("test prompt", DummyModel)
@@ -276,7 +278,12 @@ class TestLLMClientExtended:
         with patch.dict("os.environ", {"MOCK_LLM": "false"}):
             client = create_client(model="gemini-2.0-flash")
             mock_result = DummyModel(value="ok")
-            mock_result._raw_response = {"usage": {"prompt_tokens": 1000, "completion_tokens": 500}}
+            # Create proper mock response structure
+            mock_raw_response = MagicMock()
+            mock_raw_response.usage = MagicMock()
+            mock_raw_response.usage.model_dump.return_value = {"prompt_tokens": 1000, "completion_tokens": 500}
+            mock_raw_response.choices = [MagicMock(message=MagicMock(content=mock_result.model_dump_json()))]
+            mock_result._raw_response = mock_raw_response
             client._client = MagicMock()
             client._client.chat.completions.create.return_value = mock_result
             result = client.call("test prompt", DummyModel)
@@ -292,10 +299,18 @@ class TestLLMClientExtended:
         with patch.dict("os.environ", {"MOCK_LLM": "false"}):
             client = create_client(model="test")
             mock_result = DummyModel(value="ok")
-            mock_result._raw_response = {"usage": {"prompt_tokens": 1, "completion_tokens": 1}}
+            # Create proper mock response structure
+            mock_raw_response = MagicMock()
+            mock_raw_response.usage = MagicMock()
+            mock_raw_response.usage.model_dump.return_value = {"prompt_tokens": 1, "completion_tokens": 1}
+            mock_raw_response.choices = [MagicMock(message=MagicMock(content=mock_result.model_dump_json()))]
+            mock_result._raw_response = mock_raw_response
             client._client = MagicMock()
             client._client.chat.completions.create.return_value = mock_result
-            msgs = [{"role": "system", "content": "sys"}, {"role": "user", "content": "hi"}]
+            msgs = [
+                {"role": "system", "content": "sys"},
+                {"role": "user", "content": "hi"},
+            ]
             result = client.call(prompt=msgs, response_model=DummyModel)
             assert result is not None
 

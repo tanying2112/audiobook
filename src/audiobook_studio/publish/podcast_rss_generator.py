@@ -5,18 +5,33 @@ Audiobook Studio — Podcast RSS Feed 生成器
 实现将有声书章节转换为 Podcast RSS Feed（每章一集）。
 """
 
-import json
 import hashlib
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+import logging
 import xml.etree.ElementTree as ET
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
+
+
+def rfc822_gmt(dt: datetime) -> str:
+    """Format an RFC-822 timestamp in GMT (required by feed validators).
+
+    A naive datetime is treated as already being UTC.
+    """
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc)
+    else:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.strftime("%a, %d %b %Y %H:%M:%S GMT")
 
 
 @dataclass
 class PodcastEpisode:
     """Podcast 节目（对应有声书的一章）"""
+
     title: str
     description: str
     audio_file_path: Path
@@ -47,7 +62,7 @@ class PodcastEpisode:
                 # 如果文件不存在，基于路径和标题生成
                 hash_input = f"{self.audio_file_path}:{self.title}:{self.pub_date.isoformat()}"
                 return hashlib.sha256(hash_input.encode()).hexdigest()
-        except Exception:
+        except OSError:
             # 后备方案：基于标题和时间
             hash_input = f"{self.title}:{self.pub_date.isoformat()}"
             return hashlib.sha256(hash_input.encode()).hexdigest()
@@ -56,6 +71,7 @@ class PodcastEpisode:
 @dataclass
 class PodcastFeed:
     """Podcast RSS Feed"""
+
     title: str
     description: str
     link: str  # 网站 URL
@@ -93,7 +109,7 @@ class PodcastRSSGenerator:
         # 重新分配 episode_number（如果没有手动设置的话）
         self._reassign_episode_numbers()
 
-    def _reassign_episode_numbers(self):
+    def _reassign_episode_numbers(self) -> None:
         """重新分配 épisode 编号（基于发布顺序）"""
         # 只为没有手动设置编号的 épisode 重新分配
         episodes_without_number = [ep for ep in self.feed.episodes if ep.episode_number is None]
@@ -125,7 +141,7 @@ class PodcastRSSGenerator:
         self.feed.last_build_date = datetime.now()
 
         # 生成XML字符串
-        rough_string = ET.tostring(rss, encoding='unicode')
+        rough_string = ET.tostring(rss, encoding="unicode")
         # 为了美观，我们可以使用minidom来格式化，但这里保持简单
         return rough_string
 
@@ -144,7 +160,7 @@ class PodcastRSSGenerator:
             ET.SubElement(channel, "managingEditor").text = f"{self.feed.owner_email} ({self.feed.owner_name})"
             ET.SubElement(channel, "webMaster").text = f"{self.feed.owner_email} ({self.feed.owner_name})"
 
-        ET.SubElement(channel, "lastBuildDate").text = self.feed.last_build_date.strftime("%a, %d %b %Y %H:%M:%S %Z")
+        ET.SubElement(channel, "lastBuildDate").text = rfc822_gmt(self.feed.last_build_date)
         ET.SubElement(channel, "generator").text = self.feed.generator
 
         # 添加分类
@@ -195,12 +211,23 @@ class PodcastRSSGenerator:
         ET.SubElement(item, "description").text = episode.description
         ET.SubElement(item, "guid").text = episode.guid
         ET.SubElement(item, "guid").set("isPermaLink", "false")
-        ET.SubElement(item, "pubDate").text = episode.pub_date.strftime("%a, %d %b %Y %H:%M:%S %Z")
+        ET.SubElement(item, "pubDate").text = rfc822_gmt(episode.pub_date)
 
         # Enclosure (音频文件)
         enclosure = ET.SubElement(item, "enclosure")
-        enclosure.set("url", str(episode.audio_file_path))  # 在实际应用中，这 zou 是可访问的URL
-        enclosure.set("length", str(episode.enclosure_length or episode.audio_file_path.stat().st_size if episode.audio_file_path.exists() else 0))
+        enclosure.set("url", str(episode.audio_file_path))  # a publicly reachable URL in production
+        # enclosure length must be the real byte size; fall back to the
+        # explicitly provided enclosure_length, then to the on-disk file size.
+        if episode.enclosure_length:
+            length = episode.enclosure_length
+        elif episode.audio_file_path.exists():
+            try:
+                length = episode.audio_file_path.stat().st_size
+            except OSError:
+                length = 0
+        else:
+            length = 0
+        enclosure.set("length", str(length))
         enclosure.set("type", episode.enclosure_type)
 
         # 可选元素
@@ -262,12 +289,115 @@ class PodcastRSSGenerator:
         return len(errors) == 0, errors
 
 
-def main():
+async def generate_podcast_rss(project_id: int, config: Dict[str, Any]) -> Dict[str, Any]:
+    """Generate a Podcast RSS feed for a project from its audio segments.
+
+    This is the production entry point used by the Celery publish task. It
+    loads the project's current audio segments, builds one episode per
+    segment, and writes the feed to disk. The enclosure ``length`` is always
+    the real byte size and ``pubDate`` is emitted in GMT so the feed passes
+    podcast validators.
+
+    Returns a dict with ``rss_xml``, ``rss_url``, ``episode_count`` and
+    ``file_path``.
+    """
+    from sqlalchemy import select
+
+    from ..config import get_settings
+    from ..database import AsyncSessionLocal
+    from ..models.audio_segment import AudioSegment
+    from ..models.book import Project
+
+    settings = get_settings()
+    public_url = os.getenv("APP_PUBLIC_URL", "http://localhost:8000").rstrip("/")  # noqa: F821
+    media_url = f"{public_url}/media/{project_id}"
+
+    mime_by_ext = {
+        ".m4b": "audio/mp4",
+        ".mp3": "audio/mpeg",
+        ".wav": "audio/wav",
+        ".flac": "audio/flac",
+        ".ogg": "audio/ogg",
+        ".aac": "audio/aac",
+    }
+
+    async with AsyncSessionLocal() as db:
+        proj_res = await db.execute(select(Project).where(Project.id == project_id))
+        project = proj_res.scalar_one_or_none()
+        if project is None:
+            raise ValueError(f"Project {project_id} not found")
+        seg_res = await db.execute(
+            select(AudioSegment)
+            .where(
+                AudioSegment.project_id == project_id,
+                AudioSegment.is_current.is_(True),
+            )
+            .order_by(AudioSegment.index)
+        )
+        segments = list(seg_res.scalars().all())
+
+    episodes: List[PodcastEpisode] = []
+    for i, seg in enumerate(segments, start=1):
+        filename = Path(seg.file_path).name if seg.file_path else f"episode_{i}.m4b"
+        enclosure_url = f"{media_url}/{filename}"
+        ext = Path(filename).suffix.lower()
+        mime_type = mime_by_ext.get(ext, "application/octet-stream")
+        length = seg.file_size_bytes or 0
+        if not length and seg.file_path and Path(seg.file_path).exists():
+            try:
+                length = Path(seg.file_path).stat().st_size
+            except OSError:
+                length = 0
+        episodes.append(
+            PodcastEpisode(
+                title=f"Episode {i}",
+                description=config.get("description", project.story_line_summary or ""),
+                audio_file_path=Path(enclosure_url),
+                duration_seconds=int(seg.duration_ms // 1000) if seg.duration_ms else 0,
+                pub_date=datetime.now(timezone.utc),
+                enclosure_length=length,
+                enclosure_type=mime_type,
+            )
+        )
+
+    feed = PodcastFeed(
+        title=config.get("title", f"Podcast {project_id}"),
+        description=config.get("description", ""),
+        link=config.get("link", public_url),
+        language=config.get("language", "zh-CN"),
+        author=config.get("author", ""),
+        owner_name=config.get("owner_name", ""),
+        owner_email=config.get("owner_email", ""),
+        explicit=bool(config.get("explicit", False)),
+        itunes_author=config.get("author", ""),
+        itunes_owner_name=config.get("owner_name", ""),
+        itunes_owner_email=config.get("owner_email", ""),
+        itunes_explicit="yes" if config.get("explicit") else "no",
+    )
+    generator = PodcastRSSGenerator(feed)
+    for ep in episodes:
+        generator.add_episode(ep)
+
+    out_dir = Path(getattr(settings, "RSS_OUTPUT_DIR", "data/feeds")).expanduser()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    file_path = out_dir / f"project_{project_id}.rss"
+    success, _msg = generator.save_to_file(file_path)
+    if not success:
+        logger.warning("Failed to persist RSS feed to %s", file_path)
+    return {
+        "rss_xml": generator.generate_rss_xml(),
+        "rss_url": str(file_path),
+        "file_path": str(file_path),
+        "episode_count": len(episodes),
+    }
+
+
+def main() -> None:
     """主函数 - 演示 Podcast RSS Feed 生成"""
-    print("=== Audiobook Studio Podcast RSS Feed 生成演示 ===\n")
+    logger.info("=== Audiobook Studio Podcast RSS Feed 生成演示 ===\n")
 
     # 创建Podcast Feed
-    print("📻 创建Podcast Feed...")
+    logger.info("📻 创建Podcast Feed...")
     feed = PodcastFeed(
         title="三体有声书",
         description="刘慈欣科幻巨作《三体》有声书版本，每章节对应一集节目。",
@@ -286,60 +416,60 @@ def main():
         itunes_categories=[
             ("Arts", "Books"),
             ("Technology", "Podcasting"),
-            ("Society & Culture", "Philosophy")
-        ]
+            ("Society & Culture", "Philosophy"),
+        ],
     )
 
-    print(f"   标题: {feed.title}")
-    print(f"   描述: {feed.description}")
-    print(f"   链接: {feed.link}")
-    print(f"   语言: {feed.language}")
+    logger.info(f"   标题: {feed.title}")
+    logger.info(f"   描述: {feed.description}")
+    logger.info(f"   链接: {feed.link}")
+    logger.info(f"   语言: {feed.language}")
 
-    print("\n" + "="*60)
+    logger.info("\n" + "=" * 60)
 
     # 创建生成器
     generator = PodcastRSSGenerator(feed)
 
     # 模拟有声书章节（对应每章一集）
-    print("\n📖 添加有声书章节作为Podcast节目...")
+    logger.info("\n📖 添加有声书章节作为Podcast节目...")
 
     # 假设我们有一个有声书，包含若干章节
-    chapters_data = [
+    chapters_data: list[dict[str, Any]] = [
         {
             "title": "第一章 文化大革命的序曲",
             "description": "在这个动荡的时代，一个秘密的军事项目《红岸工程》正在酝酿之中。",
             "audio_file": Path("./episodes/chapter_01_cultural_revolution.mp3"),
             "duration": 1800,  # 30分钟
-            "days_offset": 0
+            "days_offset": 0,
         },
         {
             "title": "第二章 红岸基地的建立",
             "description": "叶文洁在红岸基地经历了人生中最黑暗的时刻，却意外打开了通往宇宙的窗口。",
             "audio_file": Path("./episodes/chapter_02_red_coast_base.mp3"),
             "duration": 2100,  # 35分钟
-            "days_offset": 1
+            "days_offset": 1,
         },
         {
             "title": "第三章 三体世界的初次接触",
             "description": "叶文洁向太空发送了第一条信息，并在遥远的三体世界得到了回应。",
             "audio_file": Path("./episodes/chapter_03_third_contact.mp3"),
             "duration": 2400,  # 40分钟
-            "days_offset": 2
+            "days_offset": 2,
         },
         {
             "title": "第四章 地球三体运动的成立",
             "description": "汪淼 découvertes 了一个神秘的组织——地球三体运动，并开始了他的调查。",
             "audio_file": Path("./episodes/chapter_04_eto.mp3"),
             "duration": 1950,  # 32.5分钟
-            "days_offset": 3
+            "days_offset": 3,
         },
         {
             "title": "第五章 三体游戏与现实的交汇",
             "description": "汪淼进入了《三体》游戏，在地球上和虚拟世界之间寻找平衡。",
             "audio_file": Path("./episodes/chapter_05_the_game.mp3"),
             "duration": 2200,  # 36分40秒
-            "days_offset": 4
-        }
+            "days_offset": 4,
+        },
     ]
 
     base_date = datetime.now() - timedelta(days=len(chapters_data))
@@ -354,67 +484,69 @@ def main():
             audio_file_path=chapter_data["audio_file"],
             duration_seconds=chapter_data["duration"],
             pub_date=pub_date,
-            episode_number=i+1,  # 明确设置集数
-            season_number=1,     # 第一季
-            explicit=False
+            episode_number=i + 1,  # 明确设置集数
+            season_number=1,  # 第一季
+            explicit=False,
         )
 
         generator.add_episode(episode)
-        print(f"   第{i+1}集: {chapter_data['title']}")
-        print(f"      时长: {chapter_data['duration']//60}分{chapter_data['duration']%60:02d}秒")
-        print(f"      发布日期: {pub_date.strftime('%Y-%m-%d')}")
+        logger.info(f"   第{i+1}集: {chapter_data['title']}")
+        logger.info(f"      时长: {chapter_data['duration']//60}分{chapter_data['duration']%60:02d}秒")  # noqa: E228
+        logger.info(f"      发布日期: {pub_date.strftime('%Y-%m-%d')}")
 
-    print("\n" + "="*60)
+    logger.info("\n" + "=" * 60)
 
     # 验证Feed
-    print("\n🔍 验证Podcast Feed...")
+    logger.info("\n🔍 验证Podcast Feed...")
     is_valid, errors = generator.validate_feed()
     if is_valid:
-        print("   ✅ Feed验证通过")
+        logger.info("   ✅ Feed验证通过")
     else:
-        print("   ❌ Feed验证失败:")
+        logger.error("   ❌ Feed验证失败:")
         for error in errors:
-            print(f"      - {error}")
+            logger.error(f"      - {error}")
         # 继续演示，即使验证失败
 
     # 生成并保存RSS Feed
-    print("\n📄 生成RSS Feed XML...")
+    logger.info("\n📄 生成RSS Feed XML...")
     rss_xml = generator.generate_rss_xml()
 
     # 显示前几行以演示
-    xml_lines = rss_xml.split('\n')
-    print("   RSS Feed 前10行:")
+    xml_lines = rss_xml.split("\n")
+    logger.info("   RSS Feed 前10行:")
     for line in xml_lines[:10]:
-        print(f"      {line}")
+        logger.info(f"      {line}")
     if len(xml_lines) > 10:
-        print("      ...")
+        logger.info("      ...")
 
     # 保存到文件
     output_path = Path("./feeds/saneti_podcast.rss")
     success, message = generator.save_to_file(output_path)
 
     if success:
-        print(f"\n   ✅ {message}")
+        logger.info(f"\n   ✅ {message}")
         # 显示文件大小
         if output_path.exists():
             size_kb = output_path.stat().st_size / 1024
-            print(f"   📁 文件大小: {size_kb:.1f} KB")
+            logger.info(f"   📁 文件大小: {size_kb:.1f} KB")
     else:
-        print(f"\n   ❌ {message}")
+        logger.error(f"\n   ❌ {message}")
 
-    print("\n" + "="*60)
+    logger.info("\n" + "=" * 60)
 
     # 显示统计信息
-    print("\n📈 Feed统计信息:")
-    print(f"   节目总数: {len(generator.feed.episodes)} 集")
+    logger.info("\n📈 Feed统计信息:")
+    logger.info(f"   节目总数: {len(generator.feed.episodes)} 集")
     total_duration = sum(ep.duration_seconds for ep in generator.feed.episodes)
-    print(f"   时长总计: {total_duration//3600:02d}:{(total_duration%3600)//60:02d}:{total_duration%60:02d}")
-    print(f"   首次发布: {min(ep.pub_date for ep in generator.feed.episodes).strftime('%Y-%m-%d')}")
-    print(f"   最新发布: {max(ep.pub_date for ep in generator.feed.episodes).strftime('%Y-%m-%d')}")
+    logger.info(
+        f"   时长总计: {total_duration // 3600:02d}:{(total_duration % 3600) // 60:02d}:{total_duration % 60:02d}"
+    )
+    logger.info(f"   首次发布: {min(ep.pub_date for ep in generator.feed.episodes).strftime('%Y-%m-%d')}")
+    logger.info(f"   最新发布: {max(ep.pub_date for ep in generator.feed.episodes).strftime('%Y-%m-%d')}")
 
-    print("\n" + "="*60)
-    print("🎉 Podcast RSS Feed 生成演示完成")
-    print("="*60)
+    logger.info("\n" + "=" * 60)
+    logger.info("🎉 Podcast RSS Feed 生成演示完成")
+    logger.info("=" * 60)
 
 
 if __name__ == "__main__":

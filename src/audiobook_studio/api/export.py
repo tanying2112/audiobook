@@ -1,28 +1,24 @@
 """
-D4 — FastAPI 导出路由
+D4 — FastAPI 导出路由 (async SQLAlchemy 2.0)
 
 提供 REST API：
-- POST /api/projects/{id}/export — 发起批量导出
-- GET /api/projects/{id}/export — 查看导出状态
+- POST /api/projects/{id}/export — 发起批量导出 (异步 Celery 任务)
+- GET /api/projects/{id}/export/status — 查看导出状态
+- GET /api/export/tasks/{task_id}/status — 通用任务状态查询
 """
 
 import logging
-from enum import Enum
-from pathlib import Path
-from typing import List, Optional, Set
+from typing import Any, List, Optional, Set
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..export import (
-    ExportFormat,
-    ExportJob,
-    ExportProgress,
-    export_project,
-)
+from ..export import ExportFormat
 from ..models import Project
-from .dependencies import get_db
+from ..tasks.export_tasks import export_chapter_async, export_project_async, get_export_status
+from .dependencies import get_async_db
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +30,7 @@ router = APIRouter(prefix="/projects/{project_id}/export", tags=["export"])
 
 class ExportRequest(BaseModel):
     """导出请求."""
+
     chapter_ids: Optional[List[int]] = None  # None = 全部章节
     formats: List[str] = ["m4b_srt"]  # m4b, srt, vtt, m4b_srt, all
     bgm_path: Optional[str] = None
@@ -42,32 +39,44 @@ class ExportRequest(BaseModel):
     normalize: bool = True
     max_chars_per_line: Optional[int] = 40
     output_dir: Optional[str] = None
+    mix_config: Optional[dict[str, Any]] = None
 
 
 class ExportStatusOut(BaseModel):
     """导出状态."""
+
     status: str
     output_paths: dict = {}
     error: Optional[str] = None
     chapter_count: int = 0
+    task_id: Optional[str] = None
 
 
 class FormatInfo(BaseModel):
     """支持的格式."""
+
     value: str
     label: str
     description: str
 
 
-# ── In-memory job store (ephemeral; for MVP only) ─────────────────────────
-_export_jobs: dict[str, ExportJob] = {}
+class TaskStatusOut(BaseModel):
+    """Celery 任务状态."""
+
+    task_id: str
+    state: str
+    progress: str
+    message: str = ""
+    current_stage: str = ""
+    output_paths: dict = {}
+    error: Optional[str] = None
 
 
 # ── Routes ────────────────────────────────────────────────────────────────
 
 
 @router.get("/", response_model=List[FormatInfo])
-def list_export_formats(
+async def list_export_formats(
     project_id: int,
 ):
     """列出支持的导出格式."""
@@ -101,18 +110,18 @@ def list_export_formats(
 
 
 @router.post("/", response_model=ExportStatusOut, status_code=status.HTTP_202_ACCEPTED)
-def start_export(
+async def start_export(
     project_id: int,
     payload: ExportRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
-    """启动项目导出任务.
+    """启动项目导出任务 (异步).
 
-    异步执行导出，返回任务状态。最终产物保存在服务端输出目录。
-    支持格式: m4b, srt, vtt, m4b_srt, all.
+    触发 Celery 任务，立即返回 task_id，前端可轮询 /api/export/tasks/{task_id}/status
     """
     # Validate project exists
-    project = db.query(Project).filter_by(id=project_id).first()
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
@@ -128,104 +137,104 @@ def start_export(
             )
 
     # Build subtitle config
-    subtitle_config = None
     if payload.max_chars_per_line:
         from ..export.srt import SubtitleConfig
-        subtitle_config = SubtitleConfig(
+
+        SubtitleConfig(
             max_chars_per_line=payload.max_chars_per_line,
         )
 
-    # Create and run export job
-    job = ExportJob(
-        project_id=project_id,
-        chapter_ids=payload.chapter_ids,
-        formats=format_set,
-        bgm_path=payload.bgm_path,
-        include_cover=payload.include_cover,
-        cover_image=payload.cover_image,
-        normalize=payload.normalize,
-        subtitle_config=subtitle_config,
-        output_dir=payload.output_dir,
-    )
+    # Build mix config
+    if payload.mix_config:
+        from ..export.audio_ducking import MixConfig
 
-    # Execute synchronously for now (blocking in background worker)
-    # TODO: migrate to Celery / BackgroundTasks for long-running exports
-    try:
-        job = export_project(project_id, db, job)
-    except Exception as e:
-        logger.exception(f"Export failed: {e}")
-        job.progress = ExportProgress.FAILED
-        job.error = str(e)
+        MixConfig(**payload.mix_config)
 
-    status_str = job.progress.value
-    if job.progress == ExportProgress.COMPLETE:
-        http_status = status.HTTP_200_OK
-    elif job.progress == ExportProgress.FAILED:
-        http_status = status.HTTP_500_INTERNAL_SERVER_ERROR
-    else:
-        http_status = status.HTTP_202_ACCEPTED
+    # Create job config for Celery task
+    job_config = {
+        "formats": [f.value for f in format_set],
+        "chapter_ids": payload.chapter_ids,
+        "bgm_path": payload.bgm_path,
+        "include_cover": payload.include_cover,
+        "cover_image": payload.cover_image,
+        "normalize": payload.normalize,
+        "max_chars_per_line": payload.max_chars_per_line,
+        "output_dir": payload.output_dir,
+        "mix_config": payload.mix_config,
+    }
+
+    # Submit async task
+    task = export_project_async.delay(project_id, job_config)
+
+    logger.info(f"Export task queued: {task.id} for project {project_id}")
 
     return ExportStatusOut(
-        status=status_str,
-        output_paths=job.output_paths,
-        error=job.error,
+        status="queued",
+        task_id=task.id,
         chapter_count=len(payload.chapter_ids) if payload.chapter_ids else 0,
     )
 
 
 @router.get("/status", response_model=ExportStatusOut)
-def get_export_status(
+async def get_export_status_endpoint(
     project_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
-    """查看最后的导出状态."""
-    project = db.query(Project).filter_by(id=project_id).first()
+    """查看项目的导出状态 (基于最新任务)."""
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # In-memory — in production, persist jobs to DB
-    job_key = str(project_id)
-    job = _export_jobs.get(job_key)
-
-    if not job:
-        return ExportStatusOut(
-            status="no_export",
-            chapter_count=0,
-        )
-
+    # In production, query DB for latest export task
+    # For now, return no_export status
     return ExportStatusOut(
-        status=job.progress.value,
-        output_paths=job.output_paths,
-        error=job.error,
+        status="no_export",
         chapter_count=0,
     )
 
 
-@router.post("/chapter/{chapter_id}", status_code=status.HTTP_200_OK)
-def export_single_chapter(
+@router.post("/chapter/{chapter_id}", response_model=ExportStatusOut, status_code=status.HTTP_202_ACCEPTED)
+async def export_single_chapter(
     project_id: int,
     chapter_id: int,
     output_dir: Optional[str] = Query(None),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
-    """导出一个章节为独立的 M4B 文件."""
-    from ..export.batch_exporter import export_chapter
-
-    project = db.query(Project).filter_by(id=project_id).first()
+    """导出一个章节为独立的 M4B 文件 (异步)."""
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    result_path = export_chapter(
-        project_id=project_id,
-        chapter_id=chapter_id,
-        session=db,
-        output_dir=output_dir,
+    # Submit async task
+    task = export_chapter_async.delay(project_id, chapter_id, output_dir)
+
+    logger.info(f"Chapter export task queued: {task.id} for project {project_id}, chapter {chapter_id}")
+
+    return ExportStatusOut(
+        status="queued",
+        task_id=task.id,
+        chapter_count=1,
     )
 
-    if not result_path:
-        raise HTTPException(
-            status_code=404,
-            detail="Chapter not found or has no audio segments",
-        )
 
-    return {"path": result_path, "download_url": f"/api/export/download/{Path(result_path).name}"}
+# ── Global export task status endpoint (not project-scoped) ───────────────
+
+export_tasks_router = APIRouter(prefix="/export/tasks", tags=["export-tasks"])
+
+
+@export_tasks_router.get("/{task_id}/status", response_model=TaskStatusOut)
+def get_task_status(task_id: str):
+    """查询任意导出任务的 Celery 状态."""
+    # get_export_status only reads celery_app.AsyncResult(task_id) locally;
+    # call it synchronously rather than dispatching a Celery task. It isn't in
+    # celery_app.task_routes → a .delay().get(timeout=10) routed to the
+    # unconsumed default queue → timed out → HTTP 500. Sync call runs the body
+    # (a local AsyncResult read) in-process — no broker, no timeout.
+    result = get_export_status(task_id)
+    return TaskStatusOut(**result)
+
+
+# Export the router
+__all__ = ["router", "export_tasks_router"]

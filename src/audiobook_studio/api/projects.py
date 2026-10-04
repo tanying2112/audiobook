@@ -6,17 +6,26 @@ Provides full CRUD for the HARNESS-aligned entity tree:
 - ``/api/projects/{id}/chapters/`` — Chapter management
 - ``/api/projects/{id}/chapters/{ch}/paragraphs/`` — Paragraph detail
 - ``/api/projects/{id}/pipeline/`` — Pipeline orchestration
+- ``/api/projects/{id}/quality-report`` — Audio quality report
 """
 
+import json
 import logging
+from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, Query, status
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from ..models import Chapter, Paragraph, Project
-from .dependencies import get_db
+from ..auth.dependencies import get_current_active_user
+from ..auth.models import RoleName
+from ..exceptions import DomainError
+from ..models import Chapter, Paragraph, Project, ProjectPermission, User
+from ..storage import reports_dir
+from .dependencies import get_async_db
 
 logger = logging.getLogger(__name__)
 
@@ -47,11 +56,12 @@ class ProjectOut(BaseModel):
     current_stage: Optional[str] = None
     progress: float
     total_cost_usd: float
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    # ORM returns datetime objects; declaring these as str would make the
+    # response fail validation (ResponseValidationError 500 on list).
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ChapterOut(BaseModel):
@@ -70,86 +80,150 @@ class ChapterOut(BaseModel):
     cost_usd: float
     token_count: int
     tts_chars: int
+    # 人工终审门：None=未在审 | pending_review | approved
+    review_status: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ParagraphOut(BaseModel):
     id: int
-    project_id: int
-    chapter_id: int
-    chapter_index: int
+    project_id: Optional[int] = None
+    chapter_id: Optional[int] = None
+    chapter_index: Optional[int] = None
     index: int
     text: Optional[str] = None
     speaker: Optional[str] = None
     speaker_canonical_name: Optional[str] = None
     is_dialogue: Optional[bool] = None
     emotion: Optional[str] = None
+    emotion_intensity: Optional[float] = None
+    speech_rate: Optional[float] = None
+    pitch_shift_semitones: Optional[int] = None
+    needs_sfx: Optional[bool] = None
+    sfx_tags: Optional[list] = None
+    pause_before_ms: Optional[int] = None
+    pause_after_ms: Optional[int] = None
+    confidence: Optional[float] = None
+    notes: Optional[str] = None
     edited_text: Optional[str] = None
-    status: str
+    # 人工终审覆盖：客户在合成前逐段强制指定的 voice/engine（NULL=自动决策）
+    manual_voice_id: Optional[str] = None
+    manual_engine: Optional[str] = None
+    status: str = "pending"
+    content_rating: Optional[str] = None
+    # Phase 5: Extended fields
+    tts_edit_history: Optional[list] = None
+    quality_records: Optional[list] = None
+    routing_decision: Optional[dict] = None
+    annotations_full: Optional[dict] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ── Project CRUD ──────────────────────────────────────────────────────────────
 
 
 @router.post("/", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)
-def create_project(payload: ProjectCreate, db: Session = Depends(get_db)):
+async def create_project(
+    payload: ProjectCreate,
+    db: AsyncSession = Depends(get_async_db),
+    current_user: User = Depends(get_current_active_user),
+):
     """Create a new project."""
     project = Project(**payload.model_dump())
     db.add(project)
-    db.commit()
-    db.refresh(project)
+    await db.commit()
+    await db.refresh(project)
+
+    # Grant project owner EDITOR permission
+    permission = ProjectPermission(
+        user_id=current_user.id,
+        project_id=project.id,
+        role=RoleName.EDITOR,
+    )
+    db.add(permission)
+    await db.commit()
+
     return project
 
 
 @router.get("/", response_model=List[ProjectOut])
-def list_projects(
+async def list_projects(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """List all projects."""
-    return db.query(Project).offset(skip).limit(limit).all()
+    # S2.6 — explicit eager loading of first-level relationships to avoid N+1
+    # lazy loads during serialization. The Project model also defaults these
+    # relationships to lazy="selectin", but being explicit here keeps the API
+    # contract robust even if a model default changes.
+    result = await db.execute(
+        select(Project)
+        .options(
+            selectinload(Project.chapters),
+            selectinload(Project.characters),
+            selectinload(Project.feedback_records),
+        )
+        .offset(skip)
+        .limit(limit)
+    )
+    return result.scalars().all()
 
 
 @router.get("/{project_id}", response_model=ProjectOut)
-def get_project(project_id: int, db: Session = Depends(get_db)):
+async def get_project(project_id: int, db: AsyncSession = Depends(get_async_db)):
     """Get a single project by ID."""
-    project = db.query(Project).filter(Project.id == project_id).first()
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="projects",
+            context={"project_id": project_id},
+        )
     return project
 
 
 @router.put("/{project_id}", response_model=ProjectOut)
-def update_project(
+async def update_project(
     project_id: int,
     payload: ProjectCreate,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Update a project."""
-    project = db.query(Project).filter(Project.id == project_id).first()
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="projects",
+            context={"project_id": project_id},
+        )
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(project, field, value)
-    db.commit()
-    db.refresh(project)
+    await db.commit()
+    await db.refresh(project)
     return project
 
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_project(project_id: int, db: Session = Depends(get_db)):
+async def delete_project(project_id: int, db: AsyncSession = Depends(get_async_db)):
     """Delete a project and all related data."""
-    project = db.query(Project).filter(Project.id == project_id).first()
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-    db.delete(project)
-    db.commit()
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="projects",
+            context={"project_id": project_id},
+        )
+    await db.delete(project)
+    await db.commit()
     return None
 
 
@@ -157,43 +231,54 @@ def delete_project(project_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{project_id}/chapters", response_model=List[ChapterOut])
-def list_chapters(
+async def list_chapters(
     project_id: int,
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """List all chapters for a project."""
-    project = db.query(Project).filter(Project.id == project_id).first()
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-    return (
-        db.query(Chapter)
-        .filter(Chapter.project_id == project_id)
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="projects",
+            context={"project_id": project_id},
+        )
+    result = await db.execute(
+        select(Chapter)
+        .where(Chapter.project_id == project_id)
+        .options(selectinload(Chapter.paragraphs))
         .order_by(Chapter.index)
         .offset(skip)
         .limit(limit)
-        .all()
     )
+    return result.scalars().all()
 
 
-@router.get("/{project_id}/chapters/{chapter_index}", response_model=ChapterOut)
-def get_chapter(
+@router.get("/{project_id}/chapters/{chapter_id}", response_model=ChapterOut)
+async def get_chapter(
     project_id: int,
-    chapter_index: int,
-    db: Session = Depends(get_db),
+    chapter_id: int,
+    db: AsyncSession = Depends(get_async_db),
 ):
-    """Get a single chapter by its 1-based index."""
-    chapter = (
-        db.query(Chapter)
-        .filter(
+    """Get a single chapter by its DB ID."""
+    result = await db.execute(
+        select(Chapter).where(
             Chapter.project_id == project_id,
-            Chapter.index == chapter_index,
+            Chapter.id == chapter_id,
         )
-        .first()
     )
+    chapter = result.scalar_one_or_none()
     if not chapter:
-        raise HTTPException(status_code=404, detail="Chapter not found")
+        raise DomainError(
+            message="Chapter not found",
+            error_code="NOT_FOUND",
+            stage="projects",
+            context={"project_id": project_id, "chapter_id": chapter_id},
+        )
     return chapter
 
 
@@ -201,60 +286,333 @@ def get_chapter(
 
 
 @router.get(
-    "/{project_id}/chapters/{chapter_index}/paragraphs",
+    "/{project_id}/chapters/{chapter_id}/paragraphs",
     response_model=List[ParagraphOut],
 )
-def list_paragraphs(
+async def list_paragraphs(
     project_id: int,
-    chapter_index: int,
+    chapter_id: int,
     skip: int = Query(0, ge=0),
     limit: int = Query(500, ge=1, le=1000),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
-    """List all paragraphs for a chapter."""
-    chapter = (
-        db.query(Chapter)
-        .filter(
+    """List all paragraphs for a chapter (by chapter DB ID)."""
+    result = await db.execute(
+        select(Chapter).where(
             Chapter.project_id == project_id,
-            Chapter.index == chapter_index,
+            Chapter.id == chapter_id,
         )
-        .first()
     )
+    chapter = result.scalar_one_or_none()
     if not chapter:
-        raise HTTPException(status_code=404, detail="Chapter not found")
-    return (
-        db.query(Paragraph)
-        .filter(
+        raise DomainError(
+            message="Chapter not found",
+            error_code="NOT_FOUND",
+            stage="projects",
+            context={"project_id": project_id, "chapter_id": chapter_id},
+        )
+    result = await db.execute(
+        select(Paragraph)
+        .where(
             Paragraph.project_id == project_id,
             Paragraph.chapter_id == chapter.id,
         )
         .order_by(Paragraph.index)
         .offset(skip)
         .limit(limit)
-        .all()
     )
+    return result.scalars().all()
 
 
 @router.get(
-    "/{project_id}/chapters/{chapter_index}/paragraphs/{paragraph_index}",
+    "/{project_id}/chapters/{chapter_id}/paragraphs/{paragraph_id}",
     response_model=ParagraphOut,
 )
-def get_paragraph(
+async def get_paragraph(
     project_id: int,
-    chapter_index: int,
-    paragraph_index: int,
-    db: Session = Depends(get_db),
+    chapter_id: int,
+    paragraph_id: int,
+    db: AsyncSession = Depends(get_async_db),
 ):
-    """Get a single paragraph by its indices."""
-    para = (
-        db.query(Paragraph)
-        .filter(
+    """Get a single paragraph by its DB ID."""
+    result = await db.execute(
+        select(Paragraph).where(
             Paragraph.project_id == project_id,
-            Paragraph.chapter_index == chapter_index,
-            Paragraph.index == paragraph_index,
+            Paragraph.chapter_id == chapter_id,
+            Paragraph.id == paragraph_id,
         )
-        .first()
     )
+    para = result.scalar_one_or_none()
     if not para:
-        raise HTTPException(status_code=404, detail="Paragraph not found")
+        raise DomainError(
+            message="Paragraph not found",
+            error_code="NOT_FOUND",
+            stage="projects",
+            context={"project_id": project_id, "chapter_id": chapter_id, "paragraph_id": paragraph_id},
+        )
     return para
+
+
+@router.get(
+    "/{project_id}/chapters/{chapter_id}/paragraphs/{paragraph_id}/detail",
+    response_model=ParagraphOut,
+)
+async def get_paragraph_detail(
+    project_id: int,
+    chapter_id: int,
+    paragraph_id: int,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Get a single paragraph with full detail including extended fields.
+
+    This endpoint returns the complete paragraph data including:
+    - tts_edit_history: TTS editing history
+    - quality_records: Quality assessment records
+    - routing_decision: TTS routing decision
+    - annotations_full: Full annotation details
+    """
+    result = await db.execute(
+        select(Paragraph).where(
+            Paragraph.project_id == project_id,
+            Paragraph.chapter_id == chapter_id,
+            Paragraph.id == paragraph_id,
+        )
+    )
+    para = result.scalar_one_or_none()
+    if not para:
+        raise DomainError(
+            message="Paragraph not found",
+            error_code="NOT_FOUND",
+            stage="projects",
+            context={"project_id": project_id, "chapter_id": chapter_id, "paragraph_id": paragraph_id},
+        )
+    return para
+
+
+@router.put(
+    "/{project_id}/chapters/{chapter_id}/paragraphs/{paragraph_id}",
+    response_model=ParagraphOut,
+)
+async def update_paragraph(
+    project_id: int,
+    chapter_id: int,
+    paragraph_id: int,
+    payload: dict,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Update a paragraph by its DB ID."""
+    result = await db.execute(
+        select(Paragraph).where(
+            Paragraph.project_id == project_id,
+            Paragraph.chapter_id == chapter_id,
+            Paragraph.id == paragraph_id,
+        )
+    )
+    para = result.scalar_one_or_none()
+    if not para:
+        raise DomainError(
+            message="Paragraph not found",
+            error_code="NOT_FOUND",
+            stage="projects",
+            context={"project_id": project_id, "chapter_id": chapter_id, "paragraph_id": paragraph_id},
+        )
+    update_data = {k: v for k, v in payload.items() if k not in ("id",) and v is not None}
+    for field, value in update_data.items():
+        setattr(para, field, value)
+    await db.commit()
+    await db.refresh(para)
+    return para
+
+
+# ── Quality Report endpoint ─────────────────────────────────────────────────────
+
+
+class QualityReportSegment(BaseModel):
+    """Quality report segment model for API response."""
+
+    segment_id: str
+    file_path: str
+    duration_ms: int
+    silence_detected: bool
+    silence_ratio: float
+    silence_regions: List[dict]
+    corruption_detected: bool
+    corruption_error: Optional[str]
+    decode_valid: bool
+    clipping_detected: bool
+    peak_db: float
+    rms_db: float
+    # 硬质检三件套 (P0.2) — Optional 以兼容旧 report；None = 未计算/降级跳过
+    mos: Optional[float] = None
+    wer: Optional[float] = None
+    voice_cosine: Optional[float] = None
+    metrics_status: Optional[str] = None
+    needs_manual_review: bool = False
+    passed: bool
+    issues: List[str]
+
+
+class QualityReportOut(BaseModel):
+    """Quality report response model."""
+
+    project_id: str
+    chapter_index: int
+    total_segments: int
+    passed_segments: int
+    failed_segments: int
+    segment_results: List[QualityReportSegment]
+    overall_passed: bool
+    generated_at: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+@router.get("/{project_id}/quality-report", response_model=QualityReportOut)
+async def get_quality_report(
+    project_id: int,
+    chapter_index: int = Query(0, ge=0, description="Chapter index (default: 0 for latest)"),
+):
+    """Get audio quality report for a project chapter.
+
+    Returns the quality check results including silence detection,
+    corruption detection, and clipping detection for all segments.
+    """
+    # Look for quality report in storage/books/{project_id}/reports/quality_report_ch_{chapter_index}.json
+    report_path = reports_dir(project_id) / f"quality_report_ch_{chapter_index:03d}.json"
+
+    if not report_path.exists():
+        # Try the default quality_report.json (backward compatibility)
+        report_path = reports_dir(project_id) / "quality_report.json"
+
+    if not report_path.exists():
+        raise DomainError(
+            message=f"Quality report not found for project {project_id}, chapter {chapter_index}",
+            error_code="NOT_FOUND",
+            stage="quality_report",
+            context={"project_id": project_id, "chapter_index": chapter_index},
+        )
+
+    try:
+        with open(report_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        # Convert segment_results to QualityReportSegment models
+        segment_results = [QualityReportSegment(**sr) for sr in data.get("segment_results", [])]
+
+        return QualityReportOut(
+            project_id=str(data["project_id"]),
+            chapter_index=data["chapter_index"],
+            total_segments=data["total_segments"],
+            passed_segments=data["passed_segments"],
+            failed_segments=data["failed_segments"],
+            segment_results=segment_results,
+            overall_passed=data["overall_passed"],
+            generated_at=data["generated_at"],
+        )
+    except json.JSONDecodeError as e:
+        raise DomainError(
+            message=f"Invalid quality report format: {e}",
+            error_code="INVALID_FORMAT",
+            stage="quality_report",
+            context={"project_id": project_id, "chapter_index": chapter_index},
+            original_error=e,
+        ) from e
+    except KeyError as e:
+        raise DomainError(
+            message=f"Quality report missing required field: {e}",
+            error_code="INVALID_FORMAT",
+            stage="quality_report",
+            context={"project_id": project_id, "chapter_index": chapter_index},
+            original_error=e,
+        ) from e
+
+
+@router.post("/{project_id}/chapters/{chapter_id}/paragraphs/{paragraph_id}/regenerate")
+async def regenerate_paragraph(
+    project_id: int,
+    chapter_id: int,
+    paragraph_id: int,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Regenerate a single paragraph's audio (single-sentence re-synthesis).
+
+    This endpoint triggers re-synthesis of a single paragraph's audio without
+    re-running the entire pipeline. The new audio is seamlessly merged with
+    existing audio segments.
+    """
+    # Verify the paragraph exists and belongs to the project/chapter
+    result = await db.execute(
+        select(Paragraph).where(
+            Paragraph.project_id == project_id,
+            Paragraph.chapter_id == chapter_id,
+            Paragraph.id == paragraph_id,
+        )
+    )
+    para = result.scalar_one_or_none()
+    if not para:
+        raise DomainError(
+            message="Paragraph not found",
+            error_code="NOT_FOUND",
+            stage="projects",
+            context={"project_id": project_id, "chapter_id": chapter_id, "paragraph_id": paragraph_id},
+        )
+
+    # Check if there's an existing audio segment
+    audio_segment = para.audio_segment
+    if not audio_segment:
+        raise DomainError(
+            message="No audio segment found for this paragraph",
+            error_code="VALIDATION_ERROR",
+            stage="projects",
+            context={"project_id": project_id, "paragraph_id": paragraph_id},
+        )
+
+    # Queue the re-synthesis task
+    from ..tasks.tts_tasks import synthesize_paragraph_task
+
+    # Queue the task with the paragraph info
+    task = synthesize_paragraph_task.delay(
+        project_id=project_id,
+        chapter_id=chapter_id,
+        paragraph_id=paragraph_id,
+        force_regenerate=True,
+    )
+
+    return {
+        "task_id": task.id,
+        "status": "queued",
+        "message": "Single-sentence re-synthesis queued. The new audio will be seamlessly merged.",
+    }
+
+
+# ── Existing endpoint for backward compatibility ─────────────────────────────────
+@router.post("/{project_id}/paragraphs/{paragraph_id}/regenerate")
+async def regenerate_paragraph_legacy(
+    project_id: int,
+    paragraph_id: int,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Legacy endpoint - redirects to new chapter-aware endpoint."""
+    from ..models import Paragraph
+
+    result = await db.execute(
+        select(Paragraph).where(
+            Paragraph.project_id == project_id,
+            Paragraph.id == paragraph_id,
+        )
+    )
+    para = result.scalar_one_or_none()
+    if not para:
+        raise DomainError(
+            message="Paragraph not found",
+            error_code="NOT_FOUND",
+            stage="projects",
+            context={"project_id": project_id, "paragraph_id": paragraph_id},
+        )
+
+    return await regenerate_paragraph(
+        project_id=project_id,
+        chapter_id=para.chapter_id,
+        paragraph_id=paragraph_id,
+        db=db,
+    )

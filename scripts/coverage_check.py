@@ -2,22 +2,18 @@
 """Coverage baseline report generator.
 
 Produces detailed coverage report with targets for each module category.
-Matches A-P1-3 requirements:
-- pipeline ≥75%
-- schemas ≥95%
-- router ≥70%
-- client ≥70%
-- api ≥80%
-- total ≥90%
+Updated to F-P0-2 requirements:
+- All core modules (pipeline, schemas, router, client, api, monitoring, database, models) ≥80%
+- total ≥80%
 """
 
 import json
 import subprocess
 import sys
 import time
-from pathlib import Path
 from datetime import datetime
-from typing import Dict, Any
+from pathlib import Path
+from typing import Any, Dict
 
 
 def run_coverage():
@@ -148,22 +144,20 @@ def check_targets(category_coverage: Dict[str, Any]) -> Dict[str, Any]:
     """Check coverage against targets.
 
     Core module targets (all must pass):
-    - pipeline ≥75%, schemas ≥95%, router ≥70%, client ≥70%, api ≥80%
-    - monitoring/database/models ≥70%
-
-    Overall target is informational (not enforced as gate) since non-core
-    modules (feedback, publish, export) have lower coverage.
+    - pipeline ≥80%, schemas ≥80%, router ≥80%, client ≥80%, api ≥80%
+    - monitoring/database/models ≥80%
+    - Total ≥80%
     """
     targets = {
-        "pipeline": 75,
-        "schemas": 95,
-        "router": 70,
-        "client": 70,
+        "pipeline": 80,
+        "schemas": 80,
+        "router": 80,
+        "client": 80,
         "api": 80,
-        "monitoring": 70,
-        "database": 70,
-        "models": 70,
-        # "total": 90,  # Informational only - non-core modules drag this down
+        "monitoring": 80,
+        "database": 80,
+        "models": 80,
+        "total": 80,
     }
 
     results = {}
@@ -265,7 +259,9 @@ def print_summary(report: Dict[str, Any]):
         if data["total_lines"] > 0:
             status = "✅" if data["percent_covered"] >= report["targets_check"].get(cat, {}).get("target", 0) else "⚠️"
             target = report["targets_check"].get(cat, {}).get("target", "N/A")
-            print(f"  {status} {cat:15s} | {data['percent_covered']:6.1f}% (target: {target}%) | {data['file_count']} files")
+            print(
+                f"  {status} {cat:15s} | {data['percent_covered']:6.1f}% (target: {target}%) | {data['file_count']} files"
+            )
 
     print("\nTarget Compliance:")
     print("-" * 70)
@@ -273,7 +269,9 @@ def print_summary(report: Dict[str, Any]):
         if cat == "overall_pass":
             continue
         status = "✅ PASS" if check["passed"] else "❌ FAIL"
-        print(f"  {status} {cat:15s} | Target: {check['target']:3d}% | Actual: {check['actual']:6.1f}% | Gap: {check['gap']:.1f}%")
+        print(
+            f"  {status} {cat:15s} | Target: {check['target']:3d}% | Actual: {check['actual']:6.1f}% | Gap: {check['gap']:.1f}%"
+        )
 
     overall_status = "✅ ALL TARGETS MET" if report["targets_check"]["overall_pass"] else "❌ SOME TARGETS MISSED"
     print(f"\n{overall_status}")
@@ -292,7 +290,12 @@ def main():
 
     parser = argparse.ArgumentParser(description="Generate coverage baseline report")
     parser.add_argument("--output", default="reports/coverage_baseline.json", help="Output report path")
-    parser.add_argument("--fail-under", type=int, default=None, help="Exit with error if overall coverage below threshold")
+    parser.add_argument(
+        "--fail-under",
+        type=int,
+        default=None,
+        help="Exit with error if overall coverage below threshold",
+    )
     args = parser.parse_args()
 
     report = generate_report()

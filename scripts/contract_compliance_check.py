@@ -12,8 +12,8 @@ Usage:
 import argparse
 import json
 import sys
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 
 def load_compliance_report(report_path: str) -> dict:
@@ -115,14 +115,21 @@ def print_compliance_report(result: dict):
         for stage, data in result["stage_results"].items():
             if isinstance(data, dict) and "pass" in data:
                 status = "✅" if data.get("pass") else "❌"
-                print(f"  {status} {stage:20s} | {data.get('compliance_rate', 0):.2%} | {data.get('compliant_calls', 0)}/{data.get('total_calls', 0)} calls")
+                print(
+                    f"  {status} {stage:20s} | {data.get('compliance_rate', 0):.2%} | {data.get('compliant_calls', 0)}/{data.get('total_calls', 0)} calls"
+                )
 
     print("=" * 70)
 
 
 def main():
     parser = argparse.ArgumentParser(description="Contract Compliance Check for CI")
-    parser.add_argument("--threshold", type=float, default=0.99, help="Minimum compliance rate (default: 0.99)")
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.99,
+        help="Minimum compliance rate (default: 0.99)",
+    )
     parser.add_argument("--stage", default="all", help="Stage to check (default: all)")
     parser.add_argument("--report", help="Path to compliance report JSON (default: auto-detect latest)")
     parser.add_argument("--output", help="Output JSON report path")

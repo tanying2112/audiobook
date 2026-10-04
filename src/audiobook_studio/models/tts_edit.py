@@ -5,11 +5,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, List, Optional
 
-from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from ..database import Base
+from ..orm_base import Base
 
 if TYPE_CHECKING:
     from .paragraph import Paragraph
@@ -22,22 +22,14 @@ class TTSEdit(Base):
     __tablename__ = "tts_edits"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    project_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
-    )
-    chapter_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("chapters.id", ondelete="CASCADE"), nullable=True
-    )
-    paragraph_id: Mapped[int] = mapped_column(
-        ForeignKey("paragraphs.id", ondelete="CASCADE"), nullable=False
-    )
+    project_id: Mapped[Optional[int]] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=True)
+    chapter_id: Mapped[Optional[int]] = mapped_column(ForeignKey("chapters.id", ondelete="CASCADE"), nullable=True)
+    paragraph_id: Mapped[int] = mapped_column(ForeignKey("paragraphs.id", ondelete="CASCADE"), nullable=False)
 
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     edited_text: Mapped[str] = mapped_column(Text, nullable=False)
-    changes_made: Mapped[Optional[list]] = mapped_column(JSON, default=list)
-    forbidden_content_removed: Mapped[Optional[list]] = mapped_column(
-        JSON, default=list
-    )
+    changes_made: Mapped[Optional[list[str]]] = mapped_column(JSON, default=list)
+    forbidden_content_removed: Mapped[Optional[list[str]]] = mapped_column(JSON, default=list)
     confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     rationale: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     difficulty: Mapped[Optional[str]] = mapped_column(String(1), nullable=True)
@@ -50,7 +42,7 @@ class TTSEdit(Base):
     prompt_version: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     # 时间戳
-    created_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     # Relationships
     paragraph: Mapped[Paragraph] = relationship("Paragraph", back_populates="tts_edits")

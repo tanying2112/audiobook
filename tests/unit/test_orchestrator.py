@@ -1,6 +1,4 @@
 """Comprehensive unit tests for orchestrator pipeline targeting ≥80% line coverage.
-import os
-os.environ["MOCK_LLM"] = "true"
 
 Tests match the ACTUAL API from src/audiobook_studio/pipeline/orchestrator.py:
 - run_stage() with all 7 stages: extract, analyze, annotate, edit, audio_postprocess, synthesize, quality
@@ -10,23 +8,34 @@ Tests match the ACTUAL API from src/audiobook_studio/pipeline/orchestrator.py:
 - FeedbackCollector integration for self-iteration
 """
 
-import json
-from datetime import datetime
-from types import SimpleNamespace
-from unittest.mock import MagicMock, Mock, PropertyMock, patch
+import os
+
+os.environ["MOCK_LLM"] = "true"
+
+import sqlite3
+import tempfile
+from unittest.mock import MagicMock, patch
 
 import pytest
-from sqlalchemy import create_engine
+import pytest_asyncio
+from sqlalchemy import create_engine, delete, event, select
 from sqlalchemy.orm import sessionmaker
+
+
+def _set_sqlite_pragma(dbapi_connection, connection_record):
+    if isinstance(dbapi_connection, sqlite3.Connection):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=OFF")
+        cursor.close()
+
+
+# Async SQLite database (per-test temp file) for testing
+import warnings
+
+from sqlalchemy.exc import SAWarning
+
 from src.audiobook_studio.database import Base
-from src.audiobook_studio.models import (
-    AudioSegment,
-    Chapter,
-    Paragraph,
-    Project,
-    Quality,
-    TTSEdit,
-)
+from src.audiobook_studio.models import AudioSegment, Chapter, Paragraph, Project, Quality, TTSEdit
 from src.audiobook_studio.pipeline.feedback_collector import FeedbackCollector
 from src.audiobook_studio.pipeline.orchestrator import (
     _write_analyze,
@@ -39,22 +48,33 @@ from src.audiobook_studio.pipeline.orchestrator import (
     run_stage,
 )
 
-# Create in-memory SQLite database for testing
-TEST_ENGINE = create_engine("sqlite:///:memory:", echo=False)
-TestingSessionLocal = sessionmaker(bind=TEST_ENGINE)
+warnings.filterwarnings(
+    "ignore",
+    message="Can't sort tables for DROP; an unresolvable foreign key dependency exists between tables",
+    category=SAWarning,
+)
 
 
 @pytest.fixture(scope="function")
 def db_session():
-    """Create a fresh database session for each test."""
-    Base.metadata.create_all(TEST_ENGINE)
-    session = TestingSessionLocal()
-    yield session
-    session.close()
-    Base.metadata.drop_all(TEST_ENGINE)
+    """Create a fresh sync database session for each test."""
+    import src.audiobook_studio.models  # noqa: F401 — register all ORM models
+
+    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    tmp.close()
+    db_path = tmp.name
+    sync_engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
+    event.listen(sync_engine, "connect", _set_sqlite_pragma)
+    Base.metadata.create_all(sync_engine)
+
+    factory = sessionmaker(bind=sync_engine, expire_on_commit=False)
+    with factory() as session:
+        yield session
+    sync_engine.dispose()
+    os.unlink(db_path)
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 def sample_project(db_session):
     """Create a sample project."""
     project = Project(
@@ -70,7 +90,7 @@ def sample_project(db_session):
     return project
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 def sample_chapter(db_session, sample_project):
     """Create a sample chapter."""
     chapter = Chapter(
@@ -85,7 +105,7 @@ def sample_chapter(db_session, sample_project):
     return chapter
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 def sample_paragraph(db_session, sample_project, sample_chapter):
     """Create a sample paragraph."""
     para = Paragraph(
@@ -93,7 +113,7 @@ def sample_paragraph(db_session, sample_project, sample_chapter):
         chapter_id=sample_chapter.id,
         index=0,
         chapter_index=1,
-        text="这是测试段落内容。",
+        text="这是一个测试段落的内容。",
         speaker="旁白",
         is_dialogue=False,
         emotion="neutral",
@@ -106,7 +126,7 @@ def sample_paragraph(db_session, sample_project, sample_chapter):
     return para
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 def sample_paragraph_with_edit(db_session, sample_project, sample_chapter):
     """Create a sample paragraph with edited_text for quality testing."""
     para = Paragraph(
@@ -114,7 +134,7 @@ def sample_paragraph_with_edit(db_session, sample_project, sample_chapter):
         chapter_id=sample_chapter.id,
         index=0,
         chapter_index=1,
-        text="这是测试段落内容。",
+        text="这是一个测试段落的内容。",
         speaker="旁白",
         is_dialogue=False,
         emotion="neutral",
@@ -149,12 +169,7 @@ def mock_extraction_result():
 @pytest.fixture
 def mock_book_analysis_output():
     """Create a valid BookAnalysisOutput for testing."""
-    from src.audiobook_studio.schemas import (
-        BookAnalysisOutput,
-        BookMeta,
-        CharacterVoiceBinding,
-        EmotionSnapshot,
-    )
+    from src.audiobook_studio.schemas import BookAnalysisOutput, BookMeta, CharacterVoiceBinding, EmotionSnapshot
 
     return BookAnalysisOutput(
         book_meta=BookMeta(
@@ -184,8 +199,7 @@ def mock_book_analysis_output():
                 notes="平静的开头",
             ),
         ],
-        story_line_summary="这是一个关于测试的故事，主角经历各种冒险最终成功，并在过程中获得了宝贵的友谊和成长。"
-        * 3,
+        story_line_summary="这是一个关于测试的故事，主角经历各种冒险最终成功，并在过程中获得了宝贵的友谊和成长。" * 3,
         global_style_notes="Mock style notes.",
     )
 
@@ -231,7 +245,6 @@ def mock_tts_edit_output():
 def mock_quality_judgment():
     """Create a valid QualityJudgment for testing."""
     from src.audiobook_studio.schemas import QualityJudgment
-    from src.audiobook_studio.schemas.quality import FixSuggestion
 
     return QualityJudgment(
         segment_id="test_book_ch1_p0",
@@ -265,9 +278,8 @@ def mock_audio_segments():
 class TestWriteExtract:
     """Test _write_extract function."""
 
-    def test_write_extract_creates_new_chapter(
-        self, db_session, sample_project, mock_extraction_result
-    ):
+    @pytest.mark.asyncio
+    async def test_write_extract_creates_new_chapter(self, db_session, sample_project, mock_extraction_result):
         """Test _write_extract creates a new chapter when none exists."""
         chapter = _write_extract(
             db_session,
@@ -282,7 +294,8 @@ class TestWriteExtract:
         assert chapter.raw_text == mock_extraction_result.raw_text
         assert chapter.extract_status == "completed"
 
-    def test_write_extract_updates_existing_chapter_by_id(
+    @pytest.mark.asyncio
+    async def test_write_extract_updates_existing_chapter_by_id(
         self, db_session, sample_project, sample_chapter, mock_extraction_result
     ):
         """Test _write_extract updates existing chapter when chapter_id provided."""
@@ -303,7 +316,8 @@ class TestWriteExtract:
         assert chapter.raw_text == mock_extraction_result.raw_text
         assert chapter.extract_status == "completed"
 
-    def test_write_extract_uses_existing_chapter_by_index(
+    @pytest.mark.asyncio
+    async def test_write_extract_uses_existing_chapter_by_index(
         self, db_session, sample_project, sample_chapter, mock_extraction_result
     ):
         """Test _write_extract finds existing chapter by project_id and index."""
@@ -325,9 +339,8 @@ class TestWriteExtract:
 class TestWriteAnalyze:
     """Test _write_analyze function."""
 
-    def test_write_analyze_updates_chapter(
-        self, db_session, sample_chapter, mock_book_analysis_output
-    ):
+    @pytest.mark.asyncio
+    async def test_write_analyze_updates_chapter(self, db_session, sample_chapter, mock_book_analysis_output):
         """Test _write_analyze updates chapter with analysis output."""
         _write_analyze(db_session, sample_chapter, mock_book_analysis_output)
 
@@ -341,7 +354,8 @@ class TestWriteAnalyze:
 class TestWriteAnnotate:
     """Test _write_annotate function."""
 
-    def test_write_annotate_creates_new_paragraph(
+    @pytest.mark.asyncio
+    async def test_write_annotate_creates_new_paragraph(
         self,
         db_session,
         sample_project,
@@ -368,7 +382,8 @@ class TestWriteAnnotate:
         assert para.emotion == "neutral"
         assert para.status == "annotated"
 
-    def test_write_annotate_updates_existing_paragraph(
+    @pytest.mark.asyncio
+    async def test_write_annotate_updates_existing_paragraph(
         self,
         db_session,
         sample_project,
@@ -399,7 +414,8 @@ class TestWriteAnnotate:
 class TestWriteEdit:
     """Test _write_edit function."""
 
-    def test_write_edit_creates_tts_edit_record(self, db_session, sample_paragraph):
+    @pytest.mark.asyncio
+    async def test_write_edit_creates_tts_edit_record(self, db_session, sample_paragraph):
         """Test _write_edit creates TTSEdit record and updates paragraph."""
         # Create a mock result with string list for changes_made (matches TtsEditOutput schema)
         mock_result = MagicMock()
@@ -429,7 +445,8 @@ class TestWriteEdit:
 class TestWriteSynthesize:
     """Test _write_synthesize function."""
 
-    def test_write_synthesize_creates_audio_segment(
+    @pytest.mark.asyncio
+    async def test_write_synthesize_creates_audio_segment(
         self, db_session, sample_project, sample_chapter, sample_paragraph
     ):
         """Test _write_synthesize creates AudioSegment record."""
@@ -441,9 +458,7 @@ class TestWriteSynthesize:
             "format": "mp3",
         }
 
-        audio = _write_synthesize(
-            db_session, sample_project.id, sample_chapter, sample_paragraph, seg_dict
-        )
+        audio = _write_synthesize(db_session, sample_project.id, sample_chapter, sample_paragraph, seg_dict)
 
         assert audio is not None
         assert audio.project_id == sample_project.id
@@ -464,8 +479,14 @@ class TestWriteSynthesize:
 class TestWriteQuality:
     """Test _write_quality function."""
 
-    def test_write_quality_creates_quality_record_with_existing_tts_edit(
-        self, db_session, sample_project, sample_chapter, sample_paragraph, mock_quality_judgment
+    @pytest.mark.asyncio
+    async def test_write_quality_creates_quality_record_with_existing_tts_edit(
+        self,
+        db_session,
+        sample_project,
+        sample_chapter,
+        sample_paragraph,
+        mock_quality_judgment,
     ):
         """Test _write_quality works when TTSEdit already exists."""
         # Create a TTSEdit first
@@ -482,7 +503,11 @@ class TestWriteQuality:
         db_session.refresh(tts_edit)
 
         quality = _write_quality(
-            db_session, sample_project.id, sample_chapter, sample_paragraph, mock_quality_judgment
+            db_session,
+            sample_project.id,
+            sample_chapter,
+            sample_paragraph,
+            mock_quality_judgment,
         )
 
         assert quality is not None
@@ -494,23 +519,34 @@ class TestWriteQuality:
         assert sample_paragraph.quality_overall_score == 0.9
         assert sample_paragraph.status == "quality_checked"
 
-    def test_write_quality_creates_tts_edit_if_missing(
-        self, db_session, sample_project, sample_chapter, sample_paragraph_with_edit, mock_quality_judgment
+    @pytest.mark.asyncio
+    async def test_write_quality_creates_tts_edit_if_missing(
+        self,
+        db_session,
+        sample_project,
+        sample_chapter,
+        sample_paragraph_with_edit,
+        mock_quality_judgment,
     ):
         """Test _write_quality auto-creates TTSEdit when none exists but paragraph has edited_text."""
         # Ensure no TTSEdit exists
-        db_session.query(TTSEdit).filter(TTSEdit.paragraph_id == sample_paragraph_with_edit.id).delete()
+        db_session.execute(delete(TTSEdit).where(TTSEdit.paragraph_id == sample_paragraph_with_edit.id))
         db_session.commit()
 
         quality = _write_quality(
-            db_session, sample_project.id, sample_chapter, sample_paragraph_with_edit, mock_quality_judgment
+            db_session,
+            sample_project.id,
+            sample_chapter,
+            sample_paragraph_with_edit,
+            mock_quality_judgment,
         )
 
         assert quality is not None
         assert quality.tts_edit_id is not None
 
         # Verify a TTSEdit was created
-        created_tts_edit = db_session.query(TTSEdit).filter(TTSEdit.id == quality.tts_edit_id).first()
+        created_res = db_session.execute(select(TTSEdit).filter(TTSEdit.id == quality.tts_edit_id))
+        created_tts_edit = created_res.scalars().first()
         assert created_tts_edit is not None
         assert created_tts_edit.edited_text == sample_paragraph_with_edit.edited_text
         assert created_tts_edit.rationale == "Auto-created for quality check (no prior edit)"
@@ -520,24 +556,35 @@ class TestWriteQuality:
         assert sample_paragraph_with_edit.quality_overall_score == 0.9
         assert sample_paragraph_with_edit.status == "quality_checked"
 
-    def test_write_quality_handles_missing_edited_text(
-        self, db_session, sample_project, sample_chapter, sample_paragraph, mock_quality_judgment
+    @pytest.mark.asyncio
+    async def test_write_quality_handles_missing_edited_text(
+        self,
+        db_session,
+        sample_project,
+        sample_chapter,
+        sample_paragraph,
+        mock_quality_judgment,
     ):
         """Test _write_quality creates dummy TTSEdit even when no edited_text exists."""
         # Ensure no TTSEdit exists and paragraph has no edited_text
-        db_session.query(TTSEdit).filter(TTSEdit.paragraph_id == sample_paragraph.id).delete()
+        db_session.execute(delete(TTSEdit).where(TTSEdit.paragraph_id == sample_paragraph.id))
         sample_paragraph.edited_text = None
         db_session.commit()
 
         quality = _write_quality(
-            db_session, sample_project.id, sample_chapter, sample_paragraph, mock_quality_judgment
+            db_session,
+            sample_project.id,
+            sample_chapter,
+            sample_paragraph,
+            mock_quality_judgment,
         )
 
         assert quality is not None
         assert quality.tts_edit_id is not None  # Should create dummy TTSEdit
 
         # Verify a TTSEdit was created with empty edited_text
-        created_tts_edit = db_session.query(TTSEdit).filter(TTSEdit.id == quality.tts_edit_id).first()
+        created_res = db_session.execute(select(TTSEdit).filter(TTSEdit.id == quality.tts_edit_id))
+        created_tts_edit = created_res.scalars().first()
         assert created_tts_edit is not None
         assert created_tts_edit.edited_text == ""
 
@@ -550,9 +597,8 @@ class TestWriteQuality:
 class TestWriteAudioPostProcess:
     """Test _write_audio_postprocess function."""
 
-    def test_write_audio_postprocess_updates_paragraph(
-        self, db_session, sample_paragraph
-    ):
+    @pytest.mark.asyncio
+    async def test_write_audio_postprocess_updates_paragraph(self, db_session, sample_paragraph):
         """Test _write_audio_postprocess updates paragraph with audio params."""
         from src.audiobook_studio.schemas import AudioPostProcessParams
 
@@ -576,22 +622,18 @@ class TestWriteAudioPostProcess:
 class TestRunStageExtract:
     """Test run_stage for extract stage."""
 
-    def test_run_stage_extract(
-        self, db_session, sample_project, mock_extraction_result
-    ):
+    @pytest.mark.asyncio
+    async def test_run_stage_extract(self, db_session, sample_project, mock_extraction_result):
         """Test run_stage with extract stage."""
-        with patch(
-            "src.audiobook_studio.pipeline.stage_registry.ExtractPipeline"
-        ) as MockPipeline:
+        with patch("src.audiobook_studio.pipeline.stage_registry.ExtractPipeline") as MockPipeline:
             mock_pipeline = MockPipeline.return_value
             mock_pipeline.run.return_value = mock_extraction_result
 
-            result = run_stage(
+            result = await run_stage(
                 "extract",
                 db_session,
                 project_id=sample_project.id,
                 chapter_index=1,
-                
                 file_path="/fake/test.pdf",
                 mime_type="application/pdf",
             )
@@ -601,14 +643,13 @@ class TestRunStageExtract:
             mock_pipeline.run.assert_called_once()
 
             # Check chapter was created
-            chapter = (
-                db_session.query(Chapter)
-                .filter(
+            result = db_session.execute(
+                select(Chapter).filter(
                     Chapter.project_id == sample_project.id,
                     Chapter.index == 1,
                 )
-                .first()
             )
+            chapter = result.scalars().first()
             assert chapter is not None
             assert chapter.raw_text == mock_extraction_result.raw_text
 
@@ -616,22 +657,18 @@ class TestRunStageExtract:
 class TestRunStageAnalyze:
     """Test run_stage for analyze stage."""
 
-    def test_run_stage_analyze(
-        self, db_session, sample_project, sample_chapter, mock_book_analysis_output
-    ):
+    @pytest.mark.asyncio
+    async def test_run_stage_analyze(self, db_session, sample_project, sample_chapter, mock_book_analysis_output):
         """Test run_stage with analyze stage."""
-        with patch(
-            "src.audiobook_studio.pipeline.stage_registry.AnalyzeStructurePipeline"
-        ) as MockPipeline:
+        with patch("src.audiobook_studio.pipeline.stage_registry.AnalyzeStructurePipeline") as MockPipeline:
             mock_pipeline = MockPipeline.return_value
             mock_pipeline.run.return_value = mock_book_analysis_output
 
-            result = run_stage(
+            result = await run_stage(
                 "analyze",
                 db_session,
                 project_id=sample_project.id,
                 chapter_index=1,
-                
                 raw_text="第1章 测试\n\n内容",
                 title_hint="测试",
                 author_hint="作者",
@@ -650,7 +687,8 @@ class TestRunStageAnalyze:
 class TestRunStageAnnotate:
     """Test run_stage for annotate stage."""
 
-    def test_run_stage_annotate(
+    @pytest.mark.asyncio
+    async def test_run_stage_annotate(
         self,
         db_session,
         sample_project,
@@ -659,18 +697,12 @@ class TestRunStageAnnotate:
         mock_paragraph_annotation,
     ):
         """Test run_stage with annotate stage."""
-        with patch(
-            "src.audiobook_studio.pipeline.stage_registry.AnnotateParagraphPipeline"
-        ) as MockPipeline:
+        with patch("src.audiobook_studio.pipeline.stage_registry.AnnotateParagraphPipeline") as MockPipeline:
             mock_pipeline = MockPipeline.return_value
             mock_pipeline.run.return_value = mock_paragraph_annotation
 
             # Create a proper BookMeta for the test
-            from src.audiobook_studio.schemas import (
-                BookMeta,
-                CharacterVoiceBinding,
-                EmotionSnapshot,
-            )
+            from src.audiobook_studio.schemas import BookMeta, CharacterVoiceBinding, EmotionSnapshot
 
             book_meta = BookMeta(
                 title="测试书籍",
@@ -698,14 +730,13 @@ class TestRunStageAnnotate:
                 notes="平静的开头",
             )
 
-            result = run_stage(
+            result = await run_stage(
                 "annotate",
                 db_session,
                 project_id=sample_project.id,
                 chapter_index=1,
                 paragraph_index=0,
-                
-                paragraph_text="这是测试段落文本内容。",
+                paragraph_text="这是测试段落文本内容，长度足够满足最小字符要求。",
                 book_meta=book_meta,
                 character_voice_map=character_voice_map,
                 emotion_snapshot=emotion_snapshot,
@@ -726,13 +757,12 @@ class TestRunStageAnnotate:
 class TestRunStageEdit:
     """Test run_stage for edit stage."""
 
-    def test_run_stage_edit(self, db_session, sample_paragraph):
+    @pytest.mark.asyncio
+    async def test_run_stage_edit(self, db_session, sample_paragraph):
         """Test run_stage with edit stage."""
         from src.audiobook_studio.schemas import ParagraphAnnotation, TtsEditOutput
 
-        with patch(
-            "src.audiobook_studio.pipeline.stage_registry.EditForTtsPipeline"
-        ) as MockPipeline:
+        with patch("src.audiobook_studio.pipeline.stage_registry.EditForTtsPipeline") as MockPipeline:
             mock_pipeline = MockPipeline.return_value
 
             # Create valid ParagraphAnnotation for the input
@@ -764,11 +794,10 @@ class TestRunStageEdit:
 
             mock_pipeline.run.return_value = mock_result
 
-            result = run_stage(
+            result = await run_stage(
                 "edit",
                 db_session,
                 paragraph_id=sample_paragraph.id,
-
                 paragraph_text="这是测试段落文本内容。",
                 paragraph_annotation=mock_paragraph_annotation,
                 difficulty="B",
@@ -781,15 +810,15 @@ class TestRunStageEdit:
             # Check paragraph was updated
             db_session.refresh(sample_paragraph)
             assert sample_paragraph.edited_text == "这是编辑后的文本内容。"
+            assert sample_paragraph.edit_confidence == 0.9
             assert sample_paragraph.status == "edited"
 
 
 class TestRunStageAudioPostProcess:
     """Test run_stage for audio_postprocess stage."""
 
-    def test_run_stage_audio_postprocess(
-        self, db_session, sample_project, sample_chapter, sample_paragraph
-    ):
+    @pytest.mark.asyncio
+    async def test_run_stage_audio_postprocess(self, db_session, sample_project, sample_chapter, sample_paragraph):
         """Test run_stage with audio_postprocess stage."""
         # Add analyzed_json to chapter
         sample_chapter.analyzed_json = {
@@ -806,20 +835,24 @@ class TestRunStageAudioPostProcess:
         }
         db_session.commit()
 
-        with patch(
-            "src.audiobook_studio.pipeline.stage_registry.AudioPostProcessor"
-        ) as MockProcessor:
+        with patch("src.audiobook_studio.pipeline.stage_registry.AudioPostProcessor") as MockProcessor:
             mock_processor = MockProcessor.return_value
-            from src.audiobook_studio.schemas import AudioPostProcessParams
+            from src.audiobook_studio.pipeline.audio_postprocess import PhysicalAudioSegment
 
-            mock_processor.process.return_value = AudioPostProcessParams(
-                speech_rate=1.0,
-                pitch_shift_semitones=0,
-                needs_sfx=False,
-                sfx_tags=[],
+            # New API returns PhysicalAudioSegment
+            mock_segment = PhysicalAudioSegment(
+                text="测试文本",
+                speaker="旁白",
+                speed=1.0,
+                volume_db=0.0,
+                pitch_hz=0.0,
+                pause_after_ms=300,
+                emotion="neutral",
+                paragraph_type="narration",
             )
+            mock_processor.process_single.return_value = mock_segment
 
-            result = run_stage(
+            result = await run_stage(
                 "audio_postprocess",
                 db_session,
                 project_id=sample_project.id,
@@ -828,7 +861,9 @@ class TestRunStageAudioPostProcess:
             )
 
             assert result is not None
-            assert isinstance(result, AudioPostProcessParams)
+            assert isinstance(result, dict)  # Now returns dict from asdict()
+            assert result["speed"] == 1.0
+            assert result["paragraph_type"] == "narration"
 
             # Check paragraph was updated
             db_session.refresh(sample_paragraph)
@@ -839,7 +874,8 @@ class TestRunStageAudioPostProcess:
 class TestRunStageSynthesize:
     """Test run_stage for synthesize stage."""
 
-    def test_run_stage_synthesize(
+    @pytest.mark.asyncio
+    async def test_run_stage_synthesize(
         self,
         db_session,
         sample_project,
@@ -850,9 +886,7 @@ class TestRunStageSynthesize:
         """Test run_stage with synthesize stage with synthesize stage."""
         from src.audiobook_studio.schemas import ParagraphAnnotation
 
-        with patch(
-            "src.audiobook_studio.pipeline.stage_registry.SynthesizePipeline"
-        ) as MockPipeline:
+        with patch("src.audiobook_studio.pipeline.stage_registry.SynthesizePipeline") as MockPipeline:
             mock_pipeline = MockPipeline.return_value
             mock_pipeline.run.return_value = mock_audio_segments
 
@@ -874,13 +908,12 @@ class TestRunStageSynthesize:
                 notes="Test annotation",
             )
 
-            result = run_stage(
+            result = await run_stage(
                 "synthesize",
                 db_session,
                 project_id=sample_project.id,
                 chapter_index=1,
                 paragraph_index=0,
-
                 text="合成测试文本",
                 voice_id="kokoro_narrator",
                 engine="kokoro",
@@ -891,54 +924,49 @@ class TestRunStageSynthesize:
             mock_pipeline.run.assert_called_once()
 
             # Check audio segment was created
-            audio = (
-                db_session.query(AudioSegment)
-                .filter(
+            result = db_session.execute(
+                select(AudioSegment).filter(
                     AudioSegment.project_id == sample_project.id,
                     AudioSegment.chapter_id == sample_chapter.id,
                     AudioSegment.paragraph_id == sample_paragraph.id,
                 )
-                .first()
             )
+            audio = result.scalars().first()
             assert audio is not None
             assert audio.file_path == "/tmp/test_segment_0.mp3"
-
-
 
 
 class TestRunStageQuality:
     """Test run_stage for quality stage."""
 
-    def test_run_stage_quality(
-        self, db_session, sample_project, sample_chapter, sample_paragraph_with_edit
-    ):
+    @pytest.mark.asyncio
+    async def test_run_stage_quality(self, db_session, sample_project, sample_chapter, sample_paragraph_with_edit):
         """Test run_stage with quality stage."""
-        with patch(
-            "src.audiobook_studio.pipeline.stage_registry.QualityCheckPipeline"
-        ) as MockPipeline:
+        with patch("src.audiobook_studio.pipeline.stage_registry.QualityCheckPipeline") as MockPipeline:
             mock_pipeline = MockPipeline.return_value
             from src.audiobook_studio.schemas import QualityJudgment
 
-            mock_pipeline.run.return_value = QualityJudgment(
-                segment_id="test_book_ch1_p0",
-                speaker_clarity=0.9,
-                emotion_match=0.85,
-                prosody_naturalness=0.9,
-                text_audio_alignment=0.95,
-                overall_score=0.9,
-                issues=[],
-                fix_suggestions=[],
-                needs_regeneration=False,
-                contract_version=1,
-            )
+            mock_pipeline.run.return_value = [
+                QualityJudgment(
+                    segment_id="test_book_ch1_p0",
+                    speaker_clarity=0.9,
+                    emotion_match=0.85,
+                    prosody_naturalness=0.9,
+                    text_audio_alignment=0.95,
+                    overall_score=0.9,
+                    issues=[],
+                    fix_suggestions=[],
+                    needs_regeneration=False,
+                    contract_version=1,
+                )
+            ]
 
-            result = run_stage(
+            result = await run_stage(
                 "quality",
                 db_session,
                 project_id=sample_project.id,
                 chapter_index=1,
                 paragraph_index=0,
-                
                 segment_id="test_book_ch1_p0",
                 audio_path="/tmp/test.mp3",
                 text="测试文本",
@@ -949,15 +977,14 @@ class TestRunStageQuality:
             mock_pipeline.run.assert_called_once()
 
             # Check quality record was created
-            quality = (
-                db_session.query(Quality)
-                .filter(
+            result = db_session.execute(
+                select(Quality).filter(
                     Quality.project_id == sample_project.id,
                     Quality.chapter_id == sample_chapter.id,
                     Quality.paragraph_id == sample_paragraph_with_edit.id,
                 )
-                .first()
             )
+            quality = result.scalars().first()
             assert quality is not None
             assert quality.overall_score == 0.9
             assert quality.tts_edit_id is not None
@@ -973,20 +1000,20 @@ class TestRunStageQuality:
 class TestRunStageErrors:
     """Test run_stage error handling."""
 
-    def test_run_stage_unknown_stage(self, db_session, sample_project):
+    @pytest.mark.asyncio
+    async def test_run_stage_unknown_stage(self, db_session, sample_project):
         """Test run_stage raises error for unknown stage."""
         from src.audiobook_studio.exceptions import StageExecutionError
 
         with pytest.raises(StageExecutionError, match="Unknown pipeline stage"):
-            run_stage(
+            await run_stage(
                 "unknown_stage",
                 db_session,
                 project_id=sample_project.id,
             )
 
-    def test_run_stage_audio_postprocess_missing_paragraph(
-        self, db_session, sample_project
-    ):
+    @pytest.mark.asyncio
+    async def test_run_stage_audio_postprocess_missing_paragraph(self, db_session, sample_project):
         """Test run_stage audio_postprocess requires paragraph."""
         from src.audiobook_studio.exceptions import StageExecutionError
 
@@ -994,7 +1021,7 @@ class TestRunStageErrors:
             StageExecutionError,
             match="audio_postprocess requires paragraph_id or paragraph_index",
         ):
-            run_stage(
+            await run_stage(
                 "audio_postprocess",
                 db_session,
                 project_id=sample_project.id,
@@ -1005,27 +1032,23 @@ class TestRunStageErrors:
 class TestRunStageWithFeedbackCollector:
     """Test run_stage with FeedbackCollector integration."""
 
-    def test_run_stage_extract_with_feedback(
-        self, db_session, sample_project, mock_extraction_result
-    ):
+    @pytest.mark.asyncio
+    async def test_run_stage_extract_with_feedback(self, db_session, sample_project, mock_extraction_result):
         """Test run_stage extract stage captures feedback."""
         mock_collector = MagicMock(spec=FeedbackCollector)
         mock_capture = MagicMock()
         mock_capture._disabled = False
         mock_collector.capture_stage.return_value = mock_capture
 
-        with patch(
-            "src.audiobook_studio.pipeline.stage_registry.ExtractPipeline"
-        ) as MockPipeline:
+        with patch("src.audiobook_studio.pipeline.stage_registry.ExtractPipeline") as MockPipeline:
             mock_pipeline = MockPipeline.return_value
             mock_pipeline.run.return_value = mock_extraction_result
 
-            result = run_stage(
+            result = await run_stage(
                 "extract",
                 db_session,
                 project_id=sample_project.id,
                 chapter_index=1,
-                
                 file_path="/fake/test.pdf",
                 mime_type="application/pdf",
                 feedback_collector=mock_collector,
@@ -1035,7 +1058,8 @@ class TestRunStageWithFeedbackCollector:
             mock_collector.capture_stage.assert_called_once()
             mock_capture.set_llm_output.assert_called_once()
 
-    def test_run_stage_analyze_with_feedback(
+    @pytest.mark.asyncio
+    async def test_run_stage_analyze_with_feedback(
         self, db_session, sample_project, sample_chapter, mock_book_analysis_output
     ):
         """Test run_stage analyze stage captures feedback."""
@@ -1044,18 +1068,15 @@ class TestRunStageWithFeedbackCollector:
         mock_capture._disabled = False
         mock_collector.capture_stage.return_value = mock_capture
 
-        with patch(
-            "src.audiobook_studio.pipeline.stage_registry.AnalyzeStructurePipeline"
-        ) as MockPipeline:
+        with patch("src.audiobook_studio.pipeline.stage_registry.AnalyzeStructurePipeline") as MockPipeline:
             mock_pipeline = MockPipeline.return_value
             mock_pipeline.run.return_value = mock_book_analysis_output
 
-            result = run_stage(
+            result = await run_stage(
                 "analyze",
                 db_session,
                 project_id=sample_project.id,
                 chapter_index=1,
-                
                 raw_text="第1章 测试\n\n内容",
                 title_hint="测试",
                 author_hint="作者",
@@ -1067,7 +1088,8 @@ class TestRunStageWithFeedbackCollector:
             mock_collector.capture_stage.assert_called_once()
             mock_capture.set_llm_output.assert_called_once()
 
-    def test_run_stage_annotate_with_feedback(
+    @pytest.mark.asyncio
+    async def test_run_stage_annotate_with_feedback(
         self,
         db_session,
         sample_project,
@@ -1081,17 +1103,11 @@ class TestRunStageWithFeedbackCollector:
         mock_capture._disabled = False
         mock_collector.capture_stage.return_value = mock_capture
 
-        with patch(
-            "src.audiobook_studio.pipeline.stage_registry.AnnotateParagraphPipeline"
-        ) as MockPipeline:
+        with patch("src.audiobook_studio.pipeline.stage_registry.AnnotateParagraphPipeline") as MockPipeline:
             mock_pipeline = MockPipeline.return_value
             mock_pipeline.run.return_value = mock_paragraph_annotation
 
-            from src.audiobook_studio.schemas import (
-                BookMeta,
-                CharacterVoiceBinding,
-                EmotionSnapshot,
-            )
+            from src.audiobook_studio.schemas import BookMeta, CharacterVoiceBinding, EmotionSnapshot
 
             book_meta = BookMeta(
                 title="测试书籍",
@@ -1119,14 +1135,13 @@ class TestRunStageWithFeedbackCollector:
                 notes="平静的开头",
             )
 
-            result = run_stage(
+            result = await run_stage(
                 "annotate",
                 db_session,
                 project_id=sample_project.id,
                 chapter_index=1,
                 paragraph_index=0,
-                
-                paragraph_text="这是测试段落文本内容。",
+                paragraph_text="这是测试段落文本内容，长度足够满足最小字符要求。",
                 book_meta=book_meta,
                 character_voice_map=character_voice_map,
                 emotion_snapshot=emotion_snapshot,
@@ -1140,7 +1155,8 @@ class TestRunStageWithFeedbackCollector:
             mock_collector.capture_stage.assert_called_once()
             mock_capture.set_llm_output.assert_called_once()
 
-    def test_run_stage_edit_with_feedback(self, db_session, sample_paragraph):
+    @pytest.mark.asyncio
+    async def test_run_stage_edit_with_feedback(self, db_session, sample_paragraph):
         """Test run_stage edit stage captures feedback."""
         from src.audiobook_studio.schemas import ParagraphAnnotation, TtsEditOutput
 
@@ -1149,9 +1165,7 @@ class TestRunStageWithFeedbackCollector:
         mock_capture._disabled = False
         mock_collector.capture_stage.return_value = mock_capture
 
-        with patch(
-            "src.audiobook_studio.pipeline.stage_registry.EditForTtsPipeline"
-        ) as MockPipeline:
+        with patch("src.audiobook_studio.pipeline.stage_registry.EditForTtsPipeline") as MockPipeline:
             mock_pipeline = MockPipeline.return_value
 
             # Create valid ParagraphAnnotation for input
@@ -1183,12 +1197,11 @@ class TestRunStageWithFeedbackCollector:
 
             mock_pipeline.run.return_value = mock_result
 
-            result = run_stage(
+            result = await run_stage(
                 "edit",
                 db_session,
                 project_id=sample_paragraph.project_id,
                 paragraph_id=sample_paragraph.id,
-
                 paragraph_text="这是测试段落文本内容。",
                 paragraph_annotation=mock_paragraph_annotation,
                 difficulty="B",
@@ -1200,7 +1213,8 @@ class TestRunStageWithFeedbackCollector:
             mock_collector.capture_stage.assert_called_once()
             mock_capture.set_llm_output.assert_called_once()
 
-    def test_run_stage_audio_postprocess_with_feedback(
+    @pytest.mark.asyncio
+    async def test_run_stage_audio_postprocess_with_feedback(
         self, db_session, sample_project, sample_chapter, sample_paragraph
     ):
         """Test run_stage audio_postprocess stage captures feedback."""
@@ -1223,20 +1237,24 @@ class TestRunStageWithFeedbackCollector:
         }
         db_session.commit()
 
-        with patch(
-            "src.audiobook_studio.pipeline.stage_registry.AudioPostProcessor"
-        ) as MockProcessor:
+        with patch("src.audiobook_studio.pipeline.stage_registry.AudioPostProcessor") as MockProcessor:
             mock_processor = MockProcessor.return_value
-            from src.audiobook_studio.schemas import AudioPostProcessParams
+            from src.audiobook_studio.pipeline.audio_postprocess import PhysicalAudioSegment
 
-            mock_processor.process.return_value = AudioPostProcessParams(
-                speech_rate=1.0,
-                pitch_shift_semitones=0,
-                needs_sfx=False,
-                sfx_tags=[],
+            # New API returns PhysicalAudioSegment
+            mock_segment = PhysicalAudioSegment(
+                text="测试文本",
+                speaker="旁白",
+                speed=1.0,
+                volume_db=0.0,
+                pitch_hz=0.0,
+                pause_after_ms=300,
+                emotion="neutral",
+                paragraph_type="narration",
             )
+            mock_processor.process_single.return_value = mock_segment
 
-            result = run_stage(
+            result = await run_stage(
                 "audio_postprocess",
                 db_session,
                 project_id=sample_project.id,
@@ -1249,7 +1267,8 @@ class TestRunStageWithFeedbackCollector:
             mock_collector.capture_stage.assert_called_once()
             mock_capture.set_llm_output.assert_called_once()
 
-    def test_run_stage_synthesize_with_feedback(
+    @pytest.mark.asyncio
+    async def test_run_stage_synthesize_with_feedback(
         self,
         db_session,
         sample_project,
@@ -1265,9 +1284,7 @@ class TestRunStageWithFeedbackCollector:
         mock_capture._disabled = False
         mock_collector.capture_stage.return_value = mock_capture
 
-        with patch(
-            "src.audiobook_studio.pipeline.stage_registry.SynthesizePipeline"
-        ) as MockPipeline:
+        with patch("src.audiobook_studio.pipeline.stage_registry.SynthesizePipeline") as MockPipeline:
             mock_pipeline = MockPipeline.return_value
             mock_pipeline.run.return_value = mock_audio_segments
 
@@ -1289,13 +1306,12 @@ class TestRunStageWithFeedbackCollector:
                 notes="Test annotation",
             )
 
-            result = run_stage(
+            result = await run_stage(
                 "synthesize",
                 db_session,
                 project_id=sample_project.id,
                 chapter_index=1,
                 paragraph_index=0,
-
                 text="合成测试文本",
                 voice_id="kokoro_narrator",
                 engine="kokoro",
@@ -1307,7 +1323,8 @@ class TestRunStageWithFeedbackCollector:
             mock_collector.capture_stage.assert_called_once()
             mock_capture.set_llm_output.assert_called_once()
 
-    def test_run_stage_quality_with_feedback(
+    @pytest.mark.asyncio
+    async def test_run_stage_quality_with_feedback(
         self, db_session, sample_project, sample_chapter, sample_paragraph_with_edit
     ):
         """Test run_stage quality stage captures feedback with quality_judge source."""
@@ -1316,32 +1333,31 @@ class TestRunStageWithFeedbackCollector:
         mock_capture._disabled = False
         mock_collector.capture_stage.return_value = mock_capture
 
-        with patch(
-            "src.audiobook_studio.pipeline.stage_registry.QualityCheckPipeline"
-        ) as MockPipeline:
+        with patch("src.audiobook_studio.pipeline.stage_registry.QualityCheckPipeline") as MockPipeline:
             mock_pipeline = MockPipeline.return_value
             from src.audiobook_studio.schemas import QualityJudgment
 
-            mock_pipeline.run.return_value = QualityJudgment(
-                segment_id="test_book_ch1_p0",
-                speaker_clarity=0.9,
-                emotion_match=0.85,
-                prosody_naturalness=0.9,
-                text_audio_alignment=0.95,
-                overall_score=0.9,
-                issues=[],
-                fix_suggestions=[],
-                needs_regeneration=False,
-                contract_version=1,
-            )
+            mock_pipeline.run.return_value = [
+                QualityJudgment(
+                    segment_id="test_book_ch1_p0",
+                    speaker_clarity=0.9,
+                    emotion_match=0.85,
+                    prosody_naturalness=0.9,
+                    text_audio_alignment=0.95,
+                    overall_score=0.9,
+                    issues=[],
+                    fix_suggestions=[],
+                    needs_regeneration=False,
+                    contract_version=1,
+                )
+            ]
 
-            result = run_stage(
+            await run_stage(
                 "quality",
                 db_session,
                 project_id=sample_project.id,
                 chapter_index=1,
                 paragraph_index=0,
-                
                 segment_id="test_book_ch1_p0",
                 audio_path="/tmp/test.mp3",
                 text="测试文本",
@@ -1353,22 +1369,18 @@ class TestRunStageWithFeedbackCollector:
             mock_capture.set_llm_output.assert_called_once()
             mock_capture.set_source.assert_called_with("quality_judge")
 
-    def test_run_stage_without_feedback_collector(
-        self, db_session, sample_project, mock_extraction_result
-    ):
+    @pytest.mark.asyncio
+    async def test_run_stage_without_feedback_collector(self, db_session, sample_project, mock_extraction_result):
         """Test run_stage works without feedback_collector (backward compatibility)."""
-        with patch(
-            "src.audiobook_studio.pipeline.stage_registry.ExtractPipeline"
-        ) as MockPipeline:
+        with patch("src.audiobook_studio.pipeline.stage_registry.ExtractPipeline") as MockPipeline:
             mock_pipeline = MockPipeline.return_value
             mock_pipeline.run.return_value = mock_extraction_result
 
-            result = run_stage(
+            result = await run_stage(
                 "extract",
                 db_session,
                 project_id=sample_project.id,
                 chapter_index=1,
-                
                 file_path="/fake/test.pdf",
                 mime_type="application/pdf",
                 # No feedback_collector

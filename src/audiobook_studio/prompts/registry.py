@@ -23,23 +23,20 @@ Provides:
 """
 
 import hashlib
+import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Tuple
-import logging
-
-from pydantic import ValidationError
+from typing import Any, Dict, List, Optional, Tuple
 
 from .models import (
-    PromptVersion,
-    PromptTemplate,
+    ExperimentType,
+    ExperimentVariant,
+    PromptExperiment,
+    PromptRegistryState,
     PromptStage,
     PromptStatus,
-    PromptExperiment,
-    ExperimentVariant,
-    ExperimentType,
-    PromptRegistryState,
-    PromptVersionMetrics,
+    PromptTemplate,
+    PromptVersion,
 )
 
 logger = logging.getLogger(__name__)
@@ -86,6 +83,7 @@ class PromptRegistry:
         """Initialize Langfuse client for experiment tracking."""
         try:
             from langfuse import Langfuse
+
             kwargs = {}
             if public_key:
                 kwargs["public_key"] = public_key
@@ -190,7 +188,7 @@ class PromptRegistry:
         Returns:
             The registered PromptVersion
         """
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             content = f.read()
 
         return self.register_template(
@@ -289,7 +287,8 @@ class PromptRegistry:
             Selected ExperimentVariant
         """
         # Hash request_id to get a number 0-100
-        hash_value = int(hashlib.md5(request_id.encode()).hexdigest()[:8], 16) % 100
+        # Use SHA256 with usedforsecurity=False for experiment bucketing (non-cryptographic)
+        hash_value = int(hashlib.sha256(request_id.encode(), usedforsecurity=False).hexdigest()[:8], 16) % 100
 
         cumulative = 0
         for variant in experiment.variants:
@@ -479,7 +478,7 @@ class PromptRegistry:
 
         except TemplateError as e:
             logger.error(f"Failed to render prompt {stage.value}/{prompt_version.version}: {e}")
-            raise ValueError(f"Template rendering failed: {e}")
+            raise ValueError(f"Template rendering failed: {e}") from e
 
     def load_prompts_from_directory(self) -> int:
         """Load all .j2 templates from the prompts directory.
@@ -532,18 +531,13 @@ class PromptRegistry:
             Dict mapping stage -> list of versions
         """
         if stage:
-            return {
-                stage.value: list(self._state.versions.get(stage.value, {}).keys())
-            }
-        return {
-            stage: list(versions.keys())
-            for stage, versions in self._state.versions.items()
-        }
+            return {stage.value: list(self._state.versions.get(stage.value, {}).keys())}
+        return {stage: list(versions.keys()) for stage, versions in self._state.versions.items()}
 
     @property
     def state(self) -> PromptRegistryState:
         """Get current registry state."""
-        return self._state.copy()
+        return self._state.model_copy()
 
 
 # Global registry instance (lazy initialization)

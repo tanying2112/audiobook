@@ -4,14 +4,13 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 
-
-class TestAudiobookshelfRealAPI:
+class TestAudiobookshelfRealAPI:  # noqa: E303
     """_real_api_call 真实 HTTP 路径覆盖。"""
 
     def _make_pub(self, mock=True):
-        from src.audiobook_studio.publish.audiobookshelf import AudiobookshelfPublisher, AudiobookshelfConfig
+        from src.audiobook_studio.publish.audiobookshelf import AudiobookshelfConfig, AudiobookshelfPublisher
+
         cfg = AudiobookshelfConfig(api_url="http://localhost:8080", api_key="test-key", library_id="lib1")
         with patch.dict("os.environ", {"MOCK_LLM": "true" if mock else "false"}):
             pub = AudiobookshelfPublisher(cfg)
@@ -19,12 +18,23 @@ class TestAudiobookshelfRealAPI:
 
     def _make_upload_data(self):
         return {
-            "title": "测试书", "author": "作者", "narrator": "朗读者",
-            "description": "简介", "language": "zh-CN", "year": 2025,
-            "publisher": "出版社", "genres": ["sci-fi"], "tags": ["t1"],
-            "series": "系列", "seriesIndex": 1.0,
-            "fileName": "book.m4b", "size": 100, "duration": 3600,
-            "bitrate": 64000, "format": "m4b", "coverImage": None,
+            "title": "测试书",
+            "author": "作者",
+            "narrator": "朗读者",
+            "description": "简介",
+            "language": "zh-CN",
+            "year": 2025,
+            "publisher": "出版社",
+            "genres": ["sci-fi"],
+            "tags": ["t1"],
+            "series": "系列",
+            "seriesIndex": 1.0,
+            "fileName": "book.m4b",
+            "size": 100,
+            "duration": 3600,
+            "bitrate": 64000,
+            "format": "m4b",
+            "coverImage": None,
             "chapters": [{"title": "Ch1", "start": 0, "end": 3600}],
         }
 
@@ -35,9 +45,14 @@ class TestAudiobookshelfRealAPI:
             fp = Path(tmpdir) / "book.m4b"
             fp.write_bytes(b"audio")
             from src.audiobook_studio.publish.audiobookshelf import AudiobookFile
+
             af = AudiobookFile(
-                file_path=fp, size_bytes=5, duration_seconds=60,
-                format="m4b", bitrate_kbps=64, checksum_md5="x",
+                file_path=fp,
+                size_bytes=5,
+                duration_seconds=60,
+                format="m4b",
+                bitrate_kbps=64,
+                checksum_md5="x",
             )
             mock_client = MagicMock()
             resp = MagicMock()
@@ -56,9 +71,14 @@ class TestAudiobookshelfRealAPI:
         with tempfile.TemporaryDirectory() as tmpdir:
             fp = Path(tmpdir) / "nonexistent.m4b"
             from src.audiobook_studio.publish.audiobookshelf import AudiobookFile
+
             af = AudiobookFile(
-                file_path=fp, size_bytes=0, duration_seconds=60,
-                format="m4b", bitrate_kbps=64, checksum_md5="x",
+                file_path=fp,
+                size_bytes=0,
+                duration_seconds=60,
+                format="m4b",
+                bitrate_kbps=64,
+                checksum_md5="x",
             )
             mock_client = MagicMock()
             resp_ok = MagicMock()
@@ -78,9 +98,14 @@ class TestAudiobookshelfRealAPI:
             fp = Path(tmpdir) / "book.m4b"
             fp.write_bytes(b"audio")
             from src.audiobook_studio.publish.audiobookshelf import AudiobookFile
+
             af = AudiobookFile(
-                file_path=fp, size_bytes=5, duration_seconds=60,
-                format="m4b", bitrate_kbps=64, checksum_md5="x",
+                file_path=fp,
+                size_bytes=5,
+                duration_seconds=60,
+                format="m4b",
+                bitrate_kbps=64,
+                checksum_md5="x",
             )
             mock_client = MagicMock()
             # GET library
@@ -116,9 +141,14 @@ class TestAudiobookshelfRealAPI:
             fp = Path(tmpdir) / "book.m4b"
             fp.write_bytes(b"audio")
             from src.audiobook_studio.publish.audiobookshelf import AudiobookFile
+
             af = AudiobookFile(
-                file_path=fp, size_bytes=5, duration_seconds=60,
-                format="m4b", bitrate_kbps=64, checksum_md5="x",
+                file_path=fp,
+                size_bytes=5,
+                duration_seconds=60,
+                format="m4b",
+                bitrate_kbps=64,
+                checksum_md5="x",
             )
             mock_client = MagicMock()
             resp_lib = MagicMock()
@@ -144,9 +174,14 @@ class TestAudiobookshelfRealAPI:
             fp = Path(tmpdir) / "book.m4b"
             fp.write_bytes(b"audio")
             from src.audiobook_studio.publish.audiobookshelf import AudiobookFile
+
             af = AudiobookFile(
-                file_path=fp, size_bytes=5, duration_seconds=60,
-                format="m4b", bitrate_kbps=64, checksum_md5="x",
+                file_path=fp,
+                size_bytes=5,
+                duration_seconds=60,
+                format="m4b",
+                bitrate_kbps=64,
+                checksum_md5="x",
             )
             mock_client = MagicMock()
             resp_lib = MagicMock()
@@ -193,6 +228,7 @@ class TestAudiobookshelfRealAPI:
     def test_real_api_call_with_cover_base64(self):
         """上传带封面 base64 图片。"""
         import base64
+
         pub = self._make_pub(mock=True)
         with tempfile.TemporaryDirectory() as tmpdir:
             fp = Path(tmpdir) / "book.m4b"
@@ -200,9 +236,14 @@ class TestAudiobookshelfRealAPI:
             cover = Path(tmpdir) / "cover.jpg"
             cover.write_bytes(b"\xff\xd8\xff\xe0")
             from src.audiobook_studio.publish.audiobookshelf import AudiobookFile
+
             af = AudiobookFile(
-                file_path=fp, size_bytes=5, duration_seconds=60,
-                format="m4b", bitrate_kbps=64, checksum_md5="x",
+                file_path=fp,
+                size_bytes=5,
+                duration_seconds=60,
+                format="m4b",
+                bitrate_kbps=64,
+                checksum_md5="x",
             )
             upload_data = self._make_upload_data()
             upload_data["coverImage"] = base64.b64encode(cover.read_bytes()).decode()
@@ -229,6 +270,7 @@ class TestAudiobookshelfRealAPI:
 
             # Use side_effect function to handle search loop retries
             call_count = [0]
+
             def mock_get(url, **kwargs):
                 call_count[0] += 1
                 if "search" in url:
@@ -252,9 +294,14 @@ class TestAudiobookshelfRealAPI:
             fp = Path(tmpdir) / "book.m4b"
             fp.write_bytes(b"audio")
             from src.audiobook_studio.publish.audiobookshelf import AudiobookFile
+
             af = AudiobookFile(
-                file_path=fp, size_bytes=5, duration_seconds=60,
-                format="m4b", bitrate_kbps=64, checksum_md5="x",
+                file_path=fp,
+                size_bytes=5,
+                duration_seconds=60,
+                format="m4b",
+                bitrate_kbps=64,
+                checksum_md5="x",
             )
             upload_data = self._make_upload_data()
 
@@ -294,9 +341,14 @@ class TestAudiobookshelfRealAPI:
             fp = Path(tmpdir) / "book.m4b"
             fp.write_bytes(b"audio")
             from src.audiobook_studio.publish.audiobookshelf import AudiobookFile
+
             af = AudiobookFile(
-                file_path=fp, size_bytes=5, duration_seconds=60,
-                format="m4b", bitrate_kbps=64, checksum_md5="x",
+                file_path=fp,
+                size_bytes=5,
+                duration_seconds=60,
+                format="m4b",
+                bitrate_kbps=64,
+                checksum_md5="x",
             )
             upload_data = self._make_upload_data()
 
@@ -329,9 +381,14 @@ class TestAudiobookshelfRealAPI:
             fp = Path(tmpdir) / "book.m4b"
             fp.write_bytes(b"audio")
             from src.audiobook_studio.publish.audiobookshelf import AudiobookFile
+
             af = AudiobookFile(
-                file_path=fp, size_bytes=5, duration_seconds=60,
-                format="m4b", bitrate_kbps=64, checksum_md5="x",
+                file_path=fp,
+                size_bytes=5,
+                duration_seconds=60,
+                format="m4b",
+                bitrate_kbps=64,
+                checksum_md5="x",
             )
             upload_data = self._make_upload_data()
 
@@ -368,9 +425,14 @@ class TestAudiobookshelfRealAPI:
             fp = Path(tmpdir) / "book.m4b"
             fp.write_bytes(b"audio")
             from src.audiobook_studio.publish.audiobookshelf import AudiobookFile
+
             af = AudiobookFile(
-                file_path=fp, size_bytes=5, duration_seconds=60,
-                format="m4b", bitrate_kbps=64, checksum_md5="x",
+                file_path=fp,
+                size_bytes=5,
+                duration_seconds=60,
+                format="m4b",
+                bitrate_kbps=64,
+                checksum_md5="x",
             )
             upload_data = self._make_upload_data()
 
@@ -406,9 +468,14 @@ class TestAudiobookshelfRealAPI:
             fp = Path(tmpdir) / "book.m4b"
             fp.write_bytes(b"audio")
             from src.audiobook_studio.publish.audiobookshelf import AudiobookFile
+
             af = AudiobookFile(
-                file_path=fp, size_bytes=5, duration_seconds=60,
-                format="m4b", bitrate_kbps=64, checksum_md5="x",
+                file_path=fp,
+                size_bytes=5,
+                duration_seconds=60,
+                format="m4b",
+                bitrate_kbps=64,
+                checksum_md5="x",
             )
             upload_data = self._make_upload_data()
 
@@ -445,9 +512,14 @@ class TestAudiobookshelfRealAPI:
             fp = Path(tmpdir) / "book.m4b"
             fp.write_bytes(b"audio")
             from src.audiobook_studio.publish.audiobookshelf import AudiobookFile
+
             af = AudiobookFile(
-                file_path=fp, size_bytes=5, duration_seconds=60,
-                format="m4b", bitrate_kbps=64, checksum_md5="x",
+                file_path=fp,
+                size_bytes=5,
+                duration_seconds=60,
+                format="m4b",
+                bitrate_kbps=64,
+                checksum_md5="x",
             )
             upload_data = self._make_upload_data()
 
@@ -478,14 +550,20 @@ class TestAudiobookshelfRealAPI:
     def test_real_api_call_with_cover_exception(self):
         """封面图片处理异常不影响结果。"""
         import base64
+
         pub = self._make_pub(mock=True)
         with tempfile.TemporaryDirectory() as tmpdir:
             fp = Path(tmpdir) / "book.m4b"
             fp.write_bytes(b"audio")
             from src.audiobook_studio.publish.audiobookshelf import AudiobookFile
+
             af = AudiobookFile(
-                file_path=fp, size_bytes=5, duration_seconds=60,
-                format="m4b", bitrate_kbps=64, checksum_md5="x",
+                file_path=fp,
+                size_bytes=5,
+                duration_seconds=60,
+                format="m4b",
+                bitrate_kbps=64,
+                checksum_md5="x",
             )
             upload_data = self._make_upload_data()
             upload_data["coverImage"] = base64.b64encode(b"img").decode()

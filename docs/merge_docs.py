@@ -10,9 +10,8 @@ Usage:
 
 import argparse
 import shutil
-from pathlib import Path
 from datetime import datetime
-
+from pathlib import Path
 
 # Documentation categories and their source files
 DOC_CATEGORIES = {
@@ -70,11 +69,11 @@ def merge_category(name: str, config: dict, dry_run: bool = False) -> bool:
     for source in config["sources"]:
         source_path = root / source
         if source_path.exists():
-            with open(source_path, 'r', encoding='utf-8') as f:
+            with open(source_path, "r", encoding="utf-8") as f:
                 content = f.read()
 
             # Add section header
-            section_name = source_path.stem.replace('_', ' ').title()
+            section_name = source_path.stem.replace("_", " ").title()
             merged_content.append(f"\n## {section_name}\n")
             merged_content.append(f"\n<!-- 来源：{source} -->\n")
             merged_content.append(content)
@@ -94,8 +93,8 @@ def merge_category(name: str, config: dict, dry_run: bool = False) -> bool:
     if not dry_run:
         target_path = root / config["target"]
         target_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(target_path, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(merged_content))
+        with open(target_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(merged_content))
         print(f"✓ 已写入：{config['target']}")
 
     return True
@@ -155,7 +154,7 @@ def create_docs_index(root: Path, dry_run: bool = False) -> None:
 
     if not dry_run:
         index_path = root / "docs" / "INDEX.md"
-        with open(index_path, 'w', encoding='utf-8') as f:
+        with open(index_path, "w", encoding="utf-8") as f:
             f.write(index_content)
         print(f"✓ 已创建文档索引：docs/INDEX.md")
 
@@ -163,7 +162,12 @@ def create_docs_index(root: Path, dry_run: bool = False) -> None:
 def main():
     parser = argparse.ArgumentParser(description="Consolidate documentation files")
     parser.add_argument("--dry-run", action="store_true", help="Preview without writing files")
-    parser.add_argument("--output-dir", type=str, default="docs/merged", help="Output directory for merged docs")
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="docs/merged",
+        help="Output directory for merged docs",
+    )
     args = parser.parse_args()
 
     root = Path(__file__).parent.parent

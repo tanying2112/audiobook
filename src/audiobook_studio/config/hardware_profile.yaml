@@ -135,14 +135,17 @@ profiles:
         inter_op_num_threads: 2
       voice_presets: "config/voice_mapping.yaml"
       fallback_chain:
+        - engine: "voxcpm2_remote"
         - engine: "edge"
         - engine: "azure"
         - engine: "gcp"
     quality_check:
-      dnsmos_enabled: true
-      asr_enabled: true
+      # torch 2.2.2 下重型指标在进程内推理会 segfault 杀死 API 进程（2026-09-04 实测）
+      dnsmos_enabled: false
+      utmos_enabled: false
+      asr_enabled: false
       asr_model: "sensevoice_small"
-      speaker_similarity_enabled: true
+      speaker_similarity_enabled: false
       speaker_embed_model: "ecapa_tdnn"
       rules_enabled: true
       thresholds:
@@ -223,6 +226,7 @@ profiles:
       kv_cache_reuse: true
       # 回退链
       fallback_chain:
+        - engine: "voxcpm2_remote"
         - engine: "cosyvoice"
           model_path: "models/CosyVoice-300M"
         - engine: "kokoro_onnx"

@@ -1,5 +1,7 @@
 import axios from 'axios'
 import type { Project, Chapter, Paragraph, AudioSegment, Character, QualityResult } from '../types'
+import { useAuthStore } from '../stores/auth'
+import { t } from '../i18n'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000'
 
@@ -8,6 +10,210 @@ const api = axios.create({
   timeout: 30000,
   headers: { 'Content-Type': 'application/json' },
 })
+
+// ── Loading state (request counter + events) ──────────────────────────────
+let pendingRequests = 0
+export const apiEvents = new EventTarget()
+
+function emitLoading() {
+  const loading = pendingRequests > 0
+  apiEvents.dispatchEvent(
+    new CustomEvent('loading', { detail: { loading, pending: pendingRequests } }),
+  )
+}
+
+/** Subscribe to global loading-state changes. Returns an unsubscribe fn. */
+export function onApiLoading(
+  listener: (loading: boolean, pending: number) => void,
+): () => void {
+  const handler = (e: Event) => {
+    const detail = (e as CustomEvent<{ loading: boolean; pending: number }>).detail
+    listener(detail.loading, detail.pending)
+  }
+  apiEvents.addEventListener('loading', handler)
+  // emit current state immediately
+  listener(pendingRequests > 0, pendingRequests)
+  return () => apiEvents.removeEventListener('loading', handler)
+}
+
+api.interceptors.request.use((config) => {
+  const authStore = useAuthStore()
+  if (authStore.token) {
+    config.headers.Authorization = `Bearer ${authStore.token}`
+  }
+  pendingRequests += 1
+  emitLoading()
+  return config
+})
+
+let isRefreshing = false
+let failedQueue: Array<{
+  resolve: (value: unknown) => void
+  reject: (reason: unknown) => void
+}> = []
+
+function processQueue(error: unknown, token: string | null = null) {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error)
+    } else {
+      prom.resolve(token)
+    }
+  })
+  failedQueue = []
+}
+
+// ── Unified API error-code mapping ──────────────────────────────────────────
+export interface ApiError {
+  status: number | null
+  code: string
+  message: string
+  detail?: unknown
+}
+
+function statusToCode(status: number | null, err: any): string {
+  switch (status) {
+    case 400:
+      return 'bad_request'
+    case 401:
+      return 'unauthorized'
+    case 403:
+      return 'forbidden'
+    case 404:
+      return 'not_found'
+    case 409:
+      return 'conflict'
+    case 422:
+      return 'validation_error'
+    case 429:
+      return 'rate_limited'
+    case 500:
+      return 'internal_error'
+    case 502:
+      return 'bad_gateway'
+    case 503:
+      return 'service_unavailable'
+  }
+  if (err?.code === 'ECONNABORTED' || /timeout/i.test(String(err?.message))) return 'timeout'
+  if (err?.request && !err?.response) return 'network_error'
+  return 'unknown'
+}
+
+function defaultMessage(code: string): string {
+  switch (code) {
+    case 'bad_request':
+      return 'Bad request'
+    case 'unauthorized':
+      return 'Unauthorized'
+    case 'forbidden':
+      return 'Forbidden'
+    case 'not_found':
+      return 'Not found'
+    case 'conflict':
+      return 'Conflict'
+    case 'validation_error':
+      return 'Validation error'
+    case 'rate_limited':
+      return 'Too many requests, please slow down'
+    case 'internal_error':
+      return 'Internal server error'
+    case 'bad_gateway':
+      return 'Bad gateway'
+    case 'service_unavailable':
+      return 'Service unavailable'
+    case 'timeout':
+      return 'Request timeout'
+    case 'network_error':
+      return 'Network error'
+    default:
+      return 'Unknown error'
+  }
+}
+
+/** Normalize any axios/network error into a unified { status, code, message }. */
+export function normalizeApiError(error: unknown): ApiError {
+  const err = error as any
+  const status: number | null = err?.response?.status ?? null
+  const code = statusToCode(status, err)
+  const detail = err?.response?.data?.detail
+
+  // Prefer the backend's specific detail when available, then fall back to the
+  // localized message, then to a default English message.
+  let message = ''
+  if (typeof detail === 'string' && detail) {
+    message = detail
+  } else if (Array.isArray(detail) && detail.length) {
+    message = detail
+      .map((d: any) => (typeof d === 'string' ? d : d?.msg ?? JSON.stringify(d)))
+      .join('; ')
+  } else if (detail && typeof detail === 'object' && typeof detail.message === 'string') {
+    message = detail.message
+  }
+  if (!message) {
+    try {
+      message = t(`error.${code}`)
+    } catch {
+      message = ''
+    }
+    if (!message || message === `error.${code}`) {
+      message = defaultMessage(code)
+    }
+  }
+  return { status, code, message, detail: err?.response?.data }
+}
+
+api.interceptors.response.use(
+  (response) => {
+    pendingRequests = Math.max(0, pendingRequests - 1)
+    emitLoading()
+    return response
+  },
+  async (error) => {
+    const originalRequest = error.config
+    // The request has settled (success or failure) — always release the counter.
+    pendingRequests = Math.max(0, pendingRequests - 1)
+    emitLoading()
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      if (isRefreshing) {
+        // 如果正在刷新，将当前请求加入队列等待
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject })
+        })
+          .then((token) => {
+            originalRequest.headers.Authorization = `Bearer ${token}`
+            return api(originalRequest)
+          })
+          .catch((err) => Promise.reject(err))
+      }
+
+      originalRequest._retry = true
+      isRefreshing = true
+
+      const authStore = useAuthStore()
+      try {
+        const newToken = await authStore.refreshAccessToken()
+        if (newToken) {
+          processQueue(null, newToken)
+          originalRequest.headers.Authorization = `Bearer ${newToken}`
+          return api(originalRequest)
+        }
+        // 刷新失败，清理队列并登出
+        processQueue(new Error('Token refresh failed'), null)
+        authStore.logout()
+        window.location.href = '/login'
+        return Promise.reject(error)
+      } catch (err) {
+        processQueue(err, null)
+        authStore.logout()
+        window.location.href = '/login'
+        return Promise.reject(err)
+      } finally {
+        isRefreshing = false
+      }
+    }
+    return Promise.reject(normalizeApiError(error))
+  }
+)
 
 // ── Projects ────────────────────────────────────────────────────────────
 
@@ -70,6 +276,13 @@ export async function fetchParagraph(projectId: number, chapterId: number, parag
   return data
 }
 
+export async function fetchParagraphDetail(projectId: number, chapterId: number, paragraphId: number): Promise<Paragraph> {
+  const { data } = await api.get(
+    `/api/projects/${projectId}/chapters/${chapterId}/paragraphs/${paragraphId}/detail`,
+  )
+  return data
+}
+
 export async function updateParagraph(
   projectId: number,
   chapterId: number,
@@ -102,6 +315,63 @@ export async function triggerRegeneration(paragraphId: number): Promise<void> {
 
 export async function fetchQualityResults(paragraphId: number): Promise<QualityResult[]> {
   const { data } = await api.get(`/api/paragraphs/${paragraphId}/quality`)
+  return data
+}
+
+// ── Upload ──────────────────────────────────────────────────────────────
+
+export interface UploadStatusResponse {
+  upload_id: string
+  project_id: number
+  filename: string
+  status: string
+  message: string
+}
+
+export async function uploadFile(
+  projectId: number,
+  file: File,
+  onProgress?: (percent: number) => void,
+): Promise<UploadStatusResponse> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const { data } = await api.post(`/api/projects/${projectId}/upload`, formData, {
+    // Let the browser/axios set `multipart/form-data; boundary=...` automatically.
+    // Setting an explicit `multipart/form-data` header (without boundary) makes the
+    // server's multipart parser fail to find the boundary and reject the upload.
+    headers: { 'Content-Type': undefined },
+    onUploadProgress: (e) => {
+      if (e.total && onProgress) {
+        onProgress(Math.round((e.loaded * 100) / e.total))
+      }
+    },
+  })
+  return data
+}
+
+// ── Export ──────────────────────────────────────────────────────────────
+
+export interface ExportRequest {
+  formats: string[]
+  normalize?: boolean
+  include_cover?: boolean
+  max_chars_per_line?: number
+}
+
+export interface ExportStatusResponse {
+  status: string
+  output_paths: Record<string, string>
+  error?: string
+  chapter_count: number
+}
+
+export async function startExport(projectId: number, config: ExportRequest): Promise<ExportStatusResponse> {
+  const { data } = await api.post(`/api/projects/${projectId}/export/`, config)
+  return data
+}
+
+export async function getExportStatus(projectId: number): Promise<ExportStatusResponse> {
+  const { data } = await api.get(`/api/projects/${projectId}/export/status`)
   return data
 }
 
@@ -334,14 +604,21 @@ export interface AutoRunStatusResponse {
   can_pause: boolean
   can_resume: boolean
   can_cancel: boolean
+  /** review 模式：流水线在合成前暂停等待人工确认 */
+  can_review?: boolean
 }
+
+/** 运行模式：auto=全自动直通合成；review=人工终审（合成前暂停等确认） */
+export type AutoRunMode = 'auto' | 'review'
 
 export async function startAutoRun(
   projectId: number,
   config?: AutoRunConfig,
+  mode: AutoRunMode = 'auto',
 ): Promise<AutoRunStatusResponse> {
   const { data } = await api.post(`/api/projects/${projectId}/auto-run/start`, {
     config: config || {},
+    mode,
   })
   return data
 }
@@ -363,6 +640,683 @@ export async function resumeAutoRun(projectId: number): Promise<{ action: string
 
 export async function cancelAutoRun(projectId: number): Promise<{ action: string; status: string; message: string; run_id: string }> {
   const { data } = await api.post(`/api/projects/${projectId}/auto-run/cancel`)
+  return data
+}
+
+// ── Auto-Run Autopilot ────────────────────────────────────────────────────
+
+export interface AutopilotConfig {
+  target_difficulty: string
+  primary_voice_preference: string
+  speech_rate_preference: string
+  cost_limit_usd: number | null
+  quality_threshold: number
+  max_regeneration_attempts: number
+  enable_background_music: boolean
+  enable_sfx: boolean
+  reasoning: string
+  confidence: number
+}
+
+export async function startAutopilot(projectId: number): Promise<AutoRunStatusResponse> {
+  const { data } = await api.post(`/api/projects/${projectId}/auto-run/autopilot`)
+  return data
+}
+
+export async function previewAutopilotConfig(projectId: number): Promise<AutopilotConfig> {
+  const { data } = await api.get(`/api/projects/${projectId}/auto-run/autopilot/preview`)
+  return data
+}
+
+// ── Manual Review Gate (人工终审门) ──────────────────────────────────────
+// review 模式下流水线在合成前暂停；本节端点供「人工终审」工作台
+// 编辑/确认合成前设置与标注文本（客户最终控制）。
+
+export interface ReviewGateChapterStatus {
+  chapter_id: number
+  index: number
+  title?: string | null
+  /** null=未在审 | pending_review | approved */
+  review_status: string | null
+  paragraph_count: number
+}
+
+export interface ReviewGateSummary {
+  project_id: number
+  /** auto-run 状态；awaiting_review=终审门激活中 */
+  run_status: string
+  chapters: ReviewGateChapterStatus[]
+  total_chapters: number
+  approved_chapters: number
+  pending_chapters: number
+  all_approved: boolean
+}
+
+export interface ParagraphRoutingPreview {
+  paragraph_id: number
+  paragraph_index: number
+  /** 合成将朗读的文本（edited_text 优先，插图块已剥离） */
+  effective_text: string
+  engine_choice?: string | null
+  voice_id?: string | null
+  prosody_overrides?: Record<string, unknown> | null
+  fallback_engine?: string | null
+  reasoning?: string | null
+  manual_voice_id?: string | null
+  manual_engine?: string | null
+  skipped: boolean
+  skip_reason?: string | null
+}
+
+export interface RoutingPreviewResponse {
+  chapter_id: number
+  previews: ParagraphRoutingPreview[]
+  synthesized_count: number
+  skipped_count: number
+}
+
+/** 人工终审编辑请求（None=不修改；clear_*=显式清除覆盖） */
+export interface ReviewParagraphEditPayload {
+  edited_text?: string
+  speaker_canonical_name?: string
+  is_dialogue?: boolean
+  emotion?: string
+  emotion_intensity?: number
+  speech_rate?: number
+  pitch_shift_semitones?: number
+  pause_before_ms?: number
+  pause_after_ms?: number
+  needs_sfx?: boolean
+  sfx_tags?: string[]
+  notes?: string
+  manual_voice_id?: string
+  clear_manual_voice_id?: boolean
+  manual_engine?: string
+  clear_manual_engine?: boolean
+  /** 编辑理由（写入 TTSEdit 审计 rationale） */
+  note?: string
+}
+
+export interface ReviewEditResponse {
+  paragraph: Paragraph
+  changes_made: string[]
+  /** True=该编辑把已确认章节打回待审 */
+  chapter_review_reset: boolean
+  tts_edit_version?: number | null
+}
+
+export async function fetchReviewGateSummary(projectId: number): Promise<ReviewGateSummary> {
+  const { data } = await api.get(`/api/projects/${projectId}/review-gate`)
+  return data
+}
+
+export async function approveChapter(projectId: number, chapterId: number): Promise<ReviewGateSummary> {
+  const { data } = await api.post(`/api/projects/${projectId}/review-gate/chapters/${chapterId}/approve`)
+  return data
+}
+
+export async function resetChapterApproval(projectId: number, chapterId: number): Promise<ReviewGateSummary> {
+  const { data } = await api.post(`/api/projects/${projectId}/review-gate/chapters/${chapterId}/reset`)
+  return data
+}
+
+export async function approveAllChapters(projectId: number): Promise<ReviewGateSummary> {
+  const { data } = await api.post(`/api/projects/${projectId}/review-gate/approve-all`)
+  return data
+}
+
+export async function fetchRoutingPreview(
+  projectId: number,
+  chapterId: number,
+): Promise<RoutingPreviewResponse> {
+  const { data } = await api.get(`/api/projects/${projectId}/review-gate/chapters/${chapterId}/routing-preview`)
+  return data
+}
+
+export async function reviewEditParagraph(
+  projectId: number,
+  chapterId: number,
+  paragraphId: number,
+  payload: ReviewParagraphEditPayload,
+): Promise<ReviewEditResponse> {
+  const { data } = await api.patch(
+    `/api/projects/${projectId}/review-gate/chapters/${chapterId}/paragraphs/${paragraphId}`,
+    payload,
+  )
+  return data
+}
+
+// ── Pipeline Manual Stage Run / Intermediate Product ────────────────────
+
+export interface StageRunRequestPayload {
+  stage: string
+  chapter_id?: number
+  paragraph_id?: number
+  target_difficulty?: string
+  target_language?: string
+  chapter_indices?: number[]
+  book_title?: string
+  author?: string
+}
+
+export interface StageRunResponse {
+  stage: string
+  status: string
+  message: string
+  progress: number
+  result?: Record<string, unknown> | null
+}
+
+export async function runPipelineStage(
+  projectId: number,
+  payload: StageRunRequestPayload,
+): Promise<StageRunResponse> {
+  const { data } = await api.post(`/api/projects/${projectId}/pipeline/run-stage`, payload)
+  return data
+}
+
+export async function fetchIntermediateProduct(
+  projectId: number,
+  stage: string,
+  chapterId?: number,
+): Promise<Record<string, unknown>> {
+  const { data } = await api.get(`/api/projects/${projectId}/auto-run/intermediate/${encodeURIComponent(stage)}`, {
+    params: chapterId ? { chapter_id: chapterId } : {},
+  })
+  return data
+}
+
+// ── Voice Cloning ──────────────────────────────────────────────────────
+
+export interface CloneVoiceRequest {
+  speaker_id: string
+  language?: string
+  text_content?: string
+}
+
+export interface CloneVoiceResponse {
+  success: boolean
+  speaker_id: string
+  voice_id: string
+  message: string
+  quality?: string
+  snr_db?: number
+  sample_count?: number
+}
+
+export interface ClonedVoice {
+  speaker_id: string
+  voice_id: string
+  quality: string
+  snr_db: number
+  sample_count: number
+  created_at: string
+}
+
+export interface ListClonedVoicesResponse {
+  cloned_voices: ClonedVoice[]
+  count: number
+}
+
+export async function cloneVoice(
+  file: File,
+  speakerId: string,
+  language: string = 'zh-CN',
+  textContent: string = '',
+  onProgress?: (percent: number) => void,
+  consent?: boolean, // P2.11 合规: 样本提供者授权 (后端 422 强校验)
+): Promise<CloneVoiceResponse> {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('speaker_id', speakerId)
+  formData.append('language', language)
+  formData.append('text_content', textContent)
+  // P2.11 合规: consent 必传, 后端未勾 → 422; 显式转字符串与 multipart Form 一致
+  formData.append('consent', consent ? 'true' : 'false')
+
+  const { data } = await api.post('/api/tts/voices/clone', formData, {
+    // Let the browser/axios set `multipart/form-data; boundary=...` automatically.
+    // An explicit header without a boundary makes the server reject the upload.
+    headers: { 'Content-Type': undefined },
+    onUploadProgress: (e) => {
+      if (e.total && onProgress) {
+        onProgress(Math.round((e.loaded * 100) / e.total))
+      }
+    },
+  })
+  return data
+}
+
+export async function listClonedVoices(): Promise<ListClonedVoicesResponse> {
+  const { data } = await api.get('/api/tts/voices/cloned')
+  return data
+}
+
+export async function previewVoice(voiceId: string, text: string = '这是一个语音试听样本。'): Promise<{ preview_url: string }> {
+  const { data } = await api.get(`/api/tts/voices/preview/${voiceId}`, { params: { text } })
+  return data
+}
+
+export function getPreviewAudioUrl(voiceId: string): string {
+  return `${API_BASE}/api/tts/voices/preview/${voiceId}`
+}
+
+// ── TTS Voices & Status ──────────────────────────────────────────────────
+
+export interface TTSVoice {
+  id: string
+  name: string
+  gender: string
+  language: string
+  description?: string
+  sample_url?: string
+}
+
+export interface TTSEngine {
+  id: string
+  name: string
+  available: boolean
+  voices: TTSVoice[]
+  priority: number
+  supports_prosody: boolean
+  supports_ssml: boolean
+}
+
+export interface TTSVoicesResponse {
+  engines: Record<string, TTSEngine>
+  total_voices: number
+  default_engine: string
+  default_voice: string
+}
+
+export interface TTSStatusResponse {
+  local_engines_available: boolean
+  kokoro_available: boolean
+  kokoro_model_loaded: boolean
+  voxcpm2_available: boolean
+  voxcpm2_model_loaded: boolean
+  sherpa_onnx_available: boolean
+  cloud_engines_available: boolean
+  edge_tts_available: boolean
+  azure_available: boolean
+  gcp_available: boolean
+  recommended_engine: string
+  recommended_voice: string
+  enable_local_tts_env: boolean
+}
+
+export async function fetchTTSVoices(
+  includeUnavailable = false,
+  language?: string,
+  gender?: string,
+): Promise<TTSVoicesResponse> {
+  const params: Record<string, string | boolean> = {}
+  if (includeUnavailable) params.include_unavailable = 'true'
+  if (language) params.language = language
+  if (gender) params.gender = gender
+  const { data } = await api.get('/api/tts/voices', { params })
+  return data
+}
+
+export async function fetchTTSStatus(): Promise<TTSStatusResponse> {
+  const { data } = await api.get('/api/tts/status')
+  return data
+}
+
+export async function getRecommendedVoices(
+  context?: string,
+  language = 'zh-CN',
+): Promise<{ context: string; recommended: TTSVoice[]; count: number }> {
+  const params: Record<string, string> = {}
+  if (context) params.context = context
+  if (language) params.language = language
+  const { data } = await api.get('/api/tts/voices/recommended', { params })
+  return data
+}
+
+// ── Translation ─────────────────────────────────────────────────────────
+
+export interface TranslationLanguage {
+  code: string
+  name: string
+  native_name: string
+}
+
+export interface TranslationStartRequest {
+  target_language: string
+  chapter_indices?: number[]
+  book_title?: string
+  author?: string
+}
+
+export interface TranslationStatusResponse {
+  status: string
+  message: string
+  progress: number
+  total_segments: number
+  successful_translations: number
+  failed_translations: number
+  emotional_continuity_passed: boolean | null
+  semantic_coherence_score: number | null
+}
+
+export interface TranslationProgress {
+  project_id: number
+  total_original_segments: number
+  total_translated_segments: number
+  translation_ratio: number
+}
+
+export async function startTranslation(
+  projectId: number,
+  request: TranslationStartRequest,
+): Promise<TranslationStatusResponse> {
+  const { data } = await api.post(`/api/projects/${projectId}/pipeline/translate`, request)
+  return data
+}
+
+export async function getTranslationStatus(projectId: number): Promise<TranslationProgress> {
+  const { data } = await api.get(`/api/projects/${projectId}/pipeline/translate/status`)
+  return data
+}
+
+export async function getSupportedLanguages(): Promise<{ languages: TranslationLanguage[] }> {
+  // Backend serves the language catalog at /api/v1/languages (languages_router is
+  // mounted under /api/v1). The previous /api/translate/languages path 404'd, so the
+  // UI fell back to a hard-coded list that omitted Chinese. Map the backend shape
+  // (iso639_1 / bcp47 / display_name) into the UI's {code,name,native_name}, using
+  // bcp47 as the code so it matches the pipeline translate stage's allowed set
+  // (e.g. zh-CN, en-US, ja-JP).
+  const { data } = await api.get('/api/v1/languages')
+  const languages: TranslationLanguage[] = (data.languages || []).map((l: any) => ({
+    code: l.bcp47,
+    name: l.display_name,
+    native_name: l.display_name,
+  }))
+  return { languages }
+}
+
+// ── Monitoring / Telemetry ────────────────────────────────────────────────
+
+export interface ProjectMetrics {
+  metadata: {
+    project_id: number
+    pipeline_id: string
+    started_at: string
+    ended_at: string | null
+    duration_ms: number
+    success: boolean
+  }
+  cost_accounting: {
+    total_cost_usd: number
+    providers: Record<string, {
+      provider: string
+      model: string
+      prompt_tokens: number
+      completion_tokens: number
+      cost_usd: number
+      call_count: number
+      avg_latency_ms: number
+      success_rate: number
+    }>
+  }
+  latency_profiles: {
+    synthesis_rate_ratio: number
+    real_time_factor: number
+    total_audio_duration_ms: number
+    stage_wall_times_ms: Record<string, { duration_ms: number; success: boolean }>
+  }
+  resilience_metrics: {
+    llm: { total_calls: number; total_retries: number; total_fallbacks: number }
+    tts: { total_segments: number; successful_segments: number; failed_segments: number }
+  }
+}
+
+export interface MetricsHistoryItem {
+  file: string
+  timestamp: string
+  duration_ms: number
+  success: boolean
+  total_cost_usd: number
+  synthesis_rate_ratio: number
+}
+
+export interface MetricsHistoryResponse {
+  history: MetricsHistoryItem[]
+}
+
+export interface ProjectWithMetrics {
+  project_id: number
+  title: string
+  latest_metrics: string
+  last_updated: string
+}
+
+export interface ProjectsWithMetricsResponse {
+  projects: ProjectWithMetrics[]
+}
+
+export async function fetchProjectMetrics(
+  projectId: number,
+  chapterIndex?: number
+): Promise<ProjectMetrics> {
+  const params: Record<string, number> = {}
+  if (chapterIndex !== undefined) params.chapter_index = chapterIndex
+  const { data } = await api.get<ProjectMetrics>(`/api/monitoring/projects/${projectId}/metrics`, { params })
+  return data
+}
+
+export async function fetchLatestProjectMetrics(projectId: number): Promise<ProjectMetrics> {
+  const { data } = await api.get<ProjectMetrics>(`/api/monitoring/projects/${projectId}/metrics/latest`)
+  return data
+}
+
+export async function fetchMetricsHistory(
+  projectId: number,
+  limit = 30
+): Promise<MetricsHistoryResponse> {
+  const { data } = await api.get<MetricsHistoryResponse>(`/api/monitoring/projects/${projectId}/metrics/history`, {
+    params: { limit }
+  })
+  return data
+}
+
+export async function fetchProjectsWithMetrics(): Promise<ProjectsWithMetricsResponse> {
+  const { data } = await api.get<ProjectsWithMetricsResponse>('/api/monitoring/projects')
+  return data
+}
+
+// ── Agent Chat (migrated from raw fetch to share the interceptor) ───────────
+
+export interface AgentChatMessagePayload {
+  message: string
+  session_id: string | null
+  context?: Record<string, unknown>
+}
+
+export async function sendAgentChatMessage(projectId: number, payload: AgentChatMessagePayload): Promise<any> {
+  const { data } = await api.post('/api/agent/chat', { project_id: projectId, ...payload })
+  return data
+}
+
+export async function fetchAgentSessions(projectId: number): Promise<any> {
+  const { data } = await api.get(`/api/agent/chat/${projectId}/sessions`)
+  return data
+}
+
+export async function fetchAgentSessionHistory(projectId: number, sessionId: string): Promise<any> {
+  const { data } = await api.get(`/api/agent/chat/${projectId}/history`, {
+    params: { session_id: sessionId },
+  })
+  return data
+}
+
+export async function deleteAgentSession(projectId: number, sessionId: string): Promise<void> {
+  await api.delete(`/api/agent/chat/${projectId}/sessions/${sessionId}`)
+}
+
+// ── Agent Pipeline FSM (Phase 2) ──────────────────────────────────────────
+
+export interface PipelineConfirmRequest {
+  project_id: number
+  chapter_id?: number
+  action: 'approve' | 'reject' | 'request_rerun' | 'edit'
+  edits?: Record<string, unknown>
+}
+
+export interface PipelineConfirmResponse {
+  project_id: number
+  mode: string
+  current_state: string
+  chapter_index: number
+  chapter_id: number | null
+  paused_at: string | null
+  user_confirmed: boolean
+  error: string | null
+  completed_stages: string[]
+  chapters?: Array<{
+    id: number
+    index: number
+    title: string
+    status: string
+    current_stage?: string
+    progress: number
+  }>
+}
+
+export interface PipelineStatusResponse {
+  project_id: number
+  mode: string
+  current_state: string
+  chapter_index: number
+  chapter_id: number | null
+  paused_at: string | null
+  user_confirmed: boolean
+  error: string | null
+  completed_stages: string[]
+  status: string
+  chapters?: Array<{
+    id: number
+    index: number
+    title: string
+    status: string
+    current_stage?: string
+    progress: number
+  }>
+}
+
+export async function confirmPipelineAction(
+  payload: PipelineConfirmRequest,
+): Promise<PipelineConfirmResponse> {
+  const { data } = await api.post('/api/agent/pipeline/confirm', payload)
+  return data
+}
+
+export async function fetchPipelineStatus(projectId: number): Promise<PipelineStatusResponse> {
+  const { data } = await api.get(`/api/agent/pipeline/status/${projectId}`)
+  return data
+}
+
+// ── Upload Extraction Result (Phase 3) ────────────────────────────────────
+
+export interface ParagraphPreview {
+  id: number
+  chapter_id: number
+  index: number
+  text: string
+  preview_text: string
+  character: string | null
+  emotion: string | null
+}
+
+export interface ChapterPreview {
+  id: number
+  index: number
+  title: string
+  raw_text: string
+  paragraph_count: number
+  status: string
+  selected: boolean
+}
+
+export interface ExtractionDetailResponse {
+  job_id: string
+  project_id: number
+  status: string
+  language: string
+  page_count: number
+  has_ocr: boolean
+  ocr_page_ratio: number
+  warnings: string[]
+  processing_time_seconds: number
+  chapters: ChapterPreview[]
+  total_chapters: number
+  total_paragraphs: number
+}
+
+export async function fetchExtractionResult(
+  projectId: number,
+  jobId: string,
+): Promise<ExtractionDetailResponse> {
+  const { data } = await api.get(`/api/projects/${projectId}/extraction-result/${jobId}`)
+  return data
+}
+
+export async function startPipelineWithChapters(
+  projectId: number,
+  chapterIds: number[],
+  config?: AutoRunConfig,
+): Promise<AutoRunStatusResponse> {
+  const { data } = await api.post(`/api/projects/${projectId}/auto-run/start`, {
+    config: config || {},
+    chapter_ids: chapterIds,
+  })
+  return data
+}
+
+// ── Agent Knowledge Base ─────────────────────────────────────────────────
+
+export interface KnowledgeEntry {
+  id: string
+  topic: string
+  knowledge: Record<string, unknown>
+  source_agent?: string
+  confidence_score?: Record<string, unknown>
+  created_at?: string | null
+  last_accessed?: string | null
+}
+
+export interface KnowledgeListResponse {
+  project_id: number
+  knowledge: KnowledgeEntry[]
+}
+
+export async function listKnowledge(
+  projectId: number,
+  topic?: string,
+): Promise<KnowledgeListResponse> {
+  const { data } = await api.get(`/api/agent/knowledge/${projectId}`, {
+    params: topic ? { topic } : {},
+  })
+  return data
+}
+
+export async function addKnowledge(
+  projectId: number,
+  topic: string,
+  knowledge: Record<string, unknown>,
+  sourceAgent = 'user',
+  confidence = 1.0,
+): Promise<{ id: string; topic: string; message: string }> {
+  const { data } = await api.post('/api/agent/knowledge', null, {
+    params: {
+      project_id: projectId,
+      topic,
+      knowledge: JSON.stringify(knowledge),
+      source_agent: sourceAgent,
+      confidence,
+    },
+  })
   return data
 }
 

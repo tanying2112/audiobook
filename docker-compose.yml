@@ -1,24 +1,77 @@
 version: "3.9"
 
 services:
-  app:
+  # Backend Web instance.
+  # Service name "web" is referenced by ci.yml (compose-test / stress-test:
+  # `docker compose run --rm web ...`, `docker compose up -d db redis web`).
+  web:
     build: .
-    command: uvicorn audiobook_studio.main:app --host 0.0.0.0 --port 8000
+    command: ["uvicorn", "audiobook_studio.main:app", "--host", "0.0.0.0", "--port", "8000"]
     ports:
       - "8000:8000"
     environment:
       - DATABASE_URL=postgresql://audiobook:audiobook@db:5432/audiobook
-      - SECRET_KEY=${SECRET_KEY:-your-secret-key-change-in-production}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - AUDIO_OUTPUT_DIR=/app/output
       - CHECKPOINTS_DIR=/app/checkpoints
+      - PYTHONPATH=/app/src
+      # Celery broker / result backend (web enqueues export + pipeline tasks).
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      # LLM provider keys optional at runtime; defaults keep env_checker
+      # --fail-on-warning self-consistent in CI (non-empty placeholder only).
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-sk-devplaceholder12345678901234567890123456789012345678901234}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-sk-ant-api03-devplaceholder1234567890123456789012345678901234567890123456789012345678901234567890123456789012345}
+      # Production default: run the REAL self-iteration closed loop (S2-1).
+      # The loop issues live LLM calls unless SELF_ITERATION_MOCK=true is set
+      # (override in .env for local/dev to stay in mock mode).
+      - SELF_ITERATION_MOCK=${SELF_ITERATION_MOCK:-false}
+      # Task 6.1 asset-stripping: model cache points at the Docker volume (see Dockerfile).
+      - AUDIOBOOK_STUDIO_MODEL_CACHE=/app/models_cache
     volumes:
-      - .:/app
       - ./output:/app/output
       - ./checkpoints:/app/checkpoints
+      - ./storage:/app/storage
+      - ./logs:/app/logs
+      - models_cache:/app/models_cache
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+
+  # Alembic migration runner (S3-4): applies DB schema BEFORE web/worker start,
+  # so the app never runs migrations at startup. One-shot (restart: "no").
+  # For manual/production use: `scripts/migrate.sh up|backup|rollback|status`
+  # (pg_dump backup before upgrade runs when the pg client is available).
+  migrate:
+    build: .
+    command: ["sh", "/app/scripts/migrate.sh", "up"]
+    environment:
+      - DATABASE_URL=postgresql://audiobook:audiobook@db:5432/audiobook
+      - PYTHONPATH=/app/src
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  frontend:
+    image: node:20-alpine
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_BASE=http://localhost:8000
+    volumes:
+      - ./web:/app
+    profiles:
+      - dev
 
   db:
     image: postgres:16-alpine
@@ -36,5 +89,55 @@ services:
       timeout: 5s
       retries: 5
 
+  # Celery broker / result backend (celery_app.py reads $REDIS_URL).
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Celery worker instance — enabled by default for production workloads.
+  # Run `docker compose up -d` to start web + worker together.
+  # Use `docker compose --profile worker up -d` only if explicitly requested.
+  celery-worker:
+    build: .
+    command: ["celery", "-A", "src.audiobook_studio.celery_app", "worker", "-l", "info", "-Q", "export,pipeline", "--concurrency=1"]
+    environment:
+      - DATABASE_URL=postgresql://audiobook:audiobook@db:5432/audiobook
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - PYTHONPATH=/app/src
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - AUDIOBOOK_STUDIO_MODEL_CACHE=/app/models_cache
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-sk-devplaceholder12345678901234567890123456789012345678901234}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-sk-ant-api03-devplaceholder1234567890123456789012345678901234567890123456789012345678901234567890123456789012345}
+    volumes:
+      - ./output:/app/output
+      - ./checkpoints:/app/checkpoints
+      - ./storage:/app/storage
+      - ./logs:/app/logs
+      - models_cache:/app/models_cache
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
 volumes:
   postgres_data:
+  # Task 6.1 资产剥离: shared named volume for large model assets — never baked into the image.
+  models_cache:
+  # Redis persistence volume for checkpoint recovery
+  redis_data:

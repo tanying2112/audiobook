@@ -5,14 +5,14 @@
 """
 
 import logging
-from datetime import datetime
-from typing import List, Dict, Any, Optional
-from urllib.parse import urljoin
 import xml.etree.ElementTree as ET
+from datetime import datetime
+from typing import Dict, List, Optional
+from urllib.parse import urljoin
 
+from ..models.audio_segment import AudioSegment
 from ..models.book import Book
 from ..models.chapter import Chapter
-from ..models.audio_segment import AudioSegment
 
 logger = logging.getLogger(__name__)
 
@@ -67,8 +67,7 @@ class RssFeedGenerator:
 
         description_elem = ET.SubElement(channel, "description")
         description_elem.text = (
-            f"由Audiobook Studio自动生成的有声书：《{book.title}》"
-            f" 作者：{book.author or '未知'}"
+            f"由Audiobook Studio自动生成的有声书：《{book.title}》" f" 作者：{book.author or '未知'}"
         )
 
         language_elem = ET.SubElement(channel, "language")
@@ -157,9 +156,7 @@ class RssFeedGenerator:
             if isinstance(pub_date, datetime):
                 item_pub_date.text = pub_date.strftime("%a, %d %b %Y %H:%M:%S GMT")
             else:
-                item_pub_date.text = datetime.now().strftime(
-                    "%a, %d %b %Y %H:%M:%S GMT"
-                )
+                item_pub_date.text = datetime.now().strftime("%a, %d %b %Y %H:%M:%S GMT")
 
             item_guid = ET.SubElement(item_elem, "guid")
             item_guid.text = f"{book.id}-chapter-{chapter_id}"

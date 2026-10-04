@@ -1,119 +1,22 @@
-<script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { useI18n } from '../i18n'
-import {
-  fetchHarnessDashboard,
-  triggerIteration,
-  type HarnessDashboardResponse,
-
-} from '../api'
-
-const router = useRouter()
-const { t } = useI18n()
-
-// ── State ─────────────────────────────────────────────────────────────────
-const dashboard = ref<HarnessDashboardResponse | null>(null)
-const loading = ref(true)
-const error = ref('')
-const triggering = ref(false)
-const triggerMessage = ref('')
-const lastRefresh = ref<string>('')
-let refreshTimer: ReturnType<typeof setInterval> | null = null
-
-// ── Load Data ─────────────────────────────────────────────────────────────
-async function loadDashboard() {
-  try {
-    loading.value = true
-    error.value = ''
-    dashboard.value = await fetchHarnessDashboard()
-    lastRefresh.value = new Date().toLocaleTimeString()
-  } catch (e: any) {
-    error.value = t('harness_dashboard.load_failed', { error: e.response?.data?.detail || e.message })
-  } finally {
-    loading.value = false
-  }
-}
-
-async function handleTrigger() {
-  try {
-    triggering.value = true
-    triggerMessage.value = ''
-    const result = await triggerIteration()
-    triggerMessage.value = result.message
-    await loadDashboard()
-  } catch (e: any) {
-    triggerMessage.value = t('harness_dashboard.trigger_failed', { error: e.response?.data?.detail || e.message })
-  } finally {
-    triggering.value = false
-  }
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────
-function statusColor(status: string): string {
-  switch (status) {
-    case 'running': return '#22c55e'
-    case 'paused': return '#f59e0b'
-    case 'completed': return '#3b82f6'
-    case 'failed': return '#ef4444'
-    case 'rolled_back': return '#9333ea'
-    default: return '#94a3b8'
-  }
-}
-
-function gateBarWidth(rate: number, threshold: number): string {
-  const pct = Math.min((rate / threshold) * 100, 100)
-  return `${pct}%`
-}
-
-function gateBarColor(rate: number, threshold: number): string {
-  return rate >= threshold ? '#22c55e' : '#ef4444'
-}
-
-function verdictColor(verdict: string): string {
-  switch (verdict) {
-    case 'accept': return '#22c55e'
-    case 'reject': return '#ef4444'
-    case 'needs_revision': return '#f59e0b'
-    default: return '#94a3b8'
-  }
-}
-
-function patternBarWidth(count: number, maxCount: number): string {
-  if (maxCount === 0) return '0%'
-  return `${(count / maxCount) * 100}%`
-}
-
-// ── Lifecycle ─────────────────────────────────────────────────────────────
-onMounted(async () => {
-  await loadDashboard()
-  // Auto-refresh every 30s
-  refreshTimer = setInterval(loadDashboard, 30000)
-})
-
-onUnmounted(() => {
-  if (refreshTimer) clearInterval(refreshTimer)
-})
-</script>
-
 <template>
-  <div class="harness-dashboard">
+  <div class="page-container harness-dashboard">
     <!-- Header -->
     <div class="page-header">
-      <button class="btn btn-ghost" @click="router.push('/')">
-        ← {{ t('common.back') }}
+      <button class="btn btn-ghost touch-target" @click="router.push('/')">
+        ← <span class="hidden-mobile">{{ t('common.back') }}</span>
       </button>
       <h1>{{ t('harness_dashboard.title') }}</h1>
-      <div class="header-actions">
+      <div class="header-actions flex items-center gap-2">
         <button
-          class="btn btn-primary"
+          class="btn btn-primary touch-target"
           @click="handleTrigger"
           :disabled="triggering"
         >
           {{ triggering ? t('harness_dashboard.triggering') : t('harness_dashboard.trigger_iteration') }}
         </button>
-        <button class="btn btn-outline" @click="loadDashboard" :disabled="loading">
-          {{ t('common.refresh') }}
+        <button class="btn btn-outline touch-target" @click="loadDashboard" :disabled="loading">
+          <span class="hidden-mobile">{{ t('common.refresh') }}</span>
+          <span class="visible-mobile">↻</span>
         </button>
       </div>
     </div>
@@ -121,7 +24,7 @@ onUnmounted(() => {
     <!-- Status bar -->
     <div class="status-bar" v-if="lastRefresh">
       <span>{{ t('harness_dashboard.last_refresh', { time: lastRefresh }) }}</span>
-      <span v-if="triggerMessage" :class="['trigger-msg', triggerMessage.includes('失败') || triggerMessage.includes(t('common.failed')) ? 'error' : 'success']">
+      <span v-if="triggerMessage" :class="['trigger-msg', triggerError ? 'error' : 'success']">
         {{ triggerMessage }}
       </span>
     </div>
@@ -353,212 +256,26 @@ onUnmounted(() => {
   </div>
 </template>
 
-<style scoped>
-.harness-dashboard {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 24px;
-}
+<script setup lang="ts">
+import { useHarnessDashboard } from '../composables/useHarnessDashboard'
+import './HarnessDashboard.css'
 
-/* Header */
-.page-header {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-}
-.page-header h1 { margin: 0; font-size: 22px; flex: 1; }
-.header-actions { display: flex; gap: 8px; }
-
-.btn {
-  padding: 8px 16px;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
-  cursor: pointer;
-  font-size: 14px;
-  transition: all 0.15s;
-}
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-primary { background: #3b82f6; color: #fff; border-color: #3b82f6; }
-.btn-primary:hover:not(:disabled) { background: #2563eb; }
-.btn-outline { background: #fff; color: #374151; }
-.btn-outline:hover:not(:disabled) { background: #f3f4f6; }
-.btn-ghost { background: none; border: none; color: #6b7280; }
-.btn-ghost:hover { color: #111827; }
-
-/* Status bar */
-.status-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 12px;
-  background: #f9fafb;
-  border-radius: 8px;
-  font-size: 13px;
-  color: #6b7280;
-  margin-bottom: 16px;
-}
-.trigger-msg.success { color: #16a34a; }
-.trigger-msg.error { color: #dc2626; }
-
-.error-banner {
-  padding: 12px 16px;
-  background: #fef2f2;
-  color: #dc2626;
-  border-radius: 8px;
-  margin-bottom: 16px;
-}
-
-.loading {
-  text-align: center;
-  padding: 60px;
-  color: #6b7280;
-}
-
-/* Grid */
-.grid { display: grid; gap: 16px; margin-bottom: 16px; }
-.grid-2 { grid-template-columns: 1fr 1fr; }
-.grid-3 { grid-template-columns: 1fr 1fr 1fr; }
-.full-width { margin-bottom: 16px; }
-
-@media (max-width: 900px) {
-  .grid-2, .grid-3 { grid-template-columns: 1fr; }
-}
-
-/* Card */
-.card {
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  padding: 20px;
-}
-.card h2 {
-  margin: 0 0 16px;
-  font-size: 16px;
-  font-weight: 600;
-  color: #1f2937;
-}
-
-/* Stat row */
-.stat-row { display: flex; gap: 16px; flex-wrap: wrap; }
-.stat-item { display: flex; flex-direction: column; gap: 4px; }
-.stat-label { font-size: 12px; color: #9ca3af; }
-.stat-value { font-size: 20px; font-weight: 600; color: #111827; }
-.stat-value.small { font-size: 13px; font-weight: 400; }
-.stat-badge {
-  font-size: 12px;
-  padding: 2px 10px;
-  border-radius: 99px;
-  font-weight: 500;
-}
-.stat-badge.active { background: #dcfce7; color: #16a34a; }
-.stat-badge.inactive { background: #f3f4f6; color: #6b7280; }
-
-/* Funnel */
-.funnel { display: flex; flex-direction: column; gap: 10px; }
-.funnel-step { display: flex; align-items: center; gap: 12px; }
-.funnel-label { width: 80px; font-size: 13px; color: #6b7280; text-align: right; }
-.funnel-bar-wrapper { flex: 1; height: 20px; background: #f3f4f6; border-radius: 4px; overflow: hidden; }
-.funnel-bar { height: 100%; background: #3b82f6; border-radius: 4px; transition: width 0.5s; }
-.funnel-value { width: 40px; font-size: 14px; font-weight: 600; text-align: right; }
-
-/* Pattern heatmap */
-.top-patterns { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
-.tag {
-  font-size: 11px;
-  padding: 2px 8px;
-  background: #eff6ff;
-  color: #3b82f6;
-  border-radius: 4px;
-}
-.pattern-bars { display: flex; flex-direction: column; gap: 6px; }
-.pattern-row { display: flex; align-items: center; gap: 8px; }
-.pattern-tag { width: 140px; font-size: 12px; color: #374151; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pattern-bar-wrapper { flex: 1; height: 14px; background: #f3f4f6; border-radius: 3px; overflow: hidden; }
-.pattern-bar { height: 100%; background: #f59e0b; border-radius: 3px; }
-.pattern-count { width: 30px; font-size: 12px; font-weight: 600; text-align: right; }
-.pattern-stage { font-size: 11px; color: #9ca3af; width: 100px; }
-
-/* Promotion gate */
-.gate-status {
-  padding: 8px 12px;
-  border-radius: 8px;
-  font-weight: 600;
-  font-size: 14px;
-  margin-bottom: 16px;
-  text-align: center;
-}
-.gate-status.pass { background: #dcfce7; color: #16a34a; }
-.gate-status.fail { background: #fef2f2; color: #dc2626; }
-.gate-list { display: flex; flex-direction: column; gap: 12px; }
-.gate-item { display: flex; align-items: center; gap: 12px; }
-.gate-label { width: 120px; font-size: 13px; color: #6b7280; text-align: right; }
-.gate-bar-wrapper { flex: 1; height: 18px; background: #f3f4f6; border-radius: 4px; overflow: hidden; }
-.gate-bar { height: 100%; border-radius: 4px; transition: width 0.5s; }
-.gate-value { width: 110px; font-size: 13px; font-weight: 500; text-align: right; }
-.gate-threshold { color: #9ca3af; font-weight: 400; }
-
-/* Canary */
-.canary-item { padding: 10px; background: #f9fafb; border-radius: 8px; margin-bottom: 8px; }
-.canary-header { display: flex; justify-content: space-between; margin-bottom: 4px; }
-.canary-stage { font-weight: 600; font-size: 14px; }
-.canary-status { font-size: 12px; text-transform: capitalize; }
-.canary-detail { font-size: 13px; color: #6b7280; }
-.canary-alert { font-size: 12px; color: #f59e0b; margin-top: 4px; }
-
-/* A/B Test */
-.ab-test-item { padding: 10px; background: #f9fafb; border-radius: 8px; margin-bottom: 8px; }
-.ab-header { display: flex; justify-content: space-between; margin-bottom: 4px; font-weight: 500; font-size: 13px; }
-.ab-winner { font-size: 12px; }
-.ab-detail { font-size: 12px; color: #6b7280; }
-.ab-significance { margin-left: 4px; }
-.ab-significance.significant { color: #16a34a; }
-.ab-significance.not-significant { color: #9ca3af; }
-
-/* Critics */
-.critics-summary { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
-.critics-verdict { font-size: 18px; font-weight: 700; text-transform: uppercase; }
-.critics-score { font-size: 14px; color: #6b7280; }
-.critic-item { display: flex; gap: 12px; align-items: center; padding: 6px 0; border-bottom: 1px solid #f3f4f6; }
-.critic-type { width: 100px; font-size: 13px; font-weight: 500; }
-.critic-verdict { width: 100px; font-size: 13px; }
-.critic-score { font-size: 13px; color: #6b7280; }
-
-/* Empty state */
-.empty-state {
-  text-align: center;
-  padding: 20px;
-  color: #9ca3af;
-  font-size: 14px;
-}
-
-/* Timeline */
-.timeline-grid { display: flex; gap: 20px; flex-wrap: wrap; }
-.timeline-stage { flex: 1; min-width: 250px; }
-.timeline-stage h3 { font-size: 14px; margin: 0 0 8px; color: #374151; }
-.timeline-items { display: flex; flex-direction: column; gap: 6px; }
-.timeline-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  background: #f9fafb;
-  border-radius: 6px;
-  font-size: 13px;
-}
-.tl-badge {
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-.tl-badge.draft { background: #f3f4f6; color: #6b7280; }
-.tl-badge.canary { background: #fef3c7; color: #d97706; }
-.tl-badge.promoted { background: #dcfce7; color: #16a34a; }
-.tl-badge.rolled_back { background: #fce7f3; color: #db2777; }
-.tl-version { font-weight: 500; }
-.tl-date { color: #9ca3af; }
-.tl-score { color: #3b82f6; }
-</style>
+const {
+  t,
+  router,
+  dashboard,
+  loading,
+  error,
+  triggering,
+  triggerMessage,
+  triggerError,
+  lastRefresh,
+  loadDashboard,
+  handleTrigger,
+  statusColor,
+  gateBarWidth,
+  gateBarColor,
+  verdictColor,
+  patternBarWidth,
+} = useHarnessDashboard()
+</script>

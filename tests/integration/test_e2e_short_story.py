@@ -5,26 +5,22 @@ quality_check using a short piece of text and verifies that each stage produces
 expected outputs and that the final quality judgment is obtained.
 """
 
-import sys
 import tempfile
 from pathlib import Path
 
-sys.path.insert(0, "src")
-
-import pytest
-
-from audiobook_studio.pipeline import (
-    analyze_structure,
-    annotate_paragraph,
-    edit_for_tts,
-    extract_text,
-    quality_check,
-    synthesize_paragraphs,
-)
+# Import stage functions via submodule paths so they are order-independent:
+# a prior test that does ``import audiobook_studio.pipeline.<submodule>`` shadows
+# the package-level re-export of the same name, making the bare
+# ``from audiobook_studio.pipeline import <name>`` bind the *module* instead of
+# the function. Submodule-path imports always resolve to the function.
+from audiobook_studio.pipeline.analyze_structure import analyze_structure
+from audiobook_studio.pipeline.annotate_paragraph import annotate_paragraph
+from audiobook_studio.pipeline.edit_for_tts import edit_for_tts
+from audiobook_studio.pipeline.extract import extract_text
+from audiobook_studio.pipeline.quality_check import quality_check
+from audiobook_studio.pipeline.synthesize import synthesize_paragraphs
 from audiobook_studio.schemas import (
     BookAnalysisOutput,
-    BookMeta,
-    CharacterVoiceBinding,
     EmotionSnapshot,
     ExtractionResult,
     ParagraphAnnotation,
@@ -39,10 +35,7 @@ def test_e2e_short_story_mock():
     """Run the full pipeline in mock mode with a short story."""
     # 1. Extract text (simulate from a file)
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-        f.write("第一章  这是一个非常短的测试故事。"
-                "主人公旁白介绍了背景。"
-                "主角说了话。"
-                "故事结束。")
+        f.write("第一章  这是一个非常短的测试故事。" "主人公旁白介绍了背景。" "主角说了话。" "故事结束。")
         temp_path = f.name
 
     extraction: ExtractionResult = extract_text(
@@ -56,9 +49,7 @@ def test_e2e_short_story_mock():
     assert extraction.language == "zh"
 
     # 2. Analyze structure
-    analysis: BookAnalysisOutput = analyze_structure(
-        extraction.raw_text, title_hint="测试故事", mock_mode=True
-    )
+    analysis: BookAnalysisOutput = analyze_structure(extraction.raw_text, title_hint="测试故事", mock_mode=True)
     assert isinstance(analysis, BookAnalysisOutput)
     assert analysis.book_meta.title
     assert len(analysis.character_voice_map) >= 1
@@ -69,8 +60,10 @@ def test_e2e_short_story_mock():
     # Build minimal book_meta, character_voice_map, emotion_snapshot from analysis
     book_meta = analysis.book_meta
     character_voice_map = analysis.character_voice_map
-    emotion_snapshot = analysis.emotion_snapshots[0] if analysis.emotion_snapshots else EmotionSnapshot(
-        chapter=1, dominant_emotion="neutral", intensity=0.5
+    emotion_snapshot = (
+        analysis.emotion_snapshots[0]
+        if analysis.emotion_snapshots
+        else EmotionSnapshot(chapter=1, dominant_emotion="neutral", intensity=0.5)
     )
 
     annotation: ParagraphAnnotation = annotate_paragraph(
@@ -123,7 +116,7 @@ def test_e2e_short_story_mock():
     routing_decision = TtsRoutingDecision(
         segment_id="test_ch1_p0",
         engine_choice=segments[0].engine,
-        voice_id=character_voice_map[0].suggested_voice_id if character_voice_map else "v1",
+        voice_id=(character_voice_map[0].suggested_voice_id if character_voice_map else "v1"),
         prosody_overrides={},
         fallback_engine="edge",
         reasoning="mock",

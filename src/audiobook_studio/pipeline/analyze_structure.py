@@ -9,11 +9,13 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Literal, Optional
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from ..analyzer import ensure_scene_tags_in_output
 from ..llm import LLMRouter, create_router
+from ..pipeline.progress_emitter import emit_stage_enter, emit_stage_exit, emit_stage_progress
 from ..schemas import BookAnalysisInput, BookAnalysisOutput
 
 logger = logging.getLogger(__name__)
@@ -30,23 +32,18 @@ class AnalyzeStructurePipeline:
     ):
         self.mock_mode = mock_mode if mock_mode is not None else os.environ.get("MOCK_LLM", "false").lower() == "true"
 
-        # Create router (mock mode controlled by MOCK_LLM env var)
+        # Create router (mock mode passed directly to avoid thread-unsafe env manipulation)
         if router is None:
-            old_mock = os.environ.get("MOCK_LLM")
-            if mock_mode:
-                os.environ["MOCK_LLM"] = "true"
-            self.router = create_router()
-            if old_mock is None:
-                os.environ.pop("MOCK_LLM", None)
-            else:
-                os.environ["MOCK_LLM"] = old_mock
+            self.router = create_router(mock_mode=self.mock_mode)
         else:
             self.router = router
 
         # Setup Jinja2 environment
         if prompt_dir is None:
-            prompt_dir = Path(__file__).parent.parent.parent.parent / "prompts"
-        self.prompt_dir = Path(prompt_dir)
+            resolved_prompt_dir = Path(__file__).parent.parent.parent.parent / "prompts"
+        else:
+            resolved_prompt_dir = Path(prompt_dir)
+        self.prompt_dir = resolved_prompt_dir
 
         self.jinja_env = Environment(
             loader=FileSystemLoader(str(self.prompt_dir)),
@@ -72,12 +69,8 @@ class AnalyzeStructurePipeline:
         formatted = []
         for i, ex in enumerate(examples[:1], 1):  # Limit to 3 examples
             formatted.append(f"### 示例 {i}\n")
-            formatted.append(
-                f"输入：{json.dumps(ex['input'], ensure_ascii=False, indent=2)[:2000]}...\n"
-            )
-            formatted.append(
-                f"期望输出：{json.dumps(ex['expected_output'], ensure_ascii=False, indent=2)[:3000]}...\n"
-            )
+            formatted.append(f"输入：{json.dumps(ex['input'], ensure_ascii=False, indent=2)[:2000]}...\n")
+            formatted.append(f"期望输出：{json.dumps(ex['expected_output'], ensure_ascii=False, indent=2)[:3000]}...\n")
         return "\n".join(formatted)
 
     def _build_prompt(self, input_data: BookAnalysisInput) -> str:
@@ -100,9 +93,23 @@ class AnalyzeStructurePipeline:
 
     def run(self, input_data: BookAnalysisInput) -> BookAnalysisOutput:
         """Execute the analysis pipeline."""
-        logger.info(
-            f"Starting structure analysis for: {input_data.title_hint or 'untitled'}"
-        )
+        logger.info(f"Starting structure analysis for: {input_data.title_hint or 'untitled'}")
+
+        # Emit stage enter
+        try:
+            import asyncio
+
+            loop = asyncio.get_running_loop()
+            loop.create_task(
+                emit_stage_enter(
+                    stage="analyze",
+                    project_id=getattr(input_data, "project_id", 0) or 0,
+                    chapter_index=getattr(input_data, "chapter_index", 1),
+                    total_items=1,
+                )
+            )
+        except RuntimeError:
+            pass
 
         # Build prompt
         prompt = self._build_prompt(input_data)
@@ -115,6 +122,24 @@ class AnalyzeStructurePipeline:
             {"role": "user", "content": prompt},
         ]
 
+        # Emit stage progress
+        try:
+            import asyncio
+
+            loop = asyncio.get_running_loop()
+            loop.create_task(
+                emit_stage_progress(
+                    stage="analyze",
+                    project_id=getattr(input_data, "project_id", 0) or 0,
+                    chapter_index=getattr(input_data, "chapter_index", 1),
+                    current=1,
+                    total=1,
+                    message="Analyzing book structure...",
+                )
+            )
+        except RuntimeError:
+            pass
+
         # Call LLM
         try:
             result = self.router.call(
@@ -122,6 +147,11 @@ class AnalyzeStructurePipeline:
                 response_model=BookAnalysisOutput,
                 messages=messages,
             )
+
+            # Ensure scene_tags is valid in the output
+            output_dict = result.output.model_dump()
+            output_dict = ensure_scene_tags_in_output(output_dict)
+            validated_output = BookAnalysisOutput.model_validate(output_dict)
 
             # Track compliance
             compliance = result.schema_compliance
@@ -133,9 +163,41 @@ class AnalyzeStructurePipeline:
                 f"latency={result.latency_ms}ms"
             )
 
-            return result.output
+            # Emit stage exit (success)
+            try:
+                import asyncio
 
-        except Exception as e:
+                loop = asyncio.get_running_loop()
+                loop.create_task(
+                    emit_stage_exit(
+                        stage="analyze",
+                        project_id=getattr(input_data, "project_id", 0) or 0,
+                        chapter_index=getattr(input_data, "chapter_index", 1),
+                        success=True,
+                    )
+                )
+            except RuntimeError:
+                pass
+
+            return validated_output
+
+        except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError) as e:  # noqa: B014
+            # Emit stage exit (error)
+            try:
+                import asyncio
+
+                loop = asyncio.get_running_loop()
+                loop.create_task(
+                    emit_stage_exit(
+                        stage="analyze",
+                        project_id=getattr(input_data, "project_id", 0) or 0,
+                        chapter_index=getattr(input_data, "chapter_index", 1),
+                        success=False,
+                        error_message=str(e),
+                    )
+                )
+            except RuntimeError:
+                pass
             logger.error(f"Structure analysis failed: {e}")
             raise
 
@@ -144,7 +206,7 @@ def analyze_structure(
     raw_text: str,
     title_hint: Optional[str] = None,
     author_hint: Optional[str] = None,
-    target_difficulty: str = "B",
+    target_difficulty: Literal["A", "B", "C", "D"] = "B",
     mock_mode: bool = True,
 ) -> BookAnalysisOutput:
     """Convenience function for structure analysis."""
@@ -197,7 +259,7 @@ if __name__ == "__main__":  # pragma: no cover
             with open(args.output, "w", encoding="utf-8") as f:
                 f.write(output_json)
         else:
-            print(output_json)
-    except Exception as e:
-        print(f"Error: {e}")
+            logger.info(output_json)
+    except (ValueError, RuntimeError, OSError, json.JSONDecodeError) as e:  # noqa: B014
+        logger.error(f"Error: {e}")
         sys.exit(1)

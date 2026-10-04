@@ -3,9 +3,9 @@
 用于 API 序列化和数据验证。
 """
 
-from typing import Literal, Annotated
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, confloat
+from pydantic import BaseModel, Field
 
 ProgressType = Annotated[float, Field(ge=0.0, le=1.0)]
 CostType = Annotated[float, Field(ge=0.0)]
@@ -18,14 +18,10 @@ class Project(BaseModel):
     title: str = Field(..., description="书名")
     author: str | None = Field(default=None, description="作者")
     genre: str | None = Field(default=None, description="体裁")
-    difficulty: Literal["A", "B", "C", "D"] | None = Field(
-        default=None, description="难度等级"
-    )
+    difficulty: Literal["A", "B", "C", "D"] | None = Field(default=None, description="难度等级")
     language: str = Field(default="zh", description="ISO 639-1 语言代码")
     era: str | None = Field(default=None, description="时代背景")
-    total_chapters_estimated: int | None = Field(
-        default=None, ge=1, description="预估总章节数"
-    )
+    total_chapters_estimated: int | None = Field(default=None, ge=1, description="预估总章节数")
 
     # 全局文风备注
     global_style_notes: str | None = Field(default=None, description="全局文风备注")

@@ -1,17 +1,14 @@
 """Tests for bench_latency module."""
 
 import json
-import statistics
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from src.audiobook_studio.benchmarks.bench_latency import (
-    parse_args,
-    load_baseline,
-    save_baseline,
-    measure_stage_latency,
     _get_test_data_for_stage,
     evaluate_performance,
+    load_baseline,
+    measure_stage_latency,
+    save_baseline,
 )
 
 
@@ -27,14 +24,25 @@ class TestParseArgs:
         parser.add_argument("--threshold", type=float, default=110.0)
         parser.add_argument("--mock", action="store_true")
         parser.add_argument("--output", type=str)
-        parser.add_argument("--stages", nargs="+", default=["extract", "analyze", "annotate", "edit", "synthesize", "quality"])
+        parser.add_argument(
+            "--stages",
+            nargs="+",
+            default=["extract", "analyze", "annotate", "edit", "synthesize", "quality"],
+        )
 
         args = parser.parse_args([])
         assert args.baseline is None
         assert args.threshold == 110.0
         assert args.mock is False
         assert args.output is None
-        assert args.stages == ["extract", "analyze", "annotate", "edit", "synthesize", "quality"]
+        assert args.stages == [
+            "extract",
+            "analyze",
+            "annotate",
+            "edit",
+            "synthesize",
+            "quality",
+        ]
 
     def test_parse_args_custom(self):
         """Test custom argument values."""
@@ -45,9 +53,26 @@ class TestParseArgs:
         parser.add_argument("--threshold", type=float, default=110.0)
         parser.add_argument("--mock", action="store_true")
         parser.add_argument("--output", type=str)
-        parser.add_argument("--stages", nargs="+", default=["extract", "analyze", "annotate", "edit", "synthesize", "quality"])
+        parser.add_argument(
+            "--stages",
+            nargs="+",
+            default=["extract", "analyze", "annotate", "edit", "synthesize", "quality"],
+        )
 
-        args = parser.parse_args(["--baseline", "baseline.json", "--threshold", "120.0", "--mock", "--output", "result.json", "--stages", "extract", "analyze"])
+        args = parser.parse_args(
+            [
+                "--baseline",
+                "baseline.json",
+                "--threshold",
+                "120.0",
+                "--mock",
+                "--output",
+                "result.json",
+                "--stages",
+                "extract",
+                "analyze",
+            ]
+        )
         assert args.baseline == "baseline.json"
         assert args.threshold == 120.0
         assert args.mock is True
@@ -238,6 +263,7 @@ class TestLatencyCalculation:
     def test_measure_stage_latency_extract(self):
         """Test extract stage latency range."""
         import os
+
         os.environ.pop("MOCK_LLM", None)
         latency = measure_stage_latency("extract", mock=True)
         # Actual mock sleep is 0.01s = 10ms, plus overhead

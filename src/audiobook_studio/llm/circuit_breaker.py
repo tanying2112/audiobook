@@ -10,7 +10,7 @@ import logging
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Literal, Dict, Any
+from typing import Any, Dict, Literal
 
 logger = logging.getLogger(__name__)
 
@@ -41,13 +41,15 @@ class CircuitBreaker:
                     self.state = "half_open"
                     self.half_open_calls = 0
                     logger.info(
-                        f"Circuit breaker [{self.provider_name}] "
-                        f"OPEN → HALF_OPEN after {elapsed:.0f}s cooldown"
+                        f"Circuit breaker [{self.provider_name}] " f"OPEN → HALF_OPEN after {elapsed:.0f}s cooldown"
                     )
                     return True
                 return False
-            # half_open: allow limited calls
-            return self.half_open_calls < self.half_open_max_calls
+            # half_open: allow limited calls and increment counter
+            if self.half_open_calls < self.half_open_max_calls:
+                self.half_open_calls += 1
+                return True
+            return False
 
     def record_success(self) -> None:
         """Record a successful call."""
@@ -56,10 +58,7 @@ class CircuitBreaker:
                 self.state = "closed"
                 self.failure_count = 0
                 self.half_open_calls = 0
-                logger.info(
-                    f"Circuit breaker [{self.provider_name}] "
-                    f"HALF_OPEN → CLOSED (success)"
-                )
+                logger.info(f"Circuit breaker [{self.provider_name}] " f"HALF_OPEN → CLOSED (success)")
             elif self.state == "closed":
                 self.failure_count = max(0, self.failure_count - 1)
 
@@ -71,10 +70,7 @@ class CircuitBreaker:
 
             if self.state == "half_open":
                 self.state = "open"
-                logger.warning(
-                    f"Circuit breaker [{self.provider_name}] "
-                    f"HALF_OPEN → OPEN (failure during recovery)"
-                )
+                logger.warning(f"Circuit breaker [{self.provider_name}] " f"HALF_OPEN → OPEN (failure during recovery)")
             elif self.failure_count >= self.failure_threshold:
                 self.state = "open"
                 logger.warning(
@@ -99,8 +95,6 @@ class CircuitBreaker:
             "failure_threshold": self.failure_threshold,
             "recovery_timeout_s": self.recovery_timeout_s,
             "seconds_since_last_failure": (
-                round(time.time() - self.last_failure_time, 1)
-                if self.last_failure_time > 0
-                else None
+                round(time.time() - self.last_failure_time, 1) if self.last_failure_time > 0 else None
             ),
         }

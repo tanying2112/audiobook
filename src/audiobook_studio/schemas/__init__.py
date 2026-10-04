@@ -5,7 +5,7 @@ HARNESS 规范契约层 (Contract Layer) — 所有 Pydantic 模型定义。
 三层架构:
 1. 契约层: 本包 (Pydantic Schemas + 黄金数据集)
 2. 执行层: LLM 调用 + Instructor 解析 + LiteLLM 路由
-3. 评估层: DeepEval + Promptfoo + LLM-as-a-Judge
+3. 评估层: LLM-as-a-Judge + 规则检查 (DNSMOS/ASR/SpeakerSim) + 人工校准
 
 核心模型 (对应 6 个 LLM 环节 + 反馈):
 * ExtractionInput / ExtractionResult          — 环节① 文本提取
@@ -20,21 +20,23 @@ HARNESS 规范契约层 (Contract Layer) — 所有 Pydantic 模型定义。
 
 from .audio_finalize import AudioFinalizeParams, AudioFinalizeResult
 from .audio_postprocess import AudioPostProcessParams
-from .book import (
-    Book,
-    BookAnalysisInput,
-    BookAnalysisOutput,
-    BookMeta,
-    CharacterVoiceBinding,
-    EmotionSnapshot,
-)
+from .book import Book, BookAnalysisInput, BookAnalysisOutput, BookMeta, CharacterVoiceBinding, EmotionSnapshot
 from .chapter_source import ChapterSource, ChapterSourceCollection, ChapterSourceParagraph
-from .extraction import ExtractionInput, ExtractionResult
+from .extraction import ExtractionInput, ExtractionResult, VisualElement
 from .feedback import FeedbackRecord
 from .feedback_analysis import FeedbackAnalysis
+from .judge import PairwiseDimensionScore, PairwiseJudgment
 from .paragraph import Paragraph, ParagraphAnnotation, ParagraphAnnotationInput
 from .project import Project
 from .quality import FixSuggestion, Quality, QualityJudgment
+from .review import (
+    FixCommand,
+    JsonTruncationCheck,
+    ReviewerInput,
+    ReviewerJudgment,
+    TagConsistencyCheck,
+    VoiceBindingCheck,
+)
 from .routing import Routing
 from .tts_edit import TTSEdit, TtsEditInput, TtsEditOutput
 from .tts_routing import TtsRoutingDecision, TtsRoutingInput
@@ -43,6 +45,7 @@ __all__ = [
     # 环节①
     "ExtractionInput",
     "ExtractionResult",
+    "VisualElement",
     # 环节②
     "BookAnalysisInput",
     "BookMeta",
@@ -65,14 +68,25 @@ __all__ = [
     # 环节⑥
     "QualityJudgment",
     "Quality",
+    # 环节⑦ (Reviewer Agent - Module 4.1)
+    "ReviewerInput",
+    "ReviewerJudgment",
+    "VoiceBindingCheck",
+    "JsonTruncationCheck",
+    "TagConsistencyCheck",
+    "FixCommand",
     # 反馈回路
     "FeedbackRecord",
     "FeedbackAnalysis",
+    # Judge (A/B 测试)
+    "PairwiseJudgment",
+    "PairwiseDimensionScore",
     # 章节源数据契约 (黄金数据集)
     "ChapterSource",
     "ChapterSourceCollection",
     "ChapterSourceParagraph",
     # 音频后处理契约
+    "AudioPostProcessParams",
     "AudioFinalizeParams",
     "AudioFinalizeResult",
 ]

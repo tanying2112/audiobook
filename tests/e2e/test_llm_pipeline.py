@@ -8,12 +8,10 @@ Tests each pipeline stage with real LLM API calls:
 5. Quality Check - Audio quality judgment
 """
 
-import pytest
 import json
-from pathlib import Path
 
-from tests.e2e.conftest import E2ETestConfig, SAMPLE_TEXT
-
+import pytest
+from tests.e2e.conftest import SAMPLE_TEXT, E2ETestConfig
 
 pytestmark = pytest.mark.e2e
 

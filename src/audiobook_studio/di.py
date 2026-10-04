@@ -7,12 +7,13 @@ enabling test isolation, multi-tenancy, and cleaner architecture.
 import threading
 from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import Any, Callable, Dict, Optional, Type, TypeVar
+from typing import Any, Callable, Dict, Optional, Type, TypeVar, cast
 
-from .config.hardware_profile import HardwareProfile
+from .config.hardware_profile import HardwareProfile, get_hardware_profile
 from .llm.config_loader import LLMProvidersConfig
 from .llm.quota_registry import QuotaRegistry
 from .tts.engine import EngineRegistry
+
 # CostTracker imported lazily in initialize_defaults to avoid circular import
 
 T = TypeVar("T")
@@ -26,7 +27,7 @@ class DIContainer:
 
     Usage:
         container = DIContainer()
-        container.register_singleton(QuotaRegistry, lambda: QuotaRegistry())
+        container.register_singleton(QuotaRegistry, QuotaRegistry())
         container.register_factory(CostTracker, lambda: CostTracker())
 
         quota = container.get(QuotaRegistry)
@@ -40,8 +41,8 @@ class DIContainer:
 
     def __init__(self, parent: Optional["DIContainer"] = None):
         self._parent = parent
-        self._singletons: Dict[Type, Any] = {}
-        self._factories: Dict[Type, Callable[[], Any]] = {}
+        self._singletons: Dict[Type[Any], Any] = {}
+        self._factories: Dict[Type[Any], Callable[[], Any]] = {}
         self._lock = threading.RLock()
         self._initialized = False
 
@@ -62,11 +63,15 @@ class DIContainer:
     def register_type(self, interface: Type[T], impl: Type[T], *, singleton: bool = True) -> None:
         """Register a type to be instantiated (singleton by default)."""
         if singleton:
+
             def factory() -> T:
                 return impl()
+
         else:
+
             def factory() -> T:
                 return impl()
+
         self.register_factory(interface, factory)
 
     def get(self, interface: Type[T]) -> T:
@@ -74,27 +79,29 @@ class DIContainer:
         # Check request-scoped override first
         request_override = _request_container.get()
         if request_override and interface in request_override._singletons:
-            return request_override._singletons[interface]
+            return cast(T, request_override._singletons[interface])
 
         with self._lock:
             # Check local singletons
             if interface in self._singletons:
-                return self._singletons[interface]
+                return cast(T, self._singletons[interface])
 
             # Check local factories
             if interface in self._factories:
                 instance = self._factories[interface]()
                 self._singletons[interface] = instance
                 del self._factories[interface]
-                return instance
+                return cast(T, instance)
 
         # Delegate to parent
         if self._parent:
             return self._parent.get(interface)
 
-        raise KeyError(f"No registration found for {interface}. "
-                       f"Call register_singleton/register_factory first, "
-                       f"or ensure container is initialized via initialize_defaults().")
+        raise KeyError(
+            f"No registration found for {interface}. "
+            f"Call register_singleton/register_factory first, "
+            f"or ensure container is initialized via initialize_defaults()."
+        )
 
     def get_or_none(self, interface: Type[T]) -> Optional[T]:
         """Get instance or return None if not registered."""
@@ -103,7 +110,7 @@ class DIContainer:
         except KeyError:
             return None
 
-    def has(self, interface: Type) -> bool:
+    def has(self, interface: Type[Any]) -> bool:
         """Check if interface is registered (locally or in parent)."""
         with self._lock:
             if interface in self._singletons or interface in self._factories:
@@ -112,7 +119,7 @@ class DIContainer:
             return self._parent.has(interface)
         return False
 
-    def unregister(self, interface: Type) -> bool:
+    def unregister(self, interface: Type[Any]) -> bool:
         """Remove a registration. Returns True if was registered."""
         with self._lock:
             if interface in self._singletons:
@@ -130,7 +137,7 @@ class DIContainer:
             self._factories.clear()
 
     @contextmanager
-    def request_scope(self, overrides: Dict[Type, Any]):
+    def request_scope(self, overrides: Dict[Type[Any], Any]):
         """Create a request-scoped context with temporary overrides.
 
         Usage:
@@ -147,8 +154,12 @@ class DIContainer:
         finally:
             _request_container.reset(token)
 
-    def initialize_defaults(self, *, hardware_profile: Optional[HardwareProfile] = None,
-                            llm_config: Optional[LLMProvidersConfig] = None) -> "DIContainer":
+    def initialize_defaults(
+        self,
+        *,
+        hardware_profile: Optional[HardwareProfile] = None,
+        llm_config: Optional[LLMProvidersConfig] = None,
+    ) -> "DIContainer":
         """Initialize with production defaults. Idempotent."""
         if self._initialized:
             return self
@@ -158,23 +169,23 @@ class DIContainer:
                 return self
 
             # Core infrastructure singletons
-            self.register_singleton(QuotaRegistry, QuotaRegistry())
+            self.register_singleton(QuotaRegistry, QuotaRegistry())  # type: ignore[no-untyped-call]
             # Lazy import CostTracker to avoid circular import
             from .llm.router import CostTracker
+
             self.register_singleton(CostTracker, CostTracker())
-            self.register_singleton(EngineRegistry, EngineRegistry())
+            self.register_singleton(EngineRegistry, EngineRegistry())  # type: ignore[no-untyped-call]
 
             # Config singletons (lazy-loaded from files)
             if hardware_profile:
                 self.register_singleton(HardwareProfile, hardware_profile)
             else:
-                self.register_factory(HardwareProfile, lambda: HardwareProfile.get_hardware_profile())
+                self.register_factory(HardwareProfile, get_hardware_profile)
 
             if llm_config:
                 self.register_singleton(LLMProvidersConfig, llm_config)
             else:
-                self.register_factory(LLMProvidersConfig,
-                                     lambda: LLMProvidersConfig.load())
+                self.register_factory(LLMProvidersConfig, LLMProvidersConfig.load)
 
             self._initialized = True
             return self
@@ -221,7 +232,7 @@ def reset_app_container() -> None:
 
 
 @contextmanager
-def app_request_scope(overrides: Dict[Type, Any]):
+def app_request_scope(overrides: Dict[Type[Any], Any]):
     """Convenience: request scope on the global app container."""
     container = get_app_container()
     with container.request_scope(overrides) as scoped:
@@ -242,12 +253,14 @@ def init_quota_registry() -> QuotaRegistry:
 def get_cost_tracker():
     """Deprecated: use get_app_container().get(CostTracker)"""
     from .llm.router import CostTracker
+
     return get_app_container().get(CostTracker)
 
 
 def reset_cost_tracker() -> None:
     """Deprecated: use container.clear() or reset_app_container()"""
     from .llm.router import CostTracker
+
     container = get_app_container()
     container.unregister(CostTracker)
     # Re-register fresh instance

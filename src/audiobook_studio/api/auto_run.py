@@ -3,24 +3,27 @@
 Provides one-click full automation from text to audiobook.
 """
 
-import json
-import logging
-from typing import Dict, List, Optional, Any, Callable
-from datetime import datetime, timezone
-from pathlib import Path
 import asyncio
+import logging
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Literal, Optional
 
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, BackgroundTasks, Depends
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..database import get_db
+from ..api.dependencies import get_async_db
+from ..api.websocket import PipelineEventType, emit_pipeline_event, get_pause_event, is_paused, pause_check
+from ..database import create_async_session
+from ..exceptions import DomainError
+from ..models.audio_segment import AudioSegment
 from ..models.book import Project
 from ..models.chapter import Chapter
-from ..pipeline.orchestrator import run_stage
+from ..models.paragraph import Paragraph
+from ..models.quality import Quality
 from ..pipeline.checkpoint import CheckpointManager
-from ..api.websocket import emit_pipeline_event, PipelineEventType
+from ..pipeline.orchestrator import run_stage
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +37,7 @@ router = APIRouter(prefix="/projects/{project_id}/auto-run", tags=["auto-run"])
 
 class AutoRunConfig(BaseModel):
     """Configuration for auto-run pipeline."""
+
     target_difficulty: str = Field("B", description="Target difficulty: A/B/C/D")
     primary_voice_preference: str = Field("female", description="Voice preference: male/female/neutral")
     speech_rate_preference: str = Field("standard", description="Speech rate: slow/standard/fast")
@@ -46,9 +50,10 @@ class AutoRunConfig(BaseModel):
 
 class AutoRunStatusResponse(BaseModel):
     """Auto-run pipeline status."""
+
     project_id: int
     run_id: str
-    status: str = "pending"  # pending, running, paused, completed, failed
+    status: str = "pending"  # pending, running, paused, awaiting_review, completed, failed, cancelled, not_started
     current_stage: Optional[str] = None
     completed_stages: List[str] = Field(default_factory=list)
     progress: float = Field(0.0, ge=0, le=1)
@@ -60,10 +65,13 @@ class AutoRunStatusResponse(BaseModel):
     can_pause: bool = True
     can_resume: bool = False
     can_cancel: bool = True
+    # 人工终审门激活中（status=="awaiting_review"）→ 前端显示「进入人工终审」
+    can_review: bool = False
 
 
 class StagePausePoint(BaseModel):
     """Stage where pipeline can pause for intervention."""
+
     stage: str
     pause_after: bool = Field(True, description="Whether to pause after this stage")
     requires_approval: bool = Field(False, description="Whether user approval is needed")
@@ -71,20 +79,41 @@ class StagePausePoint(BaseModel):
 
 class AutoRunStartRequest(BaseModel):
     """Request to start auto-run pipeline."""
+
     config: AutoRunConfig = Field(default_factory=AutoRunConfig)
     pause_points: Optional[List[StagePausePoint]] = Field(None, description="Stages to pause at")
+    # 运行模式：auto=全自动直通合成（默认，向后兼容）；review=人工终审——
+    # audio_postprocess 完成后暂停，客户逐章/整书确认标注文本后放行合成。
+    mode: Literal["auto", "review"] = Field("auto", description="Run mode: auto | review")
 
 
 class AutoRunActionResponse(BaseModel):
     """Response for pause/resume/cancel actions."""
+
     action: str
     status: str
     message: str
     run_id: str
 
 
+class AutopilotConfig(BaseModel):
+    """Auto-detected/suggested configuration for autopilot mode."""
+
+    target_difficulty: str
+    primary_voice_preference: str
+    speech_rate_preference: str
+    cost_limit_usd: Optional[float]
+    quality_threshold: float
+    max_regeneration_attempts: int
+    enable_background_music: bool
+    enable_sfx: bool
+    reasoning: str
+    confidence: float
+
+
 class IntermediateProduct(BaseModel):
     """Intermediate product from a pipeline stage."""
+
     stage: str
     project_id: int
     chapter_id: Optional[int] = None
@@ -103,7 +132,15 @@ class IntermediateProduct(BaseModel):
 _active_runs: Dict[int, Dict[str, Any]] = {}
 
 # Pause points configuration
-_stage_order = ["extract", "analyze", "annotate", "edit", "audio_postprocess", "synthesize", "quality"]
+_stage_order = [
+    "extract",
+    "analyze",
+    "annotate",
+    "edit",
+    "audio_postprocess",
+    "synthesize",
+    "quality",
+]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -122,11 +159,233 @@ def _get_checkpoint_manager(project_id: int) -> CheckpointManager:
     return CheckpointManager(project_id)
 
 
+def _is_cancelled(project_id: int) -> bool:
+    """True when a cancel was requested for the project's active run."""
+    return _active_runs.get(project_id, {}).get("status") == "cancelled"
+
+
+async def _sync_project_progress(
+    project_id: int,
+    current_stage: Optional[str],
+    status: str,
+    progress: Optional[float] = None,
+) -> None:
+    """Mirror run progress onto the projects table row.
+
+    The in-memory _active_runs state is process-local and lost on restart;
+    every DB-backed surface (Dashboard, project lists) reads this row, so it
+    must track the pipeline (previously stuck at draft/analyze/0.15 after a
+    completed run, audit finding).
+    """
+    from ..database import create_async_session
+
+    db = create_async_session()
+    try:
+        project = await db.get(Project, project_id)
+        if not project:
+            return
+        project.status = status
+        project.current_stage = current_stage
+        if progress is not None:
+            project.progress = float(progress)
+        await db.commit()
+    except Exception as e:
+        logger.warning(f"Failed to sync project progress for {project_id}: {e}")
+    finally:
+        await db.close()
+
+
+async def _pause_if_requested(project_id: int) -> None:
+    """Block at an execution checkpoint while a pause is in effect.
+
+    The shared pause event (also used by the WebSocket handler) is set by
+    POST /auto-run/pause; pause_check() waits on it until /resume clears it.
+    _active_runs status is flipped to "paused" so /resume and the status
+    endpoint stay consistent (previously /pause only set a dead
+    ``pending_pause`` flag nothing ever read, audit finding).
+    """
+    if not project_id or not is_paused(project_id):
+        return
+
+    run_info = _active_runs.get(project_id)
+    if run_info and run_info["status"] == "running":
+        run_info["status"] = "paused"
+        await emit_pipeline_event(
+            project_id=project_id,
+            event_type=PipelineEventType.PAUSED,
+            data={"run_id": run_info["run_id"]},
+        )
+
+    # Blocks until the pause event is cleared by resume.
+    await pause_check(project_id)
+
+    if run_info and run_info["status"] == "paused":
+        run_info["status"] = "running"
+        await emit_pipeline_event(
+            project_id=project_id,
+            event_type=PipelineEventType.RESUMED,
+            data={"run_id": run_info["run_id"]},
+        )
+
+
+async def _enter_review_gate(project_id: int, run_id: str) -> bool:
+    """Block at the manual review gate until every chapter is approved.
+
+    Entry: flips run status to ``awaiting_review``, marks chapters that are
+    still NULL as ``pending_review`` (never touches already-approved rows —
+    the restart-recovery path relies on approved flags surviving), syncs the
+    project row and emits AWAITING_REVIEW. When every chapter is already
+    approved the gate is skipped entirely (a restart-recovery run goes
+    straight to synthesize).
+
+    Polling mirrors the pause_points dict-polling pattern rather than the
+    shared pause event: ``websocket.pause_check`` waits on an already-set
+    event and returns immediately, so it is unusable as the gate's blocking
+    primitive. Each tick uses a fresh DB session so no SQLite transaction is
+    held across ticks.
+
+    Returns True when the gate released (all chapters approved) and the run
+    should continue to synthesize; False when cancelled while awaiting review
+    (state cleanup already happened here — the caller must return).
+    """
+    db = create_async_session()
+    try:
+        result = await db.execute(select(Chapter).where(Chapter.project_id == project_id).order_by(Chapter.index))
+        chapters = list(result.scalars().all())
+        if all(ch.review_status == "approved" for ch in chapters):
+            logger.info("Review gate: all chapters already approved, skipping gate (recovery run)")
+            return True
+        # 只填 NULL，绝不清 approved —— 恢复路径依赖 approved 标记存活
+        for ch in chapters:
+            if ch.review_status is None:
+                ch.review_status = "pending_review"
+        await db.commit()
+    finally:
+        await db.close()
+
+    run_info = _active_runs.get(project_id)
+    if run_info:
+        run_info["status"] = "awaiting_review"
+        run_info["current_stage"] = None
+    await _sync_project_progress(project_id, None, "awaiting_review")
+
+    # 清残留 pause 事件与状态，防幽灵 PAUSED/RESUMED 事件对（门等待不占用
+    # pause 事件；若审核期间用户点「暂停」应先取消审核门 —— /pause 在
+    # awaiting_review 状态下本来就会被 409 拒绝）。
+    get_pause_event(project_id).clear()
+    from ..api.websocket import manager
+
+    manager.pause_states[project_id] = False
+
+    total = len(chapters)
+    approved = sum(1 for ch in chapters if ch.review_status == "approved")
+    await emit_pipeline_event(
+        project_id=project_id,
+        event_type=PipelineEventType.AWAITING_REVIEW,
+        data={"run_id": run_id, "total_chapters": total, "pending_chapters": total - approved},
+    )
+    logger.info("Auto-run %s awaiting manual review (%d chapters, %d approved)", run_id, total, approved)
+
+    while True:
+        # Cancel during the gate: same shape as the stage-boundary cancel path,
+        # plus the project-row sync the legacy /cancel never did — without it a
+        # cancelled gate would leave project.status stuck at awaiting_review
+        # (ghost gate).
+        if _is_cancelled(project_id):
+            _active_runs.pop(project_id, None)
+            await emit_pipeline_event(
+                project_id=project_id,
+                event_type=PipelineEventType.CANCELLED,
+                data={"run_id": run_id},
+            )
+            await _sync_project_progress(project_id, None, "cancelled")
+            logger.info("Auto-run %s cancelled while awaiting review", run_id)
+            return False
+
+        released = False
+        db = create_async_session()
+        try:
+            result = await db.execute(select(Chapter).where(Chapter.project_id == project_id))
+            rows = result.scalars().all()
+            released = all(ch.review_status == "approved" for ch in rows)
+        except Exception as e:
+            logger.warning("Review gate poll failed for project %s: %s", project_id, e)
+        finally:
+            await db.close()
+
+        if released:
+            run_info = _active_runs.get(project_id)
+            if run_info:
+                run_info["status"] = "running"
+            await _sync_project_progress(project_id, None, "processing")
+            await emit_pipeline_event(
+                project_id=project_id,
+                event_type=PipelineEventType.REVIEW_RELEASED,
+                data={"run_id": run_id},
+            )
+            logger.info("Review gate released for run %s; continuing to synthesize", run_id)
+            return True
+
+        await asyncio.sleep(2)
+
+
+async def _create_paragraphs_from_chapters(db: AsyncSession, project_id: int):
+    """Create Paragraph records from Chapter raw_text if they don't exist."""
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
+    if not project:
+        return
+
+    for chapter in project.chapters:
+        result = await db.execute(select(Paragraph).where(Paragraph.chapter_id == chapter.id))
+        existing = result.scalars().all()
+        if existing:
+            continue
+
+        raw_text = chapter.raw_text or ""
+        paragraphs = [p.strip() for p in raw_text.split("\n\n") if p.strip()]
+        for idx, text in enumerate(paragraphs, start=1):
+            para = Paragraph(
+                project_id=project_id,
+                chapter_id=chapter.id,
+                chapter_index=chapter.index,
+                index=idx,
+                text=text,
+                book_id=project_id,  # For backwards compatibility
+            )
+            db.add(para)
+        await db.commit()
+        logger.info(f"Created {len(paragraphs)} paragraphs for chapter {chapter.index}")
+
+
+def _run_auto_pipeline_blocking(
+    project_id: int,
+    run_id: str,
+    config: AutoRunConfig,
+    pause_points: Optional[List[StagePausePoint]] = None,
+    mode: str = "auto",
+):
+    """Sync wrapper: run the auto pipeline on its own event loop in a worker
+    thread. Several stages perform blocking sync I/O (LLM HTTP clients, TTS);
+    run inside the main loop they freeze every other request (incl. /health).
+    """
+    asyncio.run(
+        _run_auto_pipeline(
+            project_id=project_id,
+            run_id=run_id,
+            config=config,
+            pause_points=pause_points,
+            mode=mode,
+        )
+    )
+
+
 async def _run_auto_pipeline(
     project_id: int,
     run_id: str,
     config: AutoRunConfig,
     pause_points: Optional[List[StagePausePoint]] = None,
+    mode: str = "auto",
 ):
     """
     Background task: Run complete auto pipeline.
@@ -146,7 +405,8 @@ async def _run_auto_pipeline(
         _active_runs[project_id] = {
             "run_id": run_id,
             "status": "running",
-            "config": config.dict(),
+            "mode": mode,
+            "config": config.model_dump(),
             "started_at": datetime.now(timezone.utc).isoformat(),
             "current_stage": None,
             "completed_stages": [],
@@ -157,20 +417,31 @@ async def _run_auto_pipeline(
             project_id=project_id,
             event_type=PipelineEventType.STAGE_ENTER,
             stage="auto_run",
-            data={"run_id": run_id, "config": config.dict()},
+            data={"run_id": run_id, "config": config.model_dump()},
         )
 
-        checkpoint_mgr = _get_checkpoint_manager(project_id)
+        _get_checkpoint_manager(project_id)
 
         for stage in _stage_order:
-            # Check if already completed (checkpoint)
-            if checkpoint_mgr.has_checkpoint(stage):
-                logger.info(f"Stage {stage} has checkpoint, skipping")
-                _active_runs[project_id]["completed_stages"].append(stage)
-                continue
+            # Cancel checkpoint between stages: the run stops here and cleans
+            # up its state instead of continuing in the background (audit
+            # finding: cancel previously only deleted the dict entry while the
+            # task kept running to completion).
+            if _is_cancelled(project_id):
+                run_info = _active_runs.get(project_id)
+                del _active_runs[project_id]
+                await emit_pipeline_event(
+                    project_id=project_id,
+                    event_type=PipelineEventType.CANCELLED,
+                    data={"run_id": run_id},
+                )
+                logger.info(f"Auto-run {run_id} cancelled at stage boundary '{stage}'")
+                return
 
             # Update current stage
             _active_runs[project_id]["current_stage"] = stage
+            stage_idx = _stage_order.index(stage)
+            await _sync_project_progress(project_id, stage, "processing", stage_idx / len(_stage_order))
 
             # Emit stage enter
             await emit_pipeline_event(
@@ -182,6 +453,18 @@ async def _run_auto_pipeline(
 
             # Run stage
             await _run_single_stage(project_id, stage, config)
+
+            # Cancelled mid-stage: _run_single_stage returns early when the
+            # cancel flag is seen; stop before marking anything completed.
+            if _is_cancelled(project_id):
+                del _active_runs[project_id]
+                await emit_pipeline_event(
+                    project_id=project_id,
+                    event_type=PipelineEventType.CANCELLED,
+                    data={"run_id": run_id},
+                )
+                logger.info(f"Auto-run {run_id} cancelled during stage '{stage}'")
+                return
 
             # Emit stage exit
             await emit_pipeline_event(
@@ -204,15 +487,34 @@ async def _run_auto_pipeline(
                             project_id=project_id,
                             event_type=PipelineEventType.PAUSED,
                             stage=stage,
-                            data={"pause_point": pp.dict()},
+                            data={"pause_point": pp.model_dump()},
                         )
                         # Wait for resume
-                        while _active_runs[project_id]["status"] == "paused":
+                        while _active_runs.get(project_id, {}).get("status") == "paused":
                             await asyncio.sleep(1)
 
-        # Completed
+            # 人工终审门 (Manual Review Gate)：review 模式下，全部文本侧阶段
+            # (至 audio_postprocess) 完成后暂停，等待客户确认章节后放行合成。
+            # 置于 pause_points 块之后（pause_points 优先）。全部章节已
+            # approved 时门被跳过、直进 synthesize —— 这是重启恢复路径
+            # (死门 → /review/confirm → 内部拉起恢复 run) 的关键。
+            if stage == "audio_postprocess" and mode == "review":
+                if not await _enter_review_gate(project_id, run_id):
+                    return
+
+        # Completed (never overwrite a cancelled run: cancel keeps the entry
+        # so the loops can exit cleanly and delete it themselves)
+        if _is_cancelled(project_id):
+            del _active_runs[project_id]
+            await emit_pipeline_event(
+                project_id=project_id,
+                event_type=PipelineEventType.CANCELLED,
+                data={"run_id": run_id},
+            )
+            return
         _active_runs[project_id]["status"] = "completed"
         _active_runs[project_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
+        await _sync_project_progress(project_id, None, "completed", 1.0)
 
         await emit_pipeline_event(
             project_id=project_id,
@@ -222,8 +524,13 @@ async def _run_auto_pipeline(
 
     except Exception as e:
         logger.error(f"Auto-run failed: {e}")
+        if _is_cancelled(project_id):
+            # Cancelled runs keep their "cancelled" state; do not resurrect
+            # the entry as "failed" (audit finding).
+            return
         _active_runs[project_id]["status"] = "failed"
         _active_runs[project_id]["error_message"] = str(e)
+        await _sync_project_progress(project_id, None, "failed")
 
         await emit_pipeline_event(
             project_id=project_id,
@@ -243,19 +550,12 @@ async def _run_single_stage(
     We iterate chapters (for extract/analyze) or paragraphs (for other stages)
     and emit progress events for each sub-item.
     """
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    import os
-
-    # Create a new database session for this stage
-    database_url = os.getenv("DATABASE_URL", "sqlite:///./audiobook_studio.db")
-    engine = create_engine(database_url, connect_args={"check_same_thread": False})
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    db = SessionLocal()
+    db = create_async_session()
 
     try:
         # Verify project exists
-        project = db.query(Project).filter(Project.id == project_id).first()
+        result = await db.execute(select(Project).where(Project.id == project_id))
+        project = result.scalar_one_or_none()
         if not project:
             raise ValueError(f"Project {project_id} not found")
 
@@ -263,7 +563,8 @@ async def _run_single_stage(
 
         if stage in ("extract", "analyze"):
             # These stages operate on chapters
-            chapters = project.chapters
+            result = await db.execute(select(Chapter).where(Chapter.project_id == project_id).order_by(Chapter.index))
+            chapters = result.scalars().all()
             total = len(chapters)
             if total == 0:
                 logger.warning(f"No chapters found for project {project_id} in stage {stage}")
@@ -275,7 +576,30 @@ async def _run_single_stage(
                 )
                 return
 
+            # Skip extract if chapters already have raw_text (extraction already done)
+            if stage == "extract":
+                all_extracted = all(ch.extract_status == "completed" and ch.raw_text for ch in chapters)
+                if all_extracted:
+                    logger.info("All chapters already extracted, skipping extract stage")
+                    for idx, chapter in enumerate(chapters, start=1):
+                        checkpoint_mgr.mark_stage_done(stage, chapter.index)
+                        progress = idx / total
+                        await emit_pipeline_event(
+                            project_id=project_id,
+                            event_type=PipelineEventType.STAGE_PROGRESS,
+                            stage=stage,
+                            progress=progress,
+                        )
+                    return
+
             for idx, chapter in enumerate(chapters, start=1):
+                # Cancel/pause checkpoints between chapters (audit finding:
+                # the loop previously never checked either, so HTTP/WS
+                # pause and cancel had no effect on real execution).
+                if _is_cancelled(project_id):
+                    return
+                await _pause_if_requested(project_id)
+
                 # Check per-chapter checkpoint
                 if checkpoint_mgr.is_stage_done(stage, chapter.index):
                     logger.info(f"Checkpoint: ch{chapter.index} stage '{stage}' already done, skipping")
@@ -288,8 +612,12 @@ async def _run_single_stage(
                     )
                     continue
 
-                await asyncio.to_thread(
-                    run_stage,
+                # run_stage is an ``async def`` coroutine function; ``to_thread``
+                # would only call it (producing an un-awaited coroutine, see the
+                # "coroutine 'run_stage' was never awaited" warning) so we await it
+                # directly. The stage itself performs its CPU-heavy work via its own
+                # internal executors / awaits, so the event loop is not blocked.
+                await run_stage(
                     stage,
                     db,
                     project_id=project_id,
@@ -308,9 +636,22 @@ async def _run_single_stage(
                     progress=progress,
                 )
 
-        elif stage in ("annotate", "edit", "audio_postprocess", "synthesize", "quality"):
+            # Create paragraphs after analyze stage (needed for downstream stages)
+            if stage == "analyze":
+                await _create_paragraphs_from_chapters(db, project_id)
+
+        elif stage in (
+            "annotate",
+            "edit",
+            "audio_postprocess",
+            "synthesize",
+            "quality",
+        ):
             # These stages operate on paragraphs
-            paragraphs = project.paragraphs
+            result = await db.execute(
+                select(Paragraph).where(Paragraph.project_id == project_id).order_by(Paragraph.index)
+            )
+            paragraphs = result.scalars().all()
             total = len(paragraphs)
             if total == 0:
                 logger.warning(f"No paragraphs found for project {project_id} in stage {stage}")
@@ -323,6 +664,13 @@ async def _run_single_stage(
                 return
 
             for idx, para in enumerate(paragraphs, start=1):
+                # Cancel/pause checkpoints between paragraphs (audit finding:
+                # the loop previously never checked either, so HTTP/WS
+                # pause and cancel had no effect on real execution).
+                if _is_cancelled(project_id):
+                    return
+                await _pause_if_requested(project_id)
+
                 # run_stage() resolves chapter/paragraph from IDs via StageRegistry.
                 # Pass target_difficulty through kwargs for stages that need it
                 # (e.g. edit stage uses it for difficulty-level editing).
@@ -330,8 +678,43 @@ async def _run_single_stage(
                 if config.target_difficulty:
                     stage_kwargs["target_difficulty"] = config.target_difficulty
 
-                await asyncio.to_thread(
-                    run_stage,
+                # Per-paragraph checkpoint skip (ADR-005): paragraph-level
+                # stages are tracked at (stage, chapter, paragraph) granularity.
+                # Look up the chapter index for this paragraph so we can ask
+                # the checkpoint whether this specific paragraph already had
+                # this stage completed.
+                chapter_row = None
+                if para.chapter_id:
+                    result = await db.execute(select(Chapter).where(Chapter.id == para.chapter_id))
+                    chapter_row = result.scalar_one_or_none()
+
+                # Skip placeholder rows with no text: annotate/edit/synthesize
+                # stages cannot operate on empty paragraphs (TtsRoutingInput
+                # rejects empty ``text``), and there is nothing to produce.
+                if not (para.text or "").strip() and not (para.edited_text or "").strip():
+                    ch_idx = chapter_row.index if chapter_row is not None else "?"
+                    logger.info("ch%s p%d has empty text, skipping stage '%s'", ch_idx, para.index, stage)
+                    continue
+
+                if chapter_row is not None and checkpoint_mgr.is_stage_done(stage, chapter_row.index, para.index):
+                    logger.info(
+                        "Checkpoint: ch%d p%d stage '%s' already done, skipping",
+                        chapter_row.index,
+                        para.index,
+                        stage,
+                    )
+                    progress = idx / total
+                    await emit_pipeline_event(
+                        project_id=project_id,
+                        event_type=PipelineEventType.STAGE_PROGRESS,
+                        stage=stage,
+                        progress=progress,
+                    )
+                    continue
+
+                # async coroutine (see note in the chapter-level branch above):
+                # await directly rather than via to_thread.
+                await run_stage(
                     stage,
                     db,
                     project_id=project_id,
@@ -339,6 +722,13 @@ async def _run_single_stage(
                     paragraph_id=para.id,
                     **stage_kwargs,
                 )
+
+                # Mark per-paragraph checkpoint (ADR-005): the old code marked
+                # the stage as done at chapter granularity, which caused the
+                # remaining paragraphs to be silently skipped once paragraph 1
+                # completed the stage. Track completion per paragraph instead.
+                if chapter_row is not None:
+                    checkpoint_mgr.mark_stage_done(stage, chapter_row.index, para.index)
 
                 # Emit progress
                 progress = idx / total
@@ -349,14 +739,8 @@ async def _run_single_stage(
                     progress=progress,
                 )
 
-            # Mark stage done for all chapters (paragraph-level stages cover entire project)
-            seen_chapters: set = set()
-            for para in paragraphs:
-                if para.chapter_id and para.chapter_id not in seen_chapters:
-                    chapter = db.query(Chapter).filter(Chapter.id == para.chapter_id).first()
-                    if chapter:
-                        checkpoint_mgr.mark_stage_done(stage, chapter.index)
-                    seen_chapters.add(para.chapter_id)
+            # The per-paragraph loop above now records completion per paragraph
+            # (ADR-005); no extra chapter-level bookkeeping is needed here.
 
         else:
             logger.warning(f"Unknown stage '{stage}' in auto-run")
@@ -373,7 +757,7 @@ async def _run_single_stage(
         logger.error(f"Error in _run_single_stage for stage {stage}: {e}")
         raise
     finally:
-        db.close()
+        await db.close()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -386,7 +770,7 @@ async def start_auto_run(
     project_id: int,
     request: AutoRunStartRequest,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     Start one-click auto-run pipeline.
@@ -400,27 +784,47 @@ async def start_auto_run(
     Returns run_id for tracking.
     """
     # Verify project exists
-    project = db.query(Project).filter(Project.id == project_id).first()
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="auto_run",
+            context={"project_id": project_id},
+        )
 
     # Generate run ID
     run_id = _generate_run_id(project_id)
 
-    # Check if already running
-    if project_id in _active_runs and _active_runs[project_id]["status"] == "running":
-        raise HTTPException(
-            status_code=400,
-            detail="Auto-run already in progress for this project",
+    # Check if already running. paused / awaiting_review runs also block a new
+    # start — otherwise an active review gate would be orphaned by a second run.
+    if project_id in _active_runs and _active_runs[project_id]["status"] in ("running", "paused", "awaiting_review"):
+        raise DomainError(
+            message="Auto-run already in progress for this project",
+            error_code="CONFLICT",
+            stage="auto_run",
+            context={"project_id": project_id},
         )
 
-    # Start background task
+    # Review mode opens a fresh review epoch: reset every chapter's review flag
+    # so the gate re-arms. The reset lives HERE ONLY — never inside the gate
+    # itself, or a restart-recovery run would deadlock (gate entry must see
+    # approved chapters surviving from before the restart).
+    if request.mode == "review":
+        result = await db.execute(select(Chapter).where(Chapter.project_id == project_id))
+        for ch in result.scalars().all():
+            ch.review_status = None
+        await db.commit()
+
+    # Start background task (blocking wrapper: own thread + event loop)
     background_tasks.add_task(
-        _run_auto_pipeline,
+        _run_auto_pipeline_blocking,
         project_id=project_id,
         run_id=run_id,
         config=request.config,
         pause_points=request.pause_points,
+        mode=request.mode,
     )
 
     return AutoRunStatusResponse(
@@ -462,7 +866,8 @@ async def get_auto_run_status(project_id: int, run_id: Optional[str] = None):
         completed_at=run_info.get("completed_at"),
         can_pause=run_info["status"] == "running",
         can_resume=run_info["status"] == "paused",
-        can_cancel=run_info["status"] in ("running", "paused"),
+        can_cancel=run_info["status"] in ("running", "paused", "awaiting_review"),
+        can_review=run_info["status"] == "awaiting_review",
     )
 
 
@@ -470,22 +875,41 @@ async def get_auto_run_status(project_id: int, run_id: Optional[str] = None):
 async def pause_auto_run(project_id: int):
     """Pause auto-run pipeline at next safe point."""
     if project_id not in _active_runs:
-        raise HTTPException(status_code=400, detail="No active auto-run")
+        raise DomainError(
+            message="No active auto-run",
+            error_code="NOT_FOUND",
+            stage="auto_run",
+            context={"project_id": project_id},
+        )
 
     run_info = _active_runs[project_id]
     if run_info["status"] != "running":
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot pause: current status is {run_info['status']}",
+        raise DomainError(
+            message=f"Cannot pause: current status is {run_info['status']}",
+            error_code="CONFLICT",
+            stage="auto_run",
+            context={"project_id": project_id, "status": run_info["status"]},
         )
 
-    # Set pause flag - pipeline will pause at next pause point
-    run_info["pending_pause"] = True
+    # Pause for real: set the shared pause event (also used by the WebSocket
+    # handler) so the execution loop blocks at its next checkpoint. The old
+    # code only set a ``pending_pause`` flag nothing ever read (audit finding).
+    run_info["status"] = "paused"
+    get_pause_event(project_id).set()
+    from ..api.websocket import manager
+
+    manager.pause_states[project_id] = True
+
+    await emit_pipeline_event(
+        project_id=project_id,
+        event_type=PipelineEventType.PAUSED,
+        data={"run_id": run_info["run_id"]},
+    )
 
     return AutoRunActionResponse(
         action="pause",
-        status="pending",
-        message="Pipeline will pause at next safe point",
+        status="paused",
+        message="Pipeline paused at next safe point",
         run_id=run_info["run_id"],
     )
 
@@ -494,17 +918,29 @@ async def pause_auto_run(project_id: int):
 async def resume_auto_run(project_id: int):
     """Resume paused auto-run pipeline."""
     if project_id not in _active_runs:
-        raise HTTPException(status_code=400, detail="No active auto-run")
+        raise DomainError(
+            message="No active auto-run",
+            error_code="NOT_FOUND",
+            stage="auto_run",
+            context={"project_id": project_id},
+        )
 
     run_info = _active_runs[project_id]
     if run_info["status"] != "paused":
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot resume: current status is {run_info['status']}",
+        raise DomainError(
+            message=f"Cannot resume: current status is {run_info['status']}",
+            error_code="CONFLICT",
+            stage="auto_run",
+            context={"project_id": project_id, "status": run_info["status"]},
         )
 
-    # Resume
+    # Resume: clear the shared pause event so the execution loop unblocks,
+    # and reset the WS pause state (mirror of the WebSocket resume handler).
     run_info["status"] = "running"
+    get_pause_event(project_id).clear()
+    from ..api.websocket import manager
+
+    manager.pause_states[project_id] = False
 
     await emit_pipeline_event(
         project_id=project_id,
@@ -524,26 +960,259 @@ async def resume_auto_run(project_id: int):
 async def cancel_auto_run(project_id: int):
     """Cancel auto-run pipeline."""
     if project_id not in _active_runs:
-        raise HTTPException(status_code=400, detail="No active auto-run")
-
-    run_info = _active_runs[project_id]
-    if run_info["status"] not in ("running", "paused"):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot cancel: current status is {run_info['status']}",
+        raise DomainError(
+            message="No active auto-run",
+            error_code="NOT_FOUND",
+            stage="auto_run",
+            context={"project_id": project_id},
         )
 
-    # Cancel
-    run_info["status"] = "cancelled"
+    run_info = _active_runs[project_id]
+    if run_info["status"] not in ("running", "paused", "awaiting_review"):
+        raise DomainError(
+            message=f"Cannot cancel: current status is {run_info['status']}",
+            error_code="CONFLICT",
+            stage="auto_run",
+            context={"project_id": project_id, "status": run_info["status"]},
+        )
 
-    # Clean up
-    del _active_runs[project_id]
+    # Cancel for real: mark cancelled and KEEP the entry so the execution
+    # loop sees the flag at its next checkpoint, stops, and cleans up itself.
+    # The old code deleted the entry while the task kept running to
+    # completion, then crashed on a KeyError and resurrected as "failed"
+    # (audit finding). Also clear any pause so a paused run can exit.
+    run_info["status"] = "cancelled"
+    run_info["cancel_requested"] = True
+    get_pause_event(project_id).clear()
+    from ..api.websocket import manager
+
+    manager.pause_states[project_id] = False
 
     return AutoRunActionResponse(
         action="cancel",
         status="cancelled",
-        message="Pipeline cancelled",
+        message="Pipeline cancellation requested; stopping at next safe point",
         run_id=run_info["run_id"],
+    )
+
+
+@router.post("/autopilot", response_model=AutoRunStatusResponse)
+async def start_autopilot(
+    project_id: int,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Start autopilot one-click mode.
+
+    Analyzes project content and auto-detects optimal settings:
+    - Difficulty based on text complexity
+    - Voice preference based on character gender distribution
+    - Speech rate based on content type
+    - Cost limit based on project size
+    - Quality threshold based on content requirements
+
+    Returns run_id for tracking.
+    """
+    # Verify project exists
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
+    if not project:
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="auto_run",
+            context={"project_id": project_id},
+        )
+
+    # Check if already running (paused / awaiting_review runs block too)
+    if project_id in _active_runs and _active_runs[project_id]["status"] in ("running", "paused", "awaiting_review"):
+        raise DomainError(
+            message="Auto-run already in progress for this project",
+            error_code="CONFLICT",
+            stage="auto_run",
+            context={"project_id": project_id},
+        )
+
+    # Analyze project and generate smart defaults
+    config = await _generate_autopilot_config(project_id, db)
+
+    # Generate run ID
+    run_id = _generate_run_id(project_id)
+
+    # Start background task (blocking wrapper: own thread + event loop)
+    background_tasks.add_task(
+        _run_auto_pipeline_blocking,
+        project_id=project_id,
+        run_id=run_id,
+        config=config,
+        pause_points=None,  # No pause points in autopilot mode
+    )
+
+    return AutoRunStatusResponse(
+        project_id=project_id,
+        run_id=run_id,
+        status="running",
+        started_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+
+@router.get("/autopilot/preview", response_model=AutopilotConfig)
+async def preview_autopilot_config(project_id: int, db: AsyncSession = Depends(get_async_db)):
+    """
+    Preview the auto-detected configuration without starting the pipeline.
+
+    Useful for showing the user what settings will be used.
+    """
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
+    if not project:
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="auto_run",
+            context={"project_id": project_id},
+        )
+
+    return await _generate_autopilot_config(project_id, db)
+
+
+async def _generate_autopilot_config(project_id: int, db: AsyncSession) -> AutopilotConfig:
+    """
+    Analyze project content and generate optimal configuration.
+
+    Uses heuristics based on:
+    - Text length and complexity for difficulty
+    - Character gender distribution for voice preference
+    - Content type for speech rate
+    - Project size for cost estimation
+    """
+    # Get project with chapters
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
+    if not project:
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="auto_run",
+            context={"project_id": project_id},
+        )
+
+    chapters = project.chapters
+    total_chars = sum(len(ch.raw_text or "") + len(ch.extracted_text or "") for ch in chapters)
+    total_chapters = len(chapters)
+
+    # 1. Determine difficulty based on text complexity
+    # Simple heuristic: longer text with more chapters = higher difficulty
+    avg_chars_per_chapter = total_chars / max(total_chapters, 1)
+    if total_chars < 50000:
+        target_difficulty = "D"  # Simple/short content
+    elif total_chars < 200000:
+        target_difficulty = "C"  # Medium content
+    elif total_chars < 500000:
+        target_difficulty = "B"  # Complex content
+    else:
+        target_difficulty = "A"  # Very complex/long content
+
+    # 2. Determine voice preference from character analysis
+    # Count characters by gender from analyzed_json
+    male_count = 0
+    female_count = 0
+    for chapter in chapters:
+        if chapter.analyzed_json:
+            try:
+                import json
+
+                analyzed = (
+                    chapter.analyzed_json
+                    if isinstance(chapter.analyzed_json, dict)
+                    else json.loads(chapter.analyzed_json)
+                )
+                characters = analyzed.get("characters", [])
+                for char in characters:
+                    gender = char.get("gender", "").lower()
+                    if gender in ("male", "man", "boy", "male"):
+                        male_count += 1
+                    elif gender in ("female", "woman", "girl", "female"):
+                        female_count += 1
+            except (TypeError, AttributeError):
+                pass
+
+    if female_count > male_count:
+        primary_voice_preference = "female"
+    elif male_count > female_count:
+        primary_voice_preference = "male"
+    else:
+        primary_voice_preference = "neutral"
+
+    # 3. Determine speech rate based on content type
+    # Dialogue-heavy = standard, Narrative-heavy = slightly slower
+    dialogue_ratio = 0.5
+    if total_chars > 0:
+        dialogue_chars = 0
+        for chapter in chapters:
+            if chapter.analyzed_json:
+                try:
+                    import json
+
+                    analyzed = (
+                        chapter.analyzed_json
+                        if isinstance(chapter.analyzed_json, dict)
+                        else json.loads(chapter.analyzed_json)
+                    )
+                    for char in analyzed.get("characters", []):
+                        dialogue_chars += char.get("dialogue_count", 0) * 50  # rough estimate
+                except (TypeError, AttributeError):
+                    pass
+        dialogue_ratio = min(dialogue_chars / total_chars, 1.0)
+
+    if dialogue_ratio > 0.6:
+        speech_rate_preference = "standard"
+    elif dialogue_ratio > 0.3:
+        speech_rate_preference = "standard"
+    else:
+        speech_rate_preference = "slow"  # More narrative, slower pace
+
+    # 4. Estimate cost limit based on project size
+    # Rough estimate: ~$0.001 per 100 chars for Edge-TTS, ~$0.01 for cloud premium
+    estimated_chars = total_chars * 1.2  # Account for regeneration
+    cost_limit_usd = round(estimated_chars / 100000 * 0.5, 2)  # ~$0.5 per 100k chars
+    cost_limit_usd = max(cost_limit_usd, 1.0)  # Minimum $1
+    cost_limit_usd = min(cost_limit_usd, 50.0)  # Cap at $50
+
+    # 5. Quality threshold - higher for complex content
+    if target_difficulty in ("A", "B"):
+        quality_threshold = 0.8
+    else:
+        quality_threshold = 0.7
+
+    # 6. Max regeneration attempts
+    max_regeneration_attempts = 3 if target_difficulty in ("A", "B") else 2
+
+    # 7. Background music and SFX - enable for longer content
+    enable_background_music = total_chars > 100000
+    enable_sfx = True  # Always enable SFX tags
+
+    reasoning = (
+        f"Auto-detected: {total_chapters} chapters, {total_chars:,} chars "
+        f"(avg {avg_chars_per_chapter:,.0f}/ch). "
+        f"Characters: {male_count}M/{female_count}F. "
+        f"Dialogue ratio: {dialogue_ratio:.0%}. "
+        f"Difficulty={target_difficulty}, Voice={primary_voice_preference}, "
+        f"Rate={speech_rate_preference}, Cost limit=${cost_limit_usd:.2f}"
+    )
+
+    return AutopilotConfig(
+        target_difficulty=target_difficulty,
+        primary_voice_preference=primary_voice_preference,
+        speech_rate_preference=speech_rate_preference,
+        cost_limit_usd=cost_limit_usd,
+        quality_threshold=quality_threshold,
+        max_regeneration_attempts=max_regeneration_attempts,
+        enable_background_music=enable_background_music,
+        enable_sfx=enable_sfx,
+        reasoning=reasoning,
+        confidence=0.85,
     )
 
 
@@ -552,6 +1221,7 @@ async def get_intermediate_product(
     project_id: int,
     stage: str,
     chapter_id: Optional[int] = None,
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     View intermediate product from a pipeline stage.
@@ -567,28 +1237,239 @@ async def get_intermediate_product(
     - synthesize: Audio segments
     - quality: Quality scores and issues
     """
-    # Placeholder - would query actual stage output
-    # For production, load from stage output files or DB
+    # Verify project exists
+    result = await db.execute(select(Project).where(Project.id == project_id))
+    project = result.scalar_one_or_none()
+    if not project:
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="auto_run",
+            context={"project_id": project_id},
+        )
 
     if stage not in _stage_order:
-        raise HTTPException(status_code=400, detail=f"Unknown stage: {stage}")
+        raise DomainError(
+            message=f"Unknown stage: {stage}",
+            error_code="VALIDATION_ERROR",
+            stage="auto_run",
+            context={"stage": stage, "valid_stages": _stage_order},
+        )
 
-    # Mock response based on stage
-    mock_data = {
-        "extract": {"text_preview": "...", "char_count": 0},
-        "analyze": {"characters": [], "emotions": []},
-        "annotate": {"annotations": []},
-        "edit": {"decisions": []},
-        "audio_postprocess": {"params": {}},
-        "synthesize": {"segments": []},
-        "quality": {"scores": {}},
-    }
+    # Helper to get chapter
+    async def get_chapter(cid: Optional[int]) -> Chapter:
+        if cid is not None:
+            result = await db.execute(select(Chapter).where(Chapter.id == cid, Chapter.project_id == project_id))
+            chapter = result.scalar_one_or_none()
+            if not chapter:
+                raise DomainError(
+                    message=f"Chapter {cid} not found in project {project_id}",
+                    error_code="NOT_FOUND",
+                    stage="auto_run",
+                    context={"project_id": project_id, "chapter_id": cid},
+                )
+            return chapter
+        # Return first chapter
+        result = await db.execute(select(Chapter).where(Chapter.project_id == project_id).order_by(Chapter.index))
+        chapter = result.scalars().first()
+        if not chapter:
+            raise DomainError(
+                message=f"No chapters found for project {project_id}",
+                error_code="NOT_FOUND",
+                stage="auto_run",
+                context={"project_id": project_id},
+            )
+        return chapter
+
+    chapter = await get_chapter(chapter_id)
+
+    if stage == "extract":
+        data = {
+            "chapter_id": chapter.id,
+            "chapter_index": chapter.index,
+            "raw_text": chapter.raw_text or "",
+            "extracted_text": chapter.extracted_text or "",
+        }
+        product_type = "text"
+
+    elif stage == "analyze":
+        data = {
+            "chapter_id": chapter.id,
+            "chapter_index": chapter.index,
+            "analyzed": chapter.analyzed_json or {},
+        }
+        product_type = "text"
+
+    elif stage == "annotate":
+        result = await db.execute(
+            select(Paragraph)
+            .where(Paragraph.project_id == project_id, Paragraph.chapter_id == chapter.id)
+            .order_by(Paragraph.index)
+        )
+        paragraphs = result.scalars().all()
+        annotations = []
+        for para in paragraphs:
+            annotations.append(
+                {
+                    "paragraph_id": para.id,
+                    "paragraph_index": para.index,
+                    "speaker_canonical_name": para.speaker_canonical_name,
+                    "is_dialogue": para.is_dialogue,
+                    "emotion": para.emotion,
+                    "emotion_intensity": para.emotion_intensity,
+                    "speech_rate": para.speech_rate,
+                    "pitch_shift_semitones": para.pitch_shift_semitones,
+                    "pause_before_ms": para.pause_before_ms,
+                    "pause_after_ms": para.pause_after_ms,
+                    "confidence": para.confidence,
+                    "notes": para.notes,
+                }
+            )
+        data = {
+            "chapter_id": chapter.id,
+            "chapter_index": chapter.index,
+            "annotations": annotations,
+        }
+        product_type = "text"
+
+    elif stage == "edit":
+        result = await db.execute(
+            select(Paragraph)
+            .where(Paragraph.project_id == project_id, Paragraph.chapter_id == chapter.id)
+            .order_by(Paragraph.index)
+        )
+        paragraphs = result.scalars().all()
+        edits = []
+        for para in paragraphs:
+            edits.append(
+                {
+                    "paragraph_id": para.id,
+                    "paragraph_index": para.index,
+                    "edited_text": para.edited_text,
+                    "changes_made": para.edit_changes_made,
+                    "forbidden_content_removed": para.edit_forbidden_removed,
+                    "edit_confidence": para.edit_confidence,
+                    "edit_rationale": para.edit_rationale,
+                    "edit_difficulty": para.edit_difficulty,
+                    "forbid_edit": para.edit_forbid_edit,
+                }
+            )
+        data = {
+            "chapter_id": chapter.id,
+            "chapter_index": chapter.index,
+            "edits": edits,
+        }
+        product_type = "text"
+
+    elif stage == "audio_postprocess":
+        result = await db.execute(
+            select(Paragraph)
+            .where(Paragraph.project_id == project_id, Paragraph.chapter_id == chapter.id)
+            .order_by(Paragraph.index)
+        )
+        paragraphs = result.scalars().all()
+        params_list = []
+        for para in paragraphs:
+            params_list.append(
+                {
+                    "paragraph_id": para.id,
+                    "paragraph_index": para.index,
+                    "speech_rate": para.speech_rate,
+                    "pitch_shift_semitones": para.pitch_shift_semitones,
+                    "needs_sfx": para.needs_sfx,
+                    "sfx_tags": para.sfx_tags or [],
+                }
+            )
+        data = {
+            "chapter_id": chapter.id,
+            "chapter_index": chapter.index,
+            "audio_postprocess_params": params_list,
+        }
+        product_type = "text"
+
+    elif stage == "synthesize":
+        result = await db.execute(
+            select(Paragraph)
+            .where(Paragraph.project_id == project_id, Paragraph.chapter_id == chapter.id)
+            .order_by(Paragraph.index)
+        )
+        paragraphs = result.scalars().all()
+        segments = []
+        for para in paragraphs:
+            if para.audio_segment_id:
+                result = await db.execute(select(AudioSegment).where(AudioSegment.id == para.audio_segment_id))
+                seg = result.scalar_one_or_none()
+                if seg:
+                    segments.append(
+                        {
+                            "segment_id": seg.id,
+                            "paragraph_id": para.id,
+                            "paragraph_index": para.index,
+                            "file_path": seg.file_path,
+                            "format": seg.format,
+                            "duration_ms": seg.duration_ms,
+                            "engine": seg.engine,
+                            "voice_id": seg.voice_id,
+                            "status": seg.status,
+                        }
+                    )
+        data = {
+            "chapter_id": chapter.id,
+            "chapter_index": chapter.index,
+            "audio_segments": segments,
+        }
+        product_type = "audio"
+
+    elif stage == "quality":
+        result = await db.execute(
+            select(Paragraph)
+            .where(Paragraph.project_id == project_id, Paragraph.chapter_id == chapter.id)
+            .order_by(Paragraph.index)
+        )
+        paragraphs = result.scalars().all()
+        quality_entries = []
+        for para in paragraphs:
+            result = await db.execute(
+                select(Quality).where(Quality.paragraph_id == para.id).order_by(Quality.id.desc())
+            )
+            qual = result.scalar_one_or_none()
+            if qual:
+                quality_entries.append(
+                    {
+                        "paragraph_id": para.id,
+                        "paragraph_index": para.index,
+                        "quality_id": qual.id,
+                        "speaker_clarity": qual.speaker_clarity,
+                        "emotion_match": qual.emotion_match,
+                        "prosody_naturalness": getattr(qual, "prosody_naturalness", None),
+                        "text_audio_alignment": qual.text_audio_alignment,
+                        "overall_score": qual.overall_score,
+                        "issues": qual.issues,
+                        "fix_suggestions": qual.fix_suggestions,
+                        "needs_regeneration": qual.needs_regeneration,
+                    }
+                )
+        data = {
+            "chapter_id": chapter.id,
+            "chapter_index": chapter.index,
+            "quality_results": quality_entries,
+        }
+        product_type = "text"
+
+    else:
+        # Should not happen due to earlier check
+        raise DomainError(
+            message=f"Unsupported stage: {stage}",
+            error_code="VALIDATION_ERROR",
+            stage="auto_run",
+            context={"stage": stage},
+        )
 
     return IntermediateProduct(
         stage=stage,
         project_id=project_id,
         chapter_id=chapter_id,
-        product_type="text" if stage in ("extract", "analyze", "annotate", "edit") else "audio",
-        data=mock_data.get(stage, {}),
+        product_type=product_type,
+        data=data,
         created_at=datetime.now(timezone.utc).isoformat(),
     )

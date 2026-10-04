@@ -1,33 +1,26 @@
 """Integration tests for full pipeline in mock mode."""
+
 import os
+
 os.environ["MOCK_LLM"] = "true"
 
-import sys
 
 import pytest
 
-sys.path.insert(0, "src")
-
-from audiobook_studio.pipeline import (
-    analyze_structure,
-    annotate_paragraph,
-    edit_for_tts,
-    extract_text,
-    quality_check,
-    synthesize_paragraphs,
-)
+from audiobook_studio.pipeline.analyze_structure import analyze_structure
+from audiobook_studio.pipeline.annotate_paragraph import annotate_paragraph
+from audiobook_studio.pipeline.edit_for_tts import edit_for_tts
+from audiobook_studio.pipeline.extract import extract_text
+from audiobook_studio.pipeline.quality_check import quality_check
+from audiobook_studio.pipeline.synthesize import synthesize_paragraphs
 from audiobook_studio.schemas import (
-    BookAnalysisInput,
     BookAnalysisOutput,
     BookMeta,
     CharacterVoiceBinding,
     EmotionSnapshot,
-    ExtractionInput,
     ExtractionResult,
     ParagraphAnnotation,
-    ParagraphAnnotationInput,
     QualityJudgment,
-    TtsEditInput,
     TtsEditOutput,
     TtsRoutingDecision,
     TtsRoutingInput,
@@ -84,9 +77,7 @@ def test_annotate_paragraph_mock():
             sample_quote="测试",
         ),
     ]
-    emotion_snapshot = EmotionSnapshot(
-        chapter=1, dominant_emotion="neutral", intensity=0.5
-    )
+    emotion_snapshot = EmotionSnapshot(chapter=1, dominant_emotion="neutral", intensity=0.5)
 
     result = annotate_paragraph(
         paragraph_text="测试段落文本内容...",
@@ -177,7 +168,7 @@ def test_synthesize_mock():
 
 
 def test_quality_check_mock():
-    from audiobook_studio.schemas import ParagraphAnnotation, TtsRoutingDecision
+    from audiobook_studio.schemas import ParagraphAnnotation
 
     annotation = ParagraphAnnotation(
         paragraph_index=0,
@@ -216,9 +207,7 @@ def test_full_pipeline_mock():
     assert extraction.raw_text
 
     # 2. Analyze structure
-    analysis = analyze_structure(
-        extraction.raw_text, title_hint="测试书", mock_mode=True
-    )
+    analysis = analyze_structure(extraction.raw_text, title_hint="测试书", mock_mode=True)
     assert analysis.book_meta.title
 
     # 3. Annotate first paragraph
@@ -273,7 +262,6 @@ def test_full_pipeline_mock():
     assert len(segments) == 1
 
     # 6. Quality check
-    from audiobook_studio.schemas import TtsRoutingDecision
 
     routing_decision = TtsRoutingDecision(
         segment_id="test_ch1_p0",
@@ -285,9 +273,7 @@ def test_full_pipeline_mock():
         estimated_cost_usd=0.0,
         estimated_duration_ms=3000,
     )
-    judgments = quality_check(
-        [("./output/test.mp3", annotation, routing_decision, para_text)], mock_mode=True
-    )
+    judgments = quality_check([("./output/test.mp3", annotation, routing_decision, para_text)], mock_mode=True)
     assert len(judgments) == 1
     assert judgments[0].overall_score > 0.5
 

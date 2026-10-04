@@ -12,20 +12,24 @@ Contains:
 
 import json
 import logging
-import shutil
-import sys
-from pathlib import Path
-from typing import Dict, Any, Optional, List
-from dataclasses import dataclass, asdict
-from datetime import datetime, timezone
 from collections import deque
+from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Deque, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
+
+# Type aliases for complex types
+MetricsHistory = Deque[Dict[str, Any]]
+CanaryDict = Dict[str, Any]
+RollbackEntry = Dict[str, Any]
 
 
 @dataclass
 class PromotionMetrics:
     """升级所需的指标"""
+
     format_compliance_rate: float  # 格式合规率 (0-1)
     golden_dataset_pass_rate: float  # 金数据集通过率 (0-1)
     quality_score_ratio: float  # 质量分相对于旧版的比例 (例如 1.02 表示比旧版高 2%)
@@ -36,8 +40,9 @@ class PromotionMetrics:
 @dataclass
 class PromotionGateResult:
     """Promotion Gate 结果"""
+
     passed: bool
-    failed_criteria: list
+    failed_criteria: List[str]
     metrics: PromotionMetrics
     timestamp: datetime
 
@@ -50,7 +55,7 @@ class PromotionGate:
         format_compliance_threshold: float = 0.99,
         golden_dataset_threshold: float = 0.95,
         quality_score_threshold: float = 1.02,
-        human_preference_threshold: float = 0.80
+        human_preference_threshold: float = 0.80,
     ):
         """
         初始化 Promotion Gate.
@@ -80,7 +85,7 @@ class PromotionGate:
         golden_dataset_pass_rate: float,
         quality_score_ratio: float,
         human_preference_score: float,
-        timestamp: Optional[datetime] = None
+        timestamp: Optional[datetime] = None,
     ) -> PromotionGateResult:
         """
         执行 Promotion Gate 评估.
@@ -114,9 +119,7 @@ class PromotionGate:
 
         # 检查 3: 质量分 ≥ 旧版 × 102%
         if quality_score_ratio < self.quality_score_threshold:
-            failed_criteria.append(
-                f"质量分比例 {quality_score_ratio:.2f} < 阈值 {self.quality_score_threshold:.2f}"
-            )
+            failed_criteria.append(f"质量分比例 {quality_score_ratio:.2f} < 阈值 {self.quality_score_threshold:.2f}")
 
         # 检查 4: 人工抽样偏好 ≥ 80%
         if human_preference_score < self.human_preference_threshold:
@@ -131,22 +134,21 @@ class PromotionGate:
             golden_dataset_pass_rate=golden_dataset_pass_rate,
             quality_score_ratio=quality_score_ratio,
             human_preference_score=human_preference_score,
-            timestamp=timestamp
+            timestamp=timestamp,
         )
 
         result = PromotionGateResult(
             passed=passed,
             failed_criteria=failed_criteria,
             metrics=metrics,
-            timestamp=timestamp
+            timestamp=timestamp,
         )
 
         if passed:
             logger.info("✅ Promotion Gate PASSED - all criteria met")
         else:
             logger.warning(
-                f"❌ Promotion Gate FAILED - {len(failed_criteria)} criteria failed: "
-                f"{', '.join(failed_criteria)}"
+                f"❌ Promotion Gate FAILED - {len(failed_criteria)} criteria failed: " f"{', '.join(failed_criteria)}"
             )
 
         return result
@@ -171,7 +173,7 @@ class PromotionGate:
             golden_dataset_pass_rate=metrics_dict.get("golden_dataset_pass_rate", 0.0),
             quality_score_ratio=metrics_dict.get("quality_score_ratio", 0.0),
             human_preference_score=metrics_dict.get("human_preference_score", 0.0),
-            timestamp=metrics_dict.get("timestamp")
+            timestamp=metrics_dict.get("timestamp"),
         )
 
     def get_status(self) -> Dict[str, Any]:
@@ -181,9 +183,9 @@ class PromotionGate:
                 "format_compliance": self.format_compliance_threshold,
                 "golden_dataset": self.golden_dataset_threshold,
                 "quality_score": self.quality_score_threshold,
-                "human_preference": self.human_preference_threshold
+                "human_preference": self.human_preference_threshold,
             },
-            "description": "Promotion Gate with 4 hard criteria for version promotion"
+            "description": "Promotion Gate with 4 hard criteria for version promotion",
         }
 
 
@@ -193,6 +195,7 @@ class PromotionGate:
 @dataclass
 class CanaryConfig:
     """Canary release 配置."""
+
     enabled: bool = True
     traffic_percentage: float = 0.1  # 10% 流量
     min_samples: int = 100  # 最小样本数
@@ -204,6 +207,7 @@ class CanaryConfig:
 @dataclass
 class CanaryMetrics:
     """Canary 阶段收集的指标."""
+
     version: str
     stage: str
     samples_collected: int
@@ -225,8 +229,8 @@ class CanaryRelease:
 
     def __init__(self, config: CanaryConfig):
         self.config = config
-        self.active_canaries: Dict[str, Dict[str, Any]] = {}
-        self.metrics_history: Dict[str, deque] = {}
+        self.active_canaries: Dict[str, CanaryDict] = {}
+        self.metrics_history: Dict[str, MetricsHistory] = {}
 
     def start_canary(self, stage: str, version: str, baseline_score: float) -> bool:
         """启动 Canary 发布."""
@@ -289,9 +293,9 @@ class CanaryRelease:
         if canary_id in self.active_canaries:
             self.active_canaries[canary_id]["status"] = "rolled_back"
             self.active_canaries[canary_id]["rolled_back_at"] = datetime.now(timezone.utc)
-            self.active_canaries[canary_id]["rollback_reason"] = (
-                f"quality_ratio={metrics.quality_ratio:.4f} < {self.config.rollback_threshold}"
-            )
+            self.active_canaries[canary_id][
+                "rollback_reason"
+            ] = f"quality_ratio={metrics.quality_ratio:.4f} < {self.config.rollback_threshold}"
 
             logger.warning(f"🔴 AUTO ROLLBACK: {canary_id} - {self.active_canaries[canary_id]['rollback_reason']}")
 
@@ -386,7 +390,7 @@ class VersionStore:
         """回滚到上一个版本."""
         current = self.current_versions.get(stage, 1)
         if current <= 1:
-            logger.warning(f"Already at v1, cannot rollback further")
+            logger.warning("Already at v1, cannot rollback further")
             return False
         return self.rollback_version(stage, current - 1)
 
@@ -406,9 +410,9 @@ class VersionStore:
         except Exception as e:
             logger.error(f"Failed to write rollback log: {e}")
 
-    def get_rollback_history(self, stage: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
+    def get_rollback_history(self, stage: Optional[str] = None, limit: int = 50) -> List[RollbackEntry]:
         """获取回滚历史."""
-        history = []
+        history: List[RollbackEntry] = []
         if not self.rollback_log.exists():
             return history
 

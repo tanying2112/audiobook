@@ -1,19 +1,16 @@
 """Tests for tts_voices module."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
-
 import pytest
-from fastapi import HTTPException
 
 from src.audiobook_studio.api.tts_voices import (
     AZURE_VOICES,
     EDGE_TTS_VOICES,
     GCP_VOICES,
     KOKORO_VOICES,
-    TTSVoicesResponse,
+    VOXCPM2_VOICES,
     TTSEngine,
     TTSVoice,
-    VOXCPM2_VOICES,
+    TTSVoicesResponse,
     get_recommended_voices,
     list_tts_voices,
     preview_voice,
@@ -415,8 +412,8 @@ class TestPreviewVoice:
         assert result["text"] == text
         assert "preview_url" in result
         assert "note" in result
-        assert result["preview_url"] == f"/api/tts/preview/{voice_id}.mp3"
-        assert "placeholder" in result["note"].lower()
+        assert "/api/tts/stream" in result["preview_url"]
+        assert "live preview" in result["note"].lower()
 
     @pytest.mark.asyncio
     async def test_preview_voice_default_text(self):
@@ -455,12 +452,12 @@ class TestRouter:
                 path_methods[route.path] = route.methods
 
         # Check for expected endpoints
-        assert "/voices" in path_methods
-        assert "GET" in path_methods["/voices"]
-        assert "/voices/recommended" in path_methods
-        assert "GET" in path_methods["/voices/recommended"]
-        assert "/voices/preview/{voice_id}" in path_methods
-        assert "GET" in path_methods["/voices/preview/{voice_id}"]
+        assert "/tts/voices" in path_methods
+        assert "GET" in path_methods["/tts/voices"]
+        assert "/tts/voices/recommended" in path_methods
+        assert "GET" in path_methods["/tts/voices/recommended"]
+        assert "/tts/voices/preview/{voice_id}" in path_methods
+        assert "GET" in path_methods["/tts/voices/preview/{voice_id}"]
 
 
 if __name__ == "__main__":

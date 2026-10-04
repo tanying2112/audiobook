@@ -1,17 +1,15 @@
 """Tests for config loader module with Pydantic validation."""
 
-import tempfile
 from pathlib import Path
 
 import pytest
 
 from src.audiobook_studio.config.loader import (
     ConfigLoader,
-    load_rules,
-    load_quality_thresholds,
     load_contract_versions,
+    load_quality_thresholds,
+    load_rules,
     reload_config_if_changed,
-    clear_config_cache,
 )
 
 
@@ -26,13 +24,16 @@ class TestConfigLoaderQualityThresholds:
     def test_quality_thresholds_validation(self, loader, tmp_path):
         """Test Pydantic validation of quality thresholds."""
         config_file = tmp_path / "thresholds.yaml"
-        config_file.write_text("""
+        config_file.write_text(
+            """
 overall:
   min_acceptable_score: 0.7
   excellent_score: 0.9
 dimensions:
   speaker_clarity: 0.85
-""", encoding="utf-8")
+""",
+            encoding="utf-8",
+        )
 
         result = loader.load_quality_thresholds(str(config_file))
         assert result["overall"]["min_acceptable_score"] == 0.7
@@ -67,11 +68,14 @@ class TestConfigLoaderConstitutionalRules:
     def test_constitutional_rules_validation(self, loader, tmp_path):
         """Test Pydantic validation of constitutional rules."""
         config_file = tmp_path / "rules.yaml"
-        config_file.write_text("""
+        config_file.write_text(
+            """
 character_consistency:
   min_consistency_score: 0.95
   verify_voice_binding: true
-""", encoding="utf-8")
+""",
+            encoding="utf-8",
+        )
 
         result = loader.load_constitutional_rules(str(config_file))
         assert result["character_consistency"]["min_consistency_score"] == 0.95
@@ -93,14 +97,17 @@ class TestConfigLoaderContractVersions:
     def test_contract_versions_with_global_alias(self, loader, tmp_path):
         """Test 'global' key is properly handled as alias."""
         config_file = tmp_path / "versions.yaml"
-        config_file.write_text("""
+        config_file.write_text(
+            """
 global:
   current: 2
   schema: HARNESS_v2
 stages:
   extract:
     current: 1
-""", encoding="utf-8")
+""",
+            encoding="utf-8",
+        )
 
         result = loader.load_contract_versions(str(config_file))
         # 'global' key should be preserved in output
@@ -126,14 +133,17 @@ class TestConfigLoaderPipelineConfig:
     def test_pipeline_config_validation(self, loader, tmp_path):
         """Test full pipeline config validation."""
         config_file = tmp_path / "pipeline.yaml"
-        config_file.write_text("""
+        config_file.write_text(
+            """
 quality_thresholds:
   overall:
     min_acceptable_score: 0.75
 constitutional_rules:
   character_consistency:
     min_consistency_score: 0.92
-""", encoding="utf-8")
+""",
+            encoding="utf-8",
+        )
 
         result = loader.load_pipeline_config(str(config_file))
         assert "quality_thresholds" in result
@@ -144,7 +154,10 @@ constitutional_rules:
     def test_pipeline_config_cache(self, loader, tmp_path):
         """Test config caching."""
         config_file = tmp_path / "pipeline.yaml"
-        config_file.write_text("quality_thresholds:\n  overall:\n    min_acceptable_score: 0.8\n", encoding="utf-8")
+        config_file.write_text(
+            "quality_thresholds:\n  overall:\n    min_acceptable_score: 0.8\n",
+            encoding="utf-8",
+        )
 
         result1 = loader.load_pipeline_config(str(config_file))
         result2 = loader.load_pipeline_config(str(config_file))
@@ -155,7 +168,10 @@ constitutional_rules:
     def test_pipeline_config_clear_cache(self, loader, tmp_path):
         """Test cache clearing."""
         config_file = tmp_path / "pipeline.yaml"
-        config_file.write_text("quality_thresholds:\n  overall:\n    min_acceptable_score: 0.8\n", encoding="utf-8")
+        config_file.write_text(
+            "quality_thresholds:\n  overall:\n    min_acceptable_score: 0.8\n",
+            encoding="utf-8",
+        )
 
         loader.load_pipeline_config(str(config_file))
         loader.clear_cache(str(config_file))
@@ -224,13 +240,40 @@ class TestConfigFileLock:
     """Tests for ConfigFileLock class."""
 
     def test_lock_acquire_release(self):
-        """Test file lock acquire and release."""
+        """Test file lock acquire/release: held inside context, released after, cross-thread safe."""
+        import threading
+
         from src.audiobook_studio.config.loader import ConfigFileLock
 
-        with ConfigFileLock.acquire("/tmp/test_config.yaml"):
-            # Lock acquired
-            pass
-        # Lock released
+        # Force a unique path per test run (RLocks are keyed by resolved path and persist class-wide)
+        path = f"/tmp/test_config_{threading.get_ident()}.yaml"
+        resolved = str(Path(path).resolve())
+
+        # Inside the context, the per-path RLock must exist and be held by THIS thread
+        # (RLock is reentrant, so a nested acquire on the same thread must not block).
+        with ConfigFileLock.acquire(path):
+            lock = ConfigFileLock._locks[resolved]
+            assert isinstance(lock, type(threading.RLock()))
+            # Reentrant: same-thread acquire must succeed immediately without blocking
+            got = lock.acquire(blocking=False)
+            assert got is True, "RLock should be reentrant for the holding thread"
+            lock.release()  # balance the reentrant acquire BEFORE exiting the context
+
+        # After the context exits, another thread must be able to acquire the same path
+        # (proves the lock was released, not left held).
+        holder = {}
+
+        def grab():
+            with ConfigFileLock.acquire(path):
+                holder["got"] = True
+
+        t = threading.Thread(target=grab)
+        t.start()
+        t.join(timeout=5.0)
+        assert holder.get("got") is True, "Lock should be releasable by another thread after context exit"
+        assert not t.is_alive(), "Lock-acquire thread should have finished, not deadlock"
+        # Cleanup class-level state to avoid leaking RLocks across test runs
+        ConfigFileLock._locks.pop(resolved, None)
 
 
 if __name__ == "__main__":

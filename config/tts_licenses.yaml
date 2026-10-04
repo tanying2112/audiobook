@@ -1,0 +1,38 @@
+# Audiobook Studio — TTS 引擎商用许可覆盖 (P2.11)
+#
+# ⚠️ 红线#1 (主路径真实性): 本文件**不经核实不落任何 commercial_use 值**。
+# 仓库不替任何引擎假声明其商用许可状态 (杜绝 P1.9 azure/gcp 假 True # TODO 复发)。
+#
+# 真实落地方式: 由**已核实官方 model card/license 文本**的维护者填入 →
+#   commercial_use: true   仅当官方许确实允许商用 (如 Apache-2.0 / MIT 干净条款)
+#   commercial_use: false   仅当官方明确禁止商用或仅限非商用 (如 CC-BY-NC)
+#   commercial_use: null   默认: 未核实 (license_guard 降级 warn, 不假成功)
+#
+# 同时 license_name/note 给可追溯的来源描述 (官方条款正文链接最佳)。
+# 启动校验 (license_guard.commercial_profile_guard): 商用路径 (active_profile != free 档)
+# 禁用 commercial_use:false 的引擎注册; null → warn (非假成功)。
+
+engines:
+  kokoro:
+    commercial_use: null
+    license_name: null
+    note: "Kokoro-82M ONNX 权重 license 需核实官方 HF model card 后填入"
+    verified_at: null
+
+  edge:
+    commercial_use: null
+    license_name: null
+    note: "微软 Edge TTS 为 Edge 浏览器内置服务调用, 商用可用性未由微软明文授权, 需自行核实 TOS"
+    verified_at: null
+
+  voxcpm2:
+    commercial_use: null
+    license_name: null
+    note: "OpenBMB/VoxCPM2 官方 model card 许可需核实后填入"
+    verified_at: null
+
+  cosyvoice:
+    commercial_use: null
+    license_name: null
+    note: "FunAudioLLM/CosyVoice-300M 官方 model card 许可需核实后填入"
+    verified_at: null

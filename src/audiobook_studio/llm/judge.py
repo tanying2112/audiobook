@@ -5,12 +5,15 @@ Implements pairwise comparison and scoring for quality gate.
 
 import json
 import logging
-import os
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from pathlib import Path
+from typing import Any, Dict, Optional
 
-from ..schemas import AudioPostProcessParams, ParagraphAnnotation, QualityJudgment, FixSuggestion
+from jinja2 import Environment, FileSystemLoader, select_autoescape
+
+from ..schemas import AudioPostProcessParams, PairwiseJudgment, ParagraphAnnotation
+from ..schemas.quality import FixSuggestion, QualityJudgment
 from .router import LLMRouter, create_router
 
 logger = logging.getLogger(__name__)
@@ -31,11 +34,19 @@ class JudgeConfig:
 class LLMJudge:
     """LLM-as-a-Judge for quality evaluation."""
 
-    def __init__(
-        self, config: Optional[JudgeConfig] = None, router: Optional[LLMRouter] = None
-    ):
+    def __init__(self, config: Optional[JudgeConfig] = None, router: Optional[LLMRouter] = None):
         self.config = config or JudgeConfig()
         self.router = router or create_router()
+
+        # Setup Jinja2 environment for pairwise prompt
+        prompt_dir = Path(__file__).parent.parent.parent.parent / "prompts"
+        self.jinja_env = Environment(
+            loader=FileSystemLoader(str(prompt_dir)),
+            autoescape=select_autoescape(),
+            trim_blocks=True,
+            lstrip_blocks=True,
+        )
+        self.jinja_env.filters["tojson"] = json.dumps
 
     def judge_quality(
         self,
@@ -44,11 +55,14 @@ class LLMJudge:
         audio_description: str,  # In real impl: audio analysis via multimodal LLM
         reference_text: str,
         audio_params: Optional[AudioPostProcessParams] = None,
+        real_audio_metrics: Optional[Dict[str, Any]] = None,  # P0-C1: real DNSMOS/UTMOS/WER/Sim
     ) -> QualityJudgment:
         """Evaluate audio quality against paragraph annotation.
 
         In production, this would use multimodal LLM to listen to audio.
         For now, uses text-based evaluation with simulated audio analysis.
+        Optionally accepts real_audio_metrics from AudioQualityScorer to ground
+        the LLM judgment in objective acoustic evidence.
         """
         if audio_params is None:
             audio_params = AudioPostProcessParams()
@@ -59,6 +73,7 @@ class LLMJudge:
             audio_params=audio_params,
             audio_description=audio_description,
             reference_text=reference_text,
+            real_audio_metrics=real_audio_metrics,
         )
 
         # Call judge model
@@ -79,7 +94,7 @@ class LLMJudge:
             return output
         except Exception as e:
             logger.error(f"Quality judgment failed for {segment_id}: {e}")
-            # Return safe default - requires regeneration
+            # Return safe default - judge error (do not fabricate a content finding)
             return QualityJudgment(
                 segment_id=segment_id,
                 speaker_clarity=0.0,
@@ -87,15 +102,18 @@ class LLMJudge:
                 prosody_naturalness=0.0,
                 text_audio_alignment=0.0,
                 overall_score=0.0,
-                issues=["sensitive_content"],  # Valid literal from schema
-                fix_suggestions=[FixSuggestion(
-                    suggestion_type="prosody_correction",
-                    target_text="",
-                    suggested_value="",
-                    rationale=f"Judge error: {str(e)}",
-                    confidence=0.9,
-                )],
-                needs_regeneration=True,
+                issues=["judge_error"],  # Honest: judge failure, not a content finding
+                fix_suggestions=[
+                    FixSuggestion(
+                        suggestion_type="prosody_correction",
+                        target_text="",
+                        current_value="",
+                        suggested_value="",
+                        rationale=f"Judge error: {str(e)}",
+                        confidence=0.9,
+                    )
+                ],
+                needs_regeneration=False,  # transient judge error != must re-synth
             )
 
     def _get_system_prompt(self) -> str:
@@ -111,7 +129,25 @@ Identify specific issues and suggest concrete fixes."""
         audio_params: "AudioPostProcessParams",
         audio_description: str,
         reference_text: str,
+        real_audio_metrics: Optional[Dict[str, Any]] = None,  # P0-C1
     ) -> str:
+        # Build real metrics section if available
+        metrics_section = ""
+        if real_audio_metrics:
+            utmos = real_audio_metrics.get("utmos")
+            dnsmos = real_audio_metrics.get("dnsmos")
+            wer = real_audio_metrics.get("wer")
+            sim = real_audio_metrics.get("speaker_sim")
+            overall = real_audio_metrics.get("overall")
+            avail = real_audio_metrics.get("available_metrics", 0)
+            metrics_section = f"""
+REAL AUDIO METRICS (measured):
+- UTMOS: {f"{utmos:.2f}/5.0" if utmos is not None else "unavailable"}
+- DNSMOS OVR: {f"{dnsmos:.2f}/5.0" if dnsmos is not None else "unavailable"}
+- ASR WER: {f"{wer:.1%}" if wer is not None else "unavailable"}
+- Speaker Similarity: {f"{sim:.3f}" if sim is not None else "unavailable"}
+- Fused Overall (0-1): {f"{overall:.3f}" if overall is not None else "N/A"} (from {avail}/4 metrics)
+"""
         return f"""Segment ID: {segment_id}
 
 EXPECTED (from annotation + audio_postprocess):
@@ -124,7 +160,7 @@ EXPECTED (from annotation + audio_postprocess):
 - Reference Text: {reference_text[:500]}...
 
 AUDIO ANALYSIS (simulated):
-{audio_description}
+{audio_description}{metrics_section}
 
 EVALUATE AND OUTPUT QualityJudgment JSON with:
 - speaker_clarity (0-1): Does the voice match the expected speaker?
@@ -147,6 +183,123 @@ EVALUATE AND OUTPUT QualityJudgment JSON with:
             f"alignment={judgment.text_audio_alignment:.2f} "
             f"needs_regeneration={judgment.needs_regeneration} "
             f"issues={judgment.issues}"
+        )
+
+    def judge_pairwise(
+        self,
+        segment_id: str,
+        stage: str,
+        reference_text: str,
+        output_a: Dict[str, Any],
+        output_b: Dict[str, Any],
+        annotation: Optional[ParagraphAnnotation] = None,
+        audio_description: Optional[str] = None,
+    ) -> PairwiseJudgment:
+        """Evaluate two outputs pairwise for A/B testing.
+
+        Blind comparison: judge doesn't know which is control vs treatment.
+        Returns structured PairwiseJudgment with winner, per-dimension scores, and reasoning.
+
+        Args:
+            segment_id: Segment identifier
+            stage: Pipeline stage (edit_for_tts, annotate_paragraph, etc.)
+            reference_text: Expected/reference text
+            output_a: Version A output (dict)
+            output_b: Version B output (dict)
+            annotation: Optional paragraph annotation for context
+            audio_description: Optional audio analysis description
+
+        Returns:
+            PairwiseJudgment with winner, confidence, dimension scores, reasoning
+        """
+        prompt = self._build_pairwise_prompt(
+            segment_id=segment_id,
+            stage=stage,
+            reference_text=reference_text,
+            output_a=output_a,
+            output_b=output_b,
+            annotation=annotation,
+            audio_description=audio_description,
+        )
+
+        messages = [
+            {"role": "system", "content": self._get_pairwise_system_prompt()},
+            {"role": "user", "content": prompt},
+        ]
+
+        try:
+            result = self.router.call(
+                stage="judge",
+                response_model=PairwiseJudgment,
+                messages=messages,
+                segment_id=segment_id,
+            )
+            judgment = result.output
+            self._log_pairwise_judgment(segment_id, judgment)
+            return judgment
+        except Exception as e:
+            logger.error(f"Pairwise judgment failed for {segment_id}: {e}")
+            # Return safe default - tie with low confidence
+            return PairwiseJudgment(
+                segment_id=segment_id,
+                winner="tie",
+                confidence=0.5,
+                dimension_scores={},
+                reasoning={},
+                overall_reasoning=f"Judge error: {str(e)}",
+                statistical_significance=None,
+                p_value=None,
+                effect_size=None,
+                judge_model=self.config.model,
+                judge_prompt_version="pairwise_v1",
+            )
+
+    def _get_pairwise_system_prompt(self) -> str:
+        return """You are an expert audiobook quality evaluator conducting blind A/B tests.
+Compare two outputs for the same input without knowing which is control vs treatment.
+Score each dimension for both versions (0.0-1.0), then determine overall winner.
+Be strict but fair. Output ONLY valid JSON matching the schema."""
+
+    def _build_pairwise_prompt(
+        self,
+        segment_id: str,
+        stage: str,
+        reference_text: str,
+        output_a: Dict[str, Any],
+        output_b: Dict[str, Any],
+        annotation: Optional[ParagraphAnnotation],
+        audio_description: Optional[str],
+    ) -> str:
+        template = self.jinja_env.get_template("quality_judge/pairwise_v1.j2")
+        schema_json = PairwiseJudgment.model_json_schema()
+
+        # Convert Pydantic model to dict for JSON serialization
+        annotation_dict = None
+        if annotation is not None:
+            if hasattr(annotation, "model_dump"):
+                annotation_dict = annotation.model_dump()
+            else:
+                annotation_dict = annotation
+
+        return template.render(
+            schema_json=schema_json,
+            segment_id=segment_id,
+            stage=stage,
+            reference_text=reference_text,
+            output_a=output_a,
+            output_b=output_b,
+            annotation=annotation_dict,
+            audio_description=audio_description,
+        )
+
+    def _log_pairwise_judgment(self, segment_id: str, judgment: PairwiseJudgment):
+        dim_str = ", ".join(f"{k}: A={v.score_a:.2f} B={v.score_b:.2f}" for k, v in judgment.dimension_scores.items())
+        logger.info(
+            f"Pairwise judgment [{segment_id}]: "
+            f"winner={judgment.winner} "
+            f"confidence={judgment.confidence:.2f} "
+            f"dims=[{dim_str}] "
+            f"reasoning={judgment.overall_reasoning[:80]}"
         )
 
 

@@ -2,6 +2,7 @@
 Monitoring and Baseline Recording Package
 """
 
+from .alert import AlertConfig, AlertLevel, AlertManager, AlertRecord, send_dingtalk_alert, send_slack_alert
 from .baseline import (
     BaselineRecorder,
     GrowthMetric,
@@ -17,6 +18,27 @@ from .compliance import (
     get_compliance_monitor,
     record_pipeline_compliance,
 )
+from .cost_dashboard import CostBreakdown, CostDashboard, generate_cost_report
+from .dashboard import MonitoringDashboard, collect_logs, compute_summary, format_dashboard
+from .langfuse_client import (
+    flush_langfuse,
+    get_langfuse_client,
+    init_langfuse,
+    is_enabled,
+    observe_llm_call,
+    observe_quality_check,
+    observe_tts_synthesis,
+    score_trace,
+    span,
+    trace,
+    trace_analyze,
+    trace_annotate,
+    trace_edit,
+    trace_extract,
+    trace_function,
+    trace_quality,
+    trace_synthesize,
+)
 from .metrics_exporter import (
     export_all_metrics,
     export_compliance_rate,
@@ -24,47 +46,21 @@ from .metrics_exporter import (
     export_fallback_rate,
     get_metrics_for_ci,
 )
-from .langfuse_client import (
-    init_langfuse,
-    get_langfuse_client,
-    is_enabled,
-    flush_langfuse,
-    trace,
-    span,
-    observe_llm_call,
-    observe_tts_synthesis,
-    observe_quality_check,
-    trace_function,
-    trace_extract,
-    trace_analyze,
-    trace_annotate,
-    trace_edit,
-    trace_synthesize,
-    trace_quality,
-    score_trace,
-)
-from .alert import (
-    AlertLevel,
-    AlertConfig,
-    AlertRecord,
-    AlertManager,
-    send_dingtalk_alert,
-    send_slack_alert,
-)
-from .cost_dashboard import (
-    CostDashboard,
-    CostBreakdown,
-    generate_cost_report,
-)
-from .offline_monitoring import (
-    OfflineMonitor,
-    create_offline_monitor,
-)
-from .dashboard import (
-    MonitoringDashboard,
-    collect_logs,
-    compute_summary,
-    format_dashboard,
+from .offline_monitoring import OfflineMonitor, create_offline_monitor
+from .telemetry import (
+    PipelineTelemetry,
+    ProviderMetrics,
+    StageTiming,
+    TelemetryCollector,
+    TTSMetrics,
+    get_telemetry_collector,
+    init_telemetry_collector,
+    record_llm_call,
+    record_tts_fallback,
+    record_tts_quality_check,
+    record_tts_retry,
+    record_tts_segment,
+    shutdown_telemetry,
 )
 
 __all__ = [
@@ -121,4 +117,18 @@ __all__ = [
     "collect_logs",
     "compute_summary",
     "format_dashboard",
+    # Telemetry
+    "TelemetryCollector",
+    "PipelineTelemetry",
+    "ProviderMetrics",
+    "TTSMetrics",
+    "StageTiming",
+    "init_telemetry_collector",
+    "get_telemetry_collector",
+    "record_llm_call",
+    "record_tts_segment",
+    "record_tts_retry",
+    "record_tts_fallback",
+    "record_tts_quality_check",
+    "shutdown_telemetry",
 ]

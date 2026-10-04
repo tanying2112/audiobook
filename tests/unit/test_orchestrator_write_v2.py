@@ -1,26 +1,33 @@
 """Tests for pipeline/orchestrator.py — _write_* functions."""
-import json
+
 from unittest.mock import MagicMock
 
 import pytest
 
 from src.audiobook_studio.pipeline.orchestrator import (
-    _write_extract,
     _write_analyze,
     _write_annotate,
-    _write_edit,
-    _write_synthesize,
-    _write_quality,
     _write_audio_postprocess,
+    _write_edit,
+    _write_extract,
+    _write_quality,
+    _write_synthesize,
 )
 from src.audiobook_studio.schemas import (
-    ExtractionResult,
-    BookAnalysisOutput,
-    ParagraphAnnotation,
-    TtsEditOutput,
-    QualityJudgment,
     AudioPostProcessParams,
+    BookAnalysisOutput,
+    ExtractionResult,
+    ParagraphAnnotation,
+    QualityJudgment,
+    TtsEditOutput,
 )
+
+
+def _make_execute_mock(return_chapter=None):
+    """Create a mock for db.execute(select(...))."""
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = return_chapter
+    return MagicMock(return_value=mock_result)
 
 
 @pytest.fixture
@@ -38,8 +45,14 @@ def mock_db():
     para.chapter_id = 1
     para.edited_text = ""
 
+    # Legacy query() chain (for backward compat)
     db.query.return_value.filter.return_value.first.return_value = None
     db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
+    # New execute(select()) chain - default returns None (no existing chapter)
+    db.execute.side_effect = None
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+    db.execute.return_value = mock_result
     return db, chapter, para
 
 
@@ -53,14 +66,20 @@ class TestWriteExtract:
 
     def test_existing_by_index(self, mock_db):
         db, chapter, _ = mock_db
-        db.query.return_value.filter.return_value.first.side_effect = [chapter]
+        # Override execute to return existing chapter
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = chapter
+        db.execute.return_value = mock_result
         result = ExtractionResult(raw_text="text", language="en", page_count=1)
         _write_extract(db, project_id=1, chapter_index=1, result=result)
         db.add.assert_not_called()
 
     def test_existing_by_id(self, mock_db):
         db, chapter, _ = mock_db
-        db.query.return_value.filter.return_value.first.return_value = chapter
+        # Override execute to return existing chapter
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = chapter
+        db.execute.return_value = mock_result
         result = ExtractionResult(raw_text="by id", language="en", page_count=1)
         _write_extract(db, project_id=1, chapter_index=1, result=result, chapter_id=5)
         db.add.assert_not_called()
@@ -83,9 +102,7 @@ class TestWriteAnalyze:
                     "sample_quote": "Hello world",
                 }
             ],
-            emotion_snapshots=[
-                {"chapter": 1, "dominant_emotion": "neutral", "intensity": 0.5}
-            ],
+            emotion_snapshots=[{"chapter": 1, "dominant_emotion": "neutral", "intensity": 0.5}],
             story_line_summary="A" * 100,
             global_style_notes="n",
         )

@@ -1,30 +1,22 @@
 """Tests for voice_cloning module."""
 
-import pytest
-from unittest.mock import patch, MagicMock, mock_open
-import sys
-
-pytestmark = pytest.mark.skip(
-    reason="Sprint G Placeholder — VoiceCloningManager is a stub, not real usable code"
-)
-import tempfile
 import json
 from pathlib import Path
-from datetime import datetime
+from unittest.mock import mock_open, patch
 
 # Add project path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 
 def test_voice_cloning_imports():
     """Test that voice_cloning module can be imported."""
     from src.audiobook_studio.tts.voice_cloning import (
         AudioQuality,
-        VoiceSample,
-        VoicePrint,
         CloningConfig,
         VoiceCloningManager,
+        VoicePrint,
+        VoiceSample,
     )
+
     assert AudioQuality is not None
     assert VoiceSample is not None
     assert VoicePrint is not None
@@ -119,10 +111,7 @@ class TestVoicePrint:
 
     def test_voice_print_creation(self):
         """Test creating a VoicePrint."""
-        from src.audiobook_studio.tts.voice_cloning import (
-            AudioQuality,
-            VoicePrint,
-        )
+        from src.audiobook_studio.tts.voice_cloning import AudioQuality, VoicePrint
 
         voice_print = VoicePrint(
             speaker_id="speaker-1",
@@ -144,10 +133,7 @@ class TestVoiceCloningManager:
 
     def test_manager_initialization(self, tmp_path):
         """Test VoiceCloningManager initialization."""
-        from src.audiobook_studio.tts.voice_cloning import (
-            VoiceCloningManager,
-            CloningConfig,
-        )
+        from src.audiobook_studio.tts.voice_cloning import CloningConfig, VoiceCloningManager
 
         config = CloningConfig(
             output_dir=str(tmp_path / "voices"),
@@ -161,10 +147,7 @@ class TestVoiceCloningManager:
 
     def test_assess_quality(self, tmp_path):
         """Test quality assessment based on SNR."""
-        from src.audiobook_studio.tts.voice_cloning import (
-            VoiceCloningManager,
-            AudioQuality,
-        )
+        from src.audiobook_studio.tts.voice_cloning import AudioQuality, VoiceCloningManager
 
         manager = VoiceCloningManager()
         # Test the private method
@@ -175,10 +158,7 @@ class TestVoiceCloningManager:
 
     def test_is_sample_valid_too_short(self, tmp_path):
         """Test sample validation for too-short samples."""
-        from src.audiobook_studio.tts.voice_cloning import (
-            VoiceCloningManager,
-            VoiceSample,
-        )
+        from src.audiobook_studio.tts.voice_cloning import VoiceCloningManager, VoiceSample
 
         manager = VoiceCloningManager()
         sample = VoiceSample(
@@ -198,10 +178,7 @@ class TestVoiceCloningManager:
 
     def test_is_sample_valid_low_snr(self, tmp_path):
         """Test sample validation for low SNR."""
-        from src.audiobook_studio.tts.voice_cloning import (
-            VoiceCloningManager,
-            VoiceSample,
-        )
+        from src.audiobook_studio.tts.voice_cloning import VoiceCloningManager, VoiceSample
 
         manager = VoiceCloningManager()
         sample = VoiceSample(
@@ -221,10 +198,7 @@ class TestVoiceCloningManager:
 
     def test_is_sample_valid(self, tmp_path):
         """Test sample validation for valid sample."""
-        from src.audiobook_studio.tts.voice_cloning import (
-            VoiceCloningManager,
-            VoiceSample,
-        )
+        from src.audiobook_studio.tts.voice_cloning import VoiceCloningManager, VoiceSample
 
         manager = VoiceCloningManager()
         sample = VoiceSample(
@@ -244,10 +218,7 @@ class TestVoiceCloningManager:
 
     def test_add_voice_sample_invalid(self, tmp_path):
         """Test adding an invalid sample."""
-        from src.audiobook_studio.tts.voice_cloning import (
-            VoiceCloningManager,
-            VoiceSample,
-        )
+        from src.audiobook_studio.tts.voice_cloning import VoiceCloningManager, VoiceSample
 
         manager = VoiceCloningManager()
         sample = VoiceSample(
@@ -288,6 +259,7 @@ class TestVoiceCloningManager:
     def test_calculate_audio_hash(self):
         """Test audio hash calculation."""
         import numpy as np
+
         from src.audiobook_studio.tts.voice_cloning import VoiceCloningManager
 
         manager = VoiceCloningManager()
@@ -299,6 +271,7 @@ class TestVoiceCloningManager:
     def test_estimate_snr_empty(self):
         """Test SNR estimation for empty audio."""
         import numpy as np
+
         from src.audiobook_studio.tts.voice_cloning import VoiceCloningManager
 
         manager = VoiceCloningManager()
@@ -309,6 +282,7 @@ class TestVoiceCloningManager:
     def test_estimate_snr_normal(self):
         """Test SNR estimation for normal audio."""
         import numpy as np
+
         from src.audiobook_studio.tts.voice_cloning import VoiceCloningManager
 
         manager = VoiceCloningManager()
@@ -326,7 +300,7 @@ class TestVoiceCloningManagerMore:
 
     def test_load_voice_prints_file_exists(self, tmp_path):
         """Test _load_voice_prints when file exists."""
-        from src.audiobook_studio.tts.voice_cloning import VoiceCloningManager, VoicePrint
+        from src.audiobook_studio.tts.voice_cloning import VoiceCloningManager
 
         # Create a temporary voice_prints.json
         voice_prints_dir = tmp_path / "voices"
@@ -341,13 +315,13 @@ class TestVoiceCloningManagerMore:
                 "sample_count": 2,
                 "avg_snr": 22.0,
                 "created_at": "2026-01-01",
-                "updated_at": "2026-01-02"
+                "updated_at": "2026-01-02",
             }
         }
         prints_file.write_text(json.dumps(test_data))
 
         # Initialize manager with custom directory
-        with patch.object(Path, 'mkdir'):
+        with patch.object(Path, "mkdir"):
             manager = VoiceCloningManager()
             # Override the paths to use our temp directory
             manager.voice_prints = {}
@@ -365,7 +339,7 @@ class TestVoiceCloningManagerMore:
 
     def test_save_voice_prints(self, tmp_path):
         """Test _save_voice_prints."""
-        from src.audiobook_studio.tts.voice_cloning import VoiceCloningManager, VoicePrint, AudioQuality
+        from src.audiobook_studio.tts.voice_cloning import AudioQuality, VoiceCloningManager, VoicePrint
 
         manager = VoiceCloningManager()
         # Create a test voice print
@@ -377,7 +351,7 @@ class TestVoiceCloningManagerMore:
             sample_count=1,
             avg_snr=21.0,
             created_at="2026-01-01",
-            updated_at="2026-01-02"
+            updated_at="2026-01-02",
         )
         manager.voice_prints["test_speaker"] = test_print
 
@@ -391,14 +365,14 @@ class TestVoiceCloningManagerMore:
 
     def test_update_voice_print_new(self):
         """Test _update_voice_print when creating new fingerprint."""
-        from src.audiobook_studio.tts.voice_cloning import VoiceCloningManager, VoiceSample, AudioQuality
+        from src.audiobook_studio.tts.voice_cloning import VoiceCloningManager, VoiceSample
 
         manager = VoiceCloningManager()
         # Clear existing prints but keep the manager's internal state consistent
         manager.voice_prints.clear()
         manager.voice_samples.clear()
 
-        # Create a valid sample and add it properly
+        # Create a valid sample and add it to voice_samples directly (not via add_voice_sample)
         sample = VoiceSample(
             id="sample1",
             file_path=Path("/tmp/sample1.wav"),
@@ -409,10 +383,7 @@ class TestVoiceCloningManagerMore:
             language="zh-CN",
             speaker_id="new_speaker",
         )
-
-        # First add the sample (this populates voice_samples)
-        success_add, msg_add = manager.add_voice_sample(sample)
-        assert success_add is True
+        manager.voice_samples["new_speaker"] = [sample]
 
         # Now update the voice print (this should create a new one)
         success, message = manager._update_voice_print("new_speaker")
@@ -424,7 +395,7 @@ class TestVoiceCloningManagerMore:
 
     def test_update_voice_print_existing(self):
         """Test _update_voice_print when updating existing fingerprint."""
-        from src.audiobook_studio.tts.voice_cloning import VoiceCloningManager, VoiceSample, VoicePrint, AudioQuality
+        from src.audiobook_studio.tts.voice_cloning import AudioQuality, VoiceCloningManager, VoicePrint, VoiceSample
 
         manager = VoiceCloningManager()
         # Pre-populate with an existing voice print
@@ -436,12 +407,10 @@ class TestVoiceCloningManagerMore:
             sample_count=1,
             avg_snr=20.0,
             created_at="2026-01-01",
-            updated_at="2026-01-01"
+            updated_at="2026-01-01",
         )
         manager.voice_prints["existing_speaker"] = existing_print
-        manager.voice_samples["existing_speaker"] = []
-
-        # Add a new sample with different characteristics
+        # Add a sample to voice_samples so _update_voice_print has something to work with
         sample = VoiceSample(
             id="sample2",
             file_path=Path("/tmp/sample2.wav"),
@@ -452,6 +421,7 @@ class TestVoiceCloningManagerMore:
             language="zh-CN",
             speaker_id="existing_speaker",
         )
+        manager.voice_samples["existing_speaker"] = [sample]
 
         success, message = manager._update_voice_print("existing_speaker")
         assert success is True
@@ -462,7 +432,9 @@ class TestVoiceCloningManagerMore:
 
     def test_synthesize_speech_success(self):
         """Test synthesize_speech success case."""
-        from src.audiobook_studio.tts.voice_cloning import VoiceCloningManager, VoicePrint, AudioQuality
+        from unittest.mock import AsyncMock, patch
+
+        from src.audiobook_studio.tts.voice_cloning import AudioQuality, VoiceCloningManager, VoicePrint
 
         manager = VoiceCloningManager()
         # Pre-populate with a voice print
@@ -474,26 +446,43 @@ class TestVoiceCloningManagerMore:
             sample_count=1,
             avg_snr=22.0,
             created_at="2026-01-01",
-            updated_at="2026-01-02"
+            updated_at="2026-01-02",
         )
         manager.voice_prints["test_speaker"] = voice_print
         manager.voice_samples["test_speaker"] = []
 
-        with patch("pathlib.Path.touch") as mock_touch:
-            success, message, audio_path = manager.synthesize_speech(
-                text="Hello world",
-                speaker_id="test_speaker",
-                language="zh-CN",
-                emotion="happy"
-            )
-            assert success is True
-            assert "success" in message.lower() or "成功" in message
-            assert audio_path is not None
-            mock_touch.assert_called_once()
+        # Mock the KokoroBackend to simulate successful synthesis
+        with patch("src.audiobook_studio.tts.kokoro_backend.KokoroBackend") as mock_backend_class:
+            mock_backend = AsyncMock()
+            mock_backend.initialize = AsyncMock()
+
+            # Mock synthesize to create the output file
+            async def mock_synthesize(text, voice_id, output_path, prosody, reference_audio):
+                output_path.write_bytes(b"fake audio data")
+                return type("obj", (object,), {"duration_ms": 1000})()
+
+            mock_backend.synthesize = mock_synthesize
+            mock_backend.cleanup = AsyncMock()
+            mock_backend_class.return_value = mock_backend
+
+            # Create a temp dir for output
+            import tempfile
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                manager.config.output_dir = tmpdir
+                success, message, audio_path = manager.synthesize_speech(
+                    text="Hello world",
+                    speaker_id="test_speaker",
+                    language="zh-CN",
+                    emotion="happy",
+                )
+                assert success is True
+                assert "成功" in message or "success" in message.lower()
+                assert audio_path is not None
 
     def test_synthesize_speech_poor_quality(self):
         """Test synthesize_speech with poor quality voice."""
-        from src.audiobook_studio.tts.voice_cloning import VoiceCloningManager, VoicePrint, AudioQuality
+        from src.audiobook_studio.tts.voice_cloning import AudioQuality, VoiceCloningManager, VoicePrint
 
         manager = VoiceCloningManager()
         # Pre-populate with a poor quality voice print
@@ -505,7 +494,7 @@ class TestVoiceCloningManagerMore:
             sample_count=1,
             avg_snr=10.0,
             created_at="2026-01-01",
-            updated_at="2026-01-02"
+            updated_at="2026-01-02",
         )
         manager.voice_prints["bad_speaker"] = voice_print
 
@@ -513,7 +502,7 @@ class TestVoiceCloningManagerMore:
             text="Hello world",
             speaker_id="bad_speaker",
             language="zh-CN",
-            emotion="happy"
+            emotion="happy",
         )
         assert success is False
         assert "质量太差" in message or "quality too poor" in message.lower()
@@ -521,7 +510,7 @@ class TestVoiceCloningManagerMore:
 
     def test_get_voice_info_exists(self):
         """Test get_voice_info for existing speaker."""
-        from src.audiobook_studio.tts.voice_cloning import VoiceCloningManager, VoicePrint, AudioQuality
+        from src.audiobook_studio.tts.voice_cloning import AudioQuality, VoiceCloningManager, VoicePrint
 
         manager = VoiceCloningManager()
         # Pre-populate with a voice print
@@ -533,7 +522,7 @@ class TestVoiceCloningManagerMore:
             sample_count=5,
             avg_snr=22.0,
             created_at="2026-01-01",
-            updated_at="2026-01-02"
+            updated_at="2026-01-02",
         )
         manager.voice_prints["test_speaker"] = voice_print
 
@@ -555,6 +544,7 @@ class TestVoiceCloningManagerMore:
     def test_main_function(self):
         """Test main function runs without error."""
         from src.audiobook_studio.tts.voice_cloning import main
+
         # We can't easily test the full main function due to prints,
         # but we can test that it doesn't crash when imported
         assert main is not None

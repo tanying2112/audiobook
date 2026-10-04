@@ -1,28 +1,23 @@
 """Comprehensive tests for feedback/bootstrap_fewshot.py."""
-import json
-import os
-from pathlib import Path
-from unittest.mock import MagicMock, patch, mock_open
 
-import pytest
+import json
+from unittest.mock import MagicMock, patch
 
 from src.audiobook_studio.feedback.bootstrap_fewshot import (
     BUDGET_LIMIT,
     DEFAULT_EARLY_STOP_PATIENCE,
+    BootstrapFewShotOptimizer,
+    EarlyStoppingStopper,
+    MultiObjectiveLoss,
     OptimizationMetrics,
     OptimizationResult,
-    MultiObjectiveLoss,
-    CharacterRecognitionModule,
-    VoiceDesignModule,
-    EarlyStoppingStopper,
-    BootstrapFewShotOptimizer,
+    create_multi_objective_metric,
     load_training_examples,
     run_bootstrap_optimization,
-    create_multi_objective_metric,
 )
 
-
 # ── Constants ────────────────────────────────────────────────────────────────
+
 
 class TestConstants:
     def test_budget_limit(self):
@@ -33,6 +28,7 @@ class TestConstants:
 
 
 # ── OptimizationMetrics ─────────────────────────────────────────────────────
+
 
 class TestOptimizationMetrics:
     def test_defaults(self):
@@ -56,6 +52,7 @@ class TestOptimizationMetrics:
 
 
 # ── OptimizationResult ──────────────────────────────────────────────────────
+
 
 class TestOptimizationResult:
     def test_creation(self):
@@ -82,6 +79,7 @@ class TestOptimizationResult:
 
 
 # ── MultiObjectiveLoss ──────────────────────────────────────────────────────
+
 
 class TestMultiObjectiveLoss:
     def test_default_weights(self):
@@ -142,6 +140,7 @@ class TestMultiObjectiveLoss:
 
 # ── EarlyStoppingStopper ────────────────────────────────────────────────────
 
+
 class TestEarlyStoppingStopper:
     def test_no_stop_initially(self):
         s = EarlyStoppingStopper(patience=3)
@@ -179,10 +178,12 @@ class TestEarlyStoppingStopper:
 
 # ── create_multi_objective_metric ────────────────────────────────────────────
 
+
 class TestCreateMetric:
     def test_metric_returns_score_with_feedback(self):
-        from dspy import Example, Prediction
+        from dspy import Example
         from dspy.teleprompt.gepa.gepa_utils import ScoreWithFeedback
+
         metric = create_multi_objective_metric(char_weight=0.5, voice_weight=0.5)
         gold = Example(
             paragraph_text="test",
@@ -197,6 +198,7 @@ class TestCreateMetric:
 
     def test_metric_wrong(self):
         from dspy import Example
+
         metric = create_multi_objective_metric()
         gold = Example(paragraph_text="t", character="A", voice="v").with_inputs("paragraph_text")
         pred = {"character_name": "X", "voice_design": "Y"}
@@ -205,6 +207,7 @@ class TestCreateMetric:
 
     def test_metric_partial(self):
         from dspy import Example
+
         metric = create_multi_objective_metric(char_weight=0.5, voice_weight=0.5)
         gold = Example(paragraph_text="t", character="A", voice="v").with_inputs("paragraph_text")
         pred = {"character_name": "A", "voice_design": "Z"}
@@ -213,6 +216,7 @@ class TestCreateMetric:
 
     def test_metric_dict_pred(self):
         from dspy import Example
+
         metric = create_multi_objective_metric()
         gold = Example(paragraph_text="t", character="A", voice="V").with_inputs("paragraph_text")
         pred = {"character_name": "A", "voice_design": "V"}
@@ -221,6 +225,7 @@ class TestCreateMetric:
 
     def test_metric_prediction_pred(self):
         from dspy import Example, Prediction
+
         metric = create_multi_objective_metric()
         gold = Example(paragraph_text="t", character="A", voice="V").with_inputs("paragraph_text")
         # Prediction.__dict__ stores in _store, metric uses __dict__.get which fails
@@ -231,6 +236,7 @@ class TestCreateMetric:
 
     def test_metric_empty_pred(self):
         from dspy import Example
+
         metric = create_multi_objective_metric()
         gold = Example(paragraph_text="t", character="A", voice="V").with_inputs("paragraph_text")
         pred = {}
@@ -239,6 +245,7 @@ class TestCreateMetric:
 
     def test_metric_dict_gold_character(self):
         from dspy import Example
+
         metric = create_multi_objective_metric()
         gold = Example(
             paragraph_text="t",
@@ -251,6 +258,7 @@ class TestCreateMetric:
 
 
 # ── BootstrapFewShotOptimizer ────────────────────────────────────────────────
+
 
 class TestOptimizer:
     def test_init(self):
@@ -266,7 +274,9 @@ class TestOptimizer:
 
     def test_init_custom_weights(self):
         opt = BootstrapFewShotOptimizer(
-            stage="test", char_weight=0.7, voice_weight=0.3,
+            stage="test",
+            char_weight=0.7,
+            voice_weight=0.3,
         )
         assert opt.loss_fn.weights["character_recognition"] == 0.7
         assert opt.loss_fn.weights["voice_design"] == 0.3
@@ -339,6 +349,7 @@ class TestOptimizer:
 
 # ── load_training_examples ──────────────────────────────────────────────────
 
+
 class TestLoadTrainingExamples:
     def test_no_files(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
@@ -351,9 +362,10 @@ class TestLoadTrainingExamples:
         golden_dir = tmp_path / "tests" / "golden" / "annotate_paragraph"
         golden_dir.mkdir(parents=True)
         data = {
-            "input": {"paragraph_text": "text1", "character_voice_map": [
-                {"canonical_name": "Alice", "suggested_voice_id": "v1"}
-            ]},
+            "input": {
+                "paragraph_text": "text1",
+                "character_voice_map": [{"canonical_name": "Alice", "suggested_voice_id": "v1"}],
+            },
             "expected_output": {"speaker_canonical_name": "Alice"},
         }
         (golden_dir / "few_shot.jsonl").write_text(json.dumps(data))
@@ -367,9 +379,7 @@ class TestLoadTrainingExamples:
         monkeypatch.chdir(tmp_path)
         bootstrap_file = tmp_path / "tests" / "golden" / "bootstrap_examples.json"
         bootstrap_file.parent.mkdir(parents=True)
-        bootstrap_file.write_text(json.dumps({
-            "examples": [{"text": "hello", "character": "Bob", "voice": "v2"}]
-        }))
+        bootstrap_file.write_text(json.dumps({"examples": [{"text": "hello", "character": "Bob", "voice": "v2"}]}))
         prompt, examples = load_training_examples("nonexistent_stage", str(bootstrap_file))
         assert len(examples) == 1
         assert examples[0][1]["character"] == "Bob"
@@ -384,6 +394,7 @@ class TestLoadTrainingExamples:
 
 
 # ── run_bootstrap_optimization ──────────────────────────────────────────────
+
 
 class TestRunBootstrapOptimization:
     def test_no_examples_returns_none(self, tmp_path, monkeypatch):

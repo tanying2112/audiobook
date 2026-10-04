@@ -19,10 +19,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from audiobook_studio.database import Base
-from audiobook_studio.feedback.auto_processor import (
-    create_auto_processor,
-    run_feedback_analysis_cli,
-)
+from audiobook_studio.feedback.auto_processor import create_auto_processor, run_feedback_analysis_cli
 
 logging.basicConfig(
     level=logging.INFO,
@@ -41,12 +38,8 @@ def get_db_session_factory():
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Feedback Processor - Auto-trigger analysis of collected feedback"
-    )
-    parser.add_argument(
-        "--project-id", type=int, required=True, help="Project ID to process"
-    )
+    parser = argparse.ArgumentParser(description="Feedback Processor - Auto-trigger analysis of collected feedback")
+    parser.add_argument("--project-id", type=int, required=True, help="Project ID to process")
     parser.add_argument(
         "--analyze-now",
         action="store_true",
@@ -131,6 +124,7 @@ def main():
 
         try:
             import time
+
             while True:
                 time.sleep(10)
                 status = processor.get_status()

@@ -1,9 +1,8 @@
 """audiobookshelf_integration.py async 方法测试。"""
 
-import asyncio
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -13,18 +12,23 @@ class TestAudiobookshelfIntegratorAsync:
 
     def _make_config(self):
         from src.audiobook_studio.publish.audiobookshelf_integration import AudiobookshelfConfig
+
         return AudiobookshelfConfig(
-            api_url="http://localhost:8080", api_key="key", library_id="lib1",
+            api_url="http://localhost:8080",
+            api_key="key",
+            library_id="lib1",
         )
 
     def _make_metadata(self, **kwargs):
         from src.audiobook_studio.publish.audiobookshelf_integration import AudiobookMetadata
+
         defaults = dict(title="书", author="作者", narrator="朗读者", description="简介")
         defaults.update(kwargs)
         return AudiobookMetadata(**defaults)
 
     def _make_integrator(self):
         from src.audiobook_studio.publish.audiobookshelf_integration import AudiobookshelfIntegrator
+
         cfg = self._make_config()
         with patch("httpx.AsyncClient"):
             return AudiobookshelfIntegrator(cfg)
@@ -47,12 +51,17 @@ class TestAudiobookshelfIntegratorAsync:
         """prepare_audiobook 成功路径。"""
         with tempfile.TemporaryDirectory() as tmpdir:
             from src.audiobook_studio.publish.audiobookshelf_integration import AudiobookFile
+
             integrator = self._make_integrator()
             fp = Path(tmpdir) / "book.m4b"
             fp.write_bytes(b"audio")
             af = AudiobookFile(
-                file_path=fp, size_bytes=5, duration_seconds=60,
-                format="m4b", bitrate_kbps=64, checksum_md5="x",
+                file_path=fp,
+                size_bytes=5,
+                duration_seconds=60,
+                format="m4b",
+                bitrate_kbps=64,
+                checksum_md5="x",
             )
             ok, msg, data = await integrator.prepare_audiobook(self._make_metadata(), af)
             assert ok is True
@@ -64,15 +73,18 @@ class TestAudiobookshelfIntegratorAsync:
         integrator = self._make_integrator()
         with tempfile.TemporaryDirectory() as tmpdir:
             from src.audiobook_studio.publish.audiobookshelf_integration import AudiobookFile
+
             fp = Path(tmpdir) / "book.m4b"
             fp.write_bytes(b"audio")
             af = AudiobookFile(
-                file_path=fp, size_bytes=5, duration_seconds=60,
-                format="m4b", bitrate_kbps=64, checksum_md5="x",
+                file_path=fp,
+                size_bytes=5,
+                duration_seconds=60,
+                format="m4b",
+                bitrate_kbps=64,
+                checksum_md5="x",
             )
-            ok, msg, data = await integrator.prepare_audiobook(
-                self._make_metadata(title="  "), af
-            )
+            ok, msg, data = await integrator.prepare_audiobook(self._make_metadata(title="  "), af)
             assert ok is False
 
     @pytest.mark.asyncio
@@ -80,9 +92,14 @@ class TestAudiobookshelfIntegratorAsync:
         """prepare_audiobook 音频无效。"""
         integrator = self._make_integrator()
         from src.audiobook_studio.publish.audiobookshelf_integration import AudiobookFile
+
         af = AudiobookFile(
-            file_path=Path("/no/such"), size_bytes=0, duration_seconds=60,
-            format="m4b", bitrate_kbps=64, checksum_md5="x",
+            file_path=Path("/no/such"),
+            size_bytes=0,
+            duration_seconds=60,
+            format="m4b",
+            bitrate_kbps=64,
+            checksum_md5="x",
         )
         ok, msg, data = await integrator.prepare_audiobook(self._make_metadata(), af)
         assert ok is False
@@ -93,11 +110,16 @@ class TestAudiobookshelfIntegratorAsync:
         integrator = self._make_integrator()
         with tempfile.TemporaryDirectory() as tmpdir:
             from src.audiobook_studio.publish.audiobookshelf_integration import AudiobookFile
+
             fp = Path(tmpdir) / "book.flac"
             fp.write_bytes(b"audio")
             af = AudiobookFile(
-                file_path=fp, size_bytes=5, duration_seconds=60,
-                format="flac", bitrate_kbps=64, checksum_md5="x",
+                file_path=fp,
+                size_bytes=5,
+                duration_seconds=60,
+                format="flac",
+                bitrate_kbps=64,
+                checksum_md5="x",
             )
             ok, msg, data = await integrator.prepare_audiobook(self._make_metadata(), af)
             assert ok is False
@@ -108,15 +130,18 @@ class TestAudiobookshelfIntegratorAsync:
         integrator = self._make_integrator()
         with tempfile.TemporaryDirectory() as tmpdir:
             from src.audiobook_studio.publish.audiobookshelf_integration import AudiobookFile
+
             fp = Path(tmpdir) / "book.m4b"
             fp.write_bytes(b"audio")
             af = AudiobookFile(
-                file_path=fp, size_bytes=5, duration_seconds=60,
-                format="m4b", bitrate_kbps=64, checksum_md5="x",
+                file_path=fp,
+                size_bytes=5,
+                duration_seconds=60,
+                format="m4b",
+                bitrate_kbps=64,
+                checksum_md5="x",
             )
-            ok, msg, _resp = await integrator.publish_to_audiobookshelf(
-                self._make_metadata(title="  "), af
-            )
+            ok, msg, _resp = await integrator.publish_to_audiobookshelf(self._make_metadata(title="  "), af)
             assert ok is False
 
     @pytest.mark.asyncio
@@ -125,17 +150,26 @@ class TestAudiobookshelfIntegratorAsync:
         integrator = self._make_integrator()
         with tempfile.TemporaryDirectory() as tmpdir:
             from src.audiobook_studio.publish.audiobookshelf_integration import AudiobookFile
+
             fp = Path(tmpdir) / "book.m4b"
             fp.write_bytes(b"audio")
             af = AudiobookFile(
-                file_path=fp, size_bytes=5, duration_seconds=60,
-                format="m4b", bitrate_kbps=64, checksum_md5="x",
+                file_path=fp,
+                size_bytes=5,
+                duration_seconds=60,
+                format="m4b",
+                bitrate_kbps=64,
+                checksum_md5="x",
             )
             # Mock the real_api_call
-            integrator._real_api_call = AsyncMock(return_value={
-                "success": True, "item_id": "item1",
-                "uploaded_files": 1, "total_files": 1,
-            })
+            integrator._real_api_call = AsyncMock(
+                return_value={
+                    "success": True,
+                    "item_id": "item1",
+                    "uploaded_files": 1,
+                    "total_files": 1,
+                }
+            )
             ok, msg, _resp = await integrator.publish_to_audiobookshelf(self._make_metadata(), af)
             assert ok is True
 
@@ -145,15 +179,24 @@ class TestAudiobookshelfIntegratorAsync:
         integrator = self._make_integrator()
         with tempfile.TemporaryDirectory() as tmpdir:
             from src.audiobook_studio.publish.audiobookshelf_integration import AudiobookFile
+
             fp = Path(tmpdir) / "book.m4b"
             fp.write_bytes(b"audio")
             af = AudiobookFile(
-                file_path=fp, size_bytes=5, duration_seconds=60,
-                format="m4b", bitrate_kbps=64, checksum_md5="x",
+                file_path=fp,
+                size_bytes=5,
+                duration_seconds=60,
+                format="m4b",
+                bitrate_kbps=64,
+                checksum_md5="x",
             )
-            integrator._real_api_call = AsyncMock(return_value={
-                "success": False, "message": "上传失败", "item_id": None,
-            })
+            integrator._real_api_call = AsyncMock(
+                return_value={
+                    "success": False,
+                    "message": "上传失败",
+                    "item_id": None,
+                }
+            )
             ok, msg, _resp = await integrator.publish_to_audiobookshelf(self._make_metadata(), af)
             assert ok is False
 
@@ -163,11 +206,16 @@ class TestAudiobookshelfIntegratorAsync:
         integrator = self._make_integrator()
         with tempfile.TemporaryDirectory() as tmpdir:
             from src.audiobook_studio.publish.audiobookshelf_integration import AudiobookFile
+
             fp = Path(tmpdir) / "book.m4b"
             fp.write_bytes(b"audio")
             af = AudiobookFile(
-                file_path=fp, size_bytes=5, duration_seconds=60,
-                format="m4b", bitrate_kbps=64, checksum_md5="x",
+                file_path=fp,
+                size_bytes=5,
+                duration_seconds=60,
+                format="m4b",
+                bitrate_kbps=64,
+                checksum_md5="x",
             )
             integrator.config.library_id = ""
             result = await integrator._real_api_call({}, af)

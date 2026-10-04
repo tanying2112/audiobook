@@ -1,0 +1,25 @@
+{{- if .Values.web.enabled -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "audiobook-studio.fullname" . }}-config
+  labels:
+    {{- include "audiobook-studio.labels" . | nindent 4 }}
+    component: web
+data:
+  APP_NAME: {{ .Values.app.name | quote }}
+  APP_VERSION: {{ .Values.app.version | quote }}
+  APP_ENVIRONMENT: {{ .Values.app.environment | quote }}
+  LOG_LEVEL: {{ .Values.app.logLevel | quote }}
+  TIMEZONE: {{ .Values.app.timezone | quote }}
+  PYTHONPATH: {{ .Values.app.pythonPath | quote }}
+  AUDIOBOOK_STUDIO_MODEL_CACHE: {{ .Values.app.modelCachePath | quote }}
+  REDIS_URL: "redis://redis-master:6379/0"
+  CELERY_BROKER_URL: "redis://redis-master:6379/0"
+  CELERY_RESULT_BACKEND: "redis://redis-master:6379/0"
+  CHROMADB_HOST: "chromadb"
+  CHROMADB_PORT: "8000"
+  ENABLE_RAG: "true"
+  RAG_TOP_K: "5"
+  RAG_HYBRID_SEARCH_ALPHA: "0.5"
+{{- end }}

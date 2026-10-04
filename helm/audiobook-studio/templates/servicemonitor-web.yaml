@@ -1,0 +1,23 @@
+{{- if and .Values.web.enabled .Values.prometheus.serviceMonitor.enabled -}}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "audiobook-studio.fullname" . }}-web
+  labels:
+    {{- include "audiobook-studio.labels" . | nindent 4 }}
+    component: web
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      {{- include "audiobook-studio.selectorLabels" . | nindent 6 }}
+      component: web
+  endpoints:
+    - port: metrics
+      interval: {{ .Values.prometheus.serviceMonitor.interval }}
+      scrapeTimeout: {{ .Values.prometheus.serviceMonitor.scrapeTimeout }}
+      path: /metrics
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+{{- end }}

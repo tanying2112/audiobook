@@ -1,0 +1,18 @@
+{{- if and .Values.web.enabled .Values.networkPolicy.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "audiobook-studio.fullname" . }}-web
+  labels:
+    {{- include "audiobook-studio.labels" . | nindent 4 }}
+    component: web
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "audiobook-studio.selectorLabels" . | nindent 6 }}
+      component: web
+  policyTypes:
+    - Ingress
+  ingress:
+    {{- toYaml .Values.networkPolicy.ingress | nindent 4 }}
+{{- end }}

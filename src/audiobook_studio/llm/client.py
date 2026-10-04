@@ -8,21 +8,13 @@ import json
 import logging
 import os
 import time
-from dataclasses import dataclass, field
-from datetime import datetime
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Type, TypeVar
-
-from pydantic import BaseModel
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
+from typing import Any, Dict, Optional, Type, TypeVar
 
 import instructor
 from litellm import completion
+from pydantic import BaseModel
 
 from ..schemas import (
     BookAnalysisOutput,
@@ -34,6 +26,15 @@ from ..schemas import (
 )
 
 logger = logging.getLogger(__name__)
+
+from .constitutional_rules import apply_constitutional_rules
+
+# LLM semantic cache (lazy-resolved; no-op unless LLM_SEMANTIC_CACHE_ENABLED=true)
+from .semantic_cache import (
+    cached_llm_lookup,
+    cached_llm_store,
+    get_semantic_cache,
+)
 
 # Import shared validation utilities
 from .utils import LLMParseError, validate_and_parse_llm_response
@@ -96,9 +97,18 @@ class LLMClientConfig:
     temperature: float = 0.1
     max_tokens: int = 4000
     max_retries: int = 3
-    timeout: int = 60
+    timeout: Optional[int] = 60  # None or 0 = no timeout (for local Ollama)
     mock_data_dir: str = "tests/golden"
     api_base: Optional[str] = None
+    # Explicit API key passed to LiteLLM. Auto-injected by the router from the
+    # provider's key pool (resolved from .env via api_key_env). Needed because
+    # LiteLLM for `provider: openai` reads OPENAI_API_KEY from os.environ, which
+    # may differ from the provider's own env var (e.g. KILO_API_KEY). Prefer this
+    # over relying on ambient env vars when a provider carries a distinct key.
+    api_key: Optional[str] = None
+    # Optional headers passed through to LiteLLM (e.g. fcc gateway needs Authorization: Bearer,
+    # since its /v1/messages endpoint does not accept the default x-api-key header).
+    extra_headers: Optional[Dict[str, str]] = None
     # Langfuse configuration
     langfuse_public_key: Optional[str] = None
     langfuse_secret_key: Optional[str] = None
@@ -127,7 +137,8 @@ class LLMClient:
     def _init_client(self):
         """Initialize LiteLLM + Instructor client."""
         if not self.config.mock_mode:
-            self._client = instructor.from_litellm(completion)
+            # Use JSON mode for better compatibility with local models like Ollama
+            self._client = instructor.from_litellm(completion, mode=instructor.Mode.JSON)
         else:
             self._client = None
 
@@ -137,6 +148,7 @@ class LLMClient:
             return
         try:
             from langfuse import Langfuse
+
             self._langfuse = Langfuse(
                 public_key=self.config.langfuse_public_key,
                 secret_key=self.config.langfuse_secret_key,
@@ -151,7 +163,7 @@ class LLMClient:
 
     def _load_mock_data(self):
         """Load mock data for testing."""
-        import json
+
         mock_dir = Path(self.config.mock_data_dir)
         if mock_dir.exists():
             # Look for both .json and .jsonl files
@@ -172,26 +184,26 @@ class LLMClient:
     def call(self, *args, **kwargs) -> LLMCallResult:
         """
         Call LLM with structured output parsing.
-        
+
         Compatible calling conventions:
         - call(prompt, response_model, **kwargs)  # positional
         - call(prompt="...", response_model=..., **kwargs)  # keyword prompt
         - call(text="...", response_model=..., **kwargs)    # keyword text
         - call(content="...", response_model=..., **kwargs) # keyword content
-        
+
         The prompt is extracted from the first positional arg or from
         prompt=, text=, or content= keyword arguments.
         """
         # Extract prompt from various possible sources
         prompt = None
         response_model = None
-        
+
         # Handle positional arguments: (prompt, response_model, ...)
         if args:
             prompt = args[0]
             if len(args) > 1:
                 response_model = args[1]
-        
+
         # Handle keyword arguments (override positional if provided)
         if "prompt" in kwargs:
             prompt = kwargs.pop("prompt")
@@ -225,9 +237,34 @@ class LLMClient:
         if response_model is None:
             raise ValueError("response_model is required")
 
-        if self.config.mock_mode:
-            return self._mock_call(prompt_str, response_model)
+        # --- LLM semantic cache (no-op when disabled) ---
+        _sem_cache = get_semantic_cache()
+        if _sem_cache is not None:
+            _cached = cached_llm_lookup(
+                _sem_cache,
+                prompt=prompt,
+                response_model=response_model,
+                model=self.config.model,
+                temperature=_temperature,
+                max_tokens=_max_tokens,
+            )
+            if _cached is not None:
+                return _cached
 
+        if self.config.mock_mode:
+            result: Any = None
+            result = self._mock_call(prompt_str, response_model)
+            if _sem_cache is not None:
+                cached_llm_store(
+                    _sem_cache,
+                    prompt=prompt,
+                    result=result,
+                    response_model=response_model,
+                    model=self.config.model,
+                    temperature=_temperature,
+                    max_tokens=_max_tokens,
+                )
+            return result
         start = time.time()
         try:
             # Accept either a string prompt or a full messages list
@@ -241,33 +278,66 @@ class LLMClient:
             call_kwargs = dict(kwargs)
             if self.config.api_base:
                 call_kwargs["api_base"] = self.config.api_base
+            # Explicit api_key (resolved by the router from provider key pool).
+            if self.config.api_key:
+                call_kwargs["api_key"] = self.config.api_key
+            # Inject extra headers (e.g. Authorization: Bearer for fcc gateway)
+            if self.config.extra_headers:
+                call_kwargs["extra_headers"] = self.config.extra_headers
+            # Pass timeout to LiteLLM: None or 0 = no timeout (for local Ollama)
+            if self.config.timeout is not None and self.config.timeout > 0:
+                call_kwargs["timeout"] = self.config.timeout
+            else:
+                call_kwargs["timeout"] = None  # No timeout for local models
             result = self._client.chat.completions.create(
                 model=self.config.model,
                 messages=messages,
                 response_model=response_model,
                 temperature=_temperature,
                 max_tokens=_max_tokens,
-                **call_kwargs
+                **call_kwargs,
             )
             latency_ms = int((time.time() - start) * 1000)
 
             # Get raw response for validation
-            raw_response = getattr(result, '_raw_response', None) or getattr(result, 'model_dump', lambda: {})()
+            # When using instructor with JSON mode, result is already parsed
+            # and result directly is the Pydantic model
+            raw_response = getattr(result, "_raw_response", None)
+            _skip_validation = False  # Flag to skip validation for instructor-parsed responses
 
-            # Extract token usage from raw response
-            tokens_in = 0
-            tokens_out = 0
-            if isinstance(raw_response, dict) and "usage" in raw_response:
-                usage = raw_response["usage"]
-                tokens_in = usage.get("prompt_tokens", 0)
-                tokens_out = usage.get("completion_tokens", 0)
+            if raw_response is not None:
+                # Extract token usage from ModelResponse
+                usage_obj = getattr(raw_response, "usage", None)
+                if usage_obj is not None:
+                    usage_dict = getattr(usage_obj, "model_dump", lambda: {})()
+                    tokens_in = usage_dict.get("prompt_tokens", 0) if isinstance(usage_dict, dict) else 0
+                    tokens_out = usage_dict.get("completion_tokens", 0) if isinstance(usage_dict, dict) else 0
+                else:
+                    tokens_in = 0
+                    tokens_out = 0
 
-            # Defensive JSON parsing validation
-            try:
-                validate_and_parse_llm_response(raw_response, response_model, "unknown")
-            except LLMParseError as e:
-                logger.warning(f"LLM returned invalid JSON: {e}")
-                raise
+                # Extract content string from ModelResponse for validation
+                choices = getattr(raw_response, "choices", [])
+                if choices:
+                    message = getattr(choices[0], "message", None)
+                    raw_response = getattr(message, "content", "{}") if message else "{}"
+                else:
+                    raw_response = "{}"
+            else:
+                # Result is already a Pydantic model from instructor
+                # Skip validate_and_parse_llm_response since instructor already validated
+                _skip_validation = True
+                raw_response = {}
+                tokens_in = 0
+                tokens_out = 0
+
+            # Defensive JSON parsing validation (skip if already validated by instructor)
+            if not _skip_validation and raw_response:  # Only validate if we have raw_response to check
+                try:
+                    validate_and_parse_llm_response(raw_response, response_model, "unknown")
+                except LLMParseError as e:
+                    logger.warning(f"LLM returned invalid JSON: {e}")
+                    raise
 
             # Calculate cost
             cost_usd = 0.0
@@ -277,8 +347,10 @@ class LLMClient:
             if tokens_out > 0:
                 cost_usd += (tokens_out / 1_000_000) * model_pricing.get("output", 0)
 
-            return LLMCallResult(
-                output=result,
+            # Apply constitutional rules
+            ruled_output = apply_constitutional_rules(result, context={"model": self.config.model})
+            result = LLMCallResult(
+                output=ruled_output,
                 model=self.config.model,
                 tokens_in=tokens_in,
                 tokens_out=tokens_out,
@@ -290,10 +362,21 @@ class LLMClient:
         except Exception as e:
             logger.error(f"LLM call failed: {e}")
             raise
+        if _sem_cache is not None:
+            cached_llm_store(
+                _sem_cache,
+                prompt=prompt,
+                result=result,
+                response_model=response_model,
+                model=self.config.model,
+                temperature=_temperature,
+                max_tokens=_max_tokens,
+            )
+        return result
 
     def _mock_call(self, prompt: str, response_model: Type[T]) -> LLMCallResult:
         """Mock LLM call for testing."""
-        import copy
+
         # Return mock data if available
         for key, data in self._mock_cache.items():
             if key in prompt.lower():
@@ -308,86 +391,127 @@ class LLMClient:
                     raw_response=data,
                 )
         # Return minimal valid mock based on response_model type
-        from ..schemas import (
-            BookAnalysisOutput, ExtractionResult, ParagraphAnnotation,
-            QualityJudgment, TtsEditOutput, TtsRoutingDecision
-        )
+
         if response_model == BookAnalysisOutput:
-            from ..schemas import BookAnalysisOutput, BookMeta, CharacterVoiceBinding, EmotionSnapshot
+            from ..schemas import BookMeta, CharacterVoiceBinding, EmotionSnapshot
+
             mock_output = BookAnalysisOutput(
                 book_meta=BookMeta(
-                    title='Test Book', author='Test Author', genre='小说',
-                    difficulty='B', language='zh', era='现代', total_chapters_estimated=10
+                    title="Test Book",
+                    author="Test Author",
+                    genre="小说",
+                    difficulty="B",
+                    language="zh",
+                    era="现代",
+                    total_chapters_estimated=10,
                 ),
                 character_voice_map=[
                     CharacterVoiceBinding(
-                        canonical_name='旁白', aliases=[], gender='neutral',
-                        age_range='adult', suggested_voice_id='v1',
-                        sample_quote='这是一个测试样本。'
+                        canonical_name="旁白",
+                        aliases=[],
+                        gender="neutral",
+                        age_range="adult",
+                        suggested_voice_id="v1",
+                        sample_quote="这是一个测试样本。",
                     ),
                     CharacterVoiceBinding(
-                        canonical_name='主角', aliases=[], gender='male',
-                        age_range='adult', suggested_voice_id='v2',
-                        sample_quote='主角的测试台词。'
+                        canonical_name="主角",
+                        aliases=[],
+                        gender="male",
+                        age_range="adult",
+                        suggested_voice_id="v2",
+                        sample_quote="主角的测试台词。",
                     ),
                 ],
                 emotion_snapshots=[
-                    EmotionSnapshot(chapter=1, dominant_emotion='neutral', intensity=0.5, notes='测试情感快照')
+                    EmotionSnapshot(
+                        chapter=1,
+                        dominant_emotion="neutral",
+                        intensity=0.5,
+                        notes="测试情感快照",
+                    )
                 ],
-                story_line_summary='这是一个用于测试的模拟故事主线摘要，包含足够的字符数以满足最小长度要求一百字以上。故事讲述了一个主角在现代都市中经历各种冒险和成长的过程，通过重重困难最终实现自我超越的励志历程，展现了人性的光辉与坚韧。',
-                global_style_notes='测试全局文风备注：保持平实叙述风格，对话自然流畅。'
+                story_line_summary="这是一个用于测试的模拟故事主线摘要，包含足够的字符数以满足最小长度要求一百字以上。故事讲述了一个主角在现代都市中经历各种冒险和成长的过程，通过重重困难最终实现自我超越的励志历程，展现了人性的光辉与坚韧。",
+                global_style_notes="测试全局文风备注：保持平实叙述风格，对话自然流畅。",
             )
         elif response_model == ExtractionResult:
-            from ..schemas import ExtractionResult
+
             mock_output = ExtractionResult(
-                raw_text='Mock extracted text', language='zh', page_count=1,
-                has_ocr=False, ocr_page_ratio=0.0, warnings=[]
+                raw_text="Mock extracted text",
+                language="zh",
+                page_count=1,
+                has_ocr=False,
+                ocr_page_ratio=0.0,
+                warnings=[],
             )
         elif response_model == ParagraphAnnotation:
-            from ..schemas import ParagraphAnnotation
+
             mock_output = ParagraphAnnotation(
-                paragraph_index=0, speaker_canonical_name='旁白', is_dialogue=False,
-                emotion='neutral', emotion_intensity=0.5, speech_rate=1.0,
-                pitch_shift_semitones=0, needs_sfx=False, sfx_tags=[],
-                pause_before_ms=300, pause_after_ms=500, confidence=0.9,
-                difficulty='B', notes='heuristic_fallback_no_llm_available'
+                paragraph_index=0,
+                speaker_canonical_name="旁白",
+                is_dialogue=False,
+                emotion="neutral",
+                emotion_intensity=0.5,
+                speech_rate=1.0,
+                pitch_shift_semitones=0,
+                needs_sfx=False,
+                sfx_tags=[],
+                pause_before_ms=300,
+                pause_after_ms=500,
+                confidence=0.9,
+                difficulty="B",
+                notes="heuristic_fallback_no_llm_available",
             )
         elif response_model == QualityJudgment:
-            from ..schemas import QualityJudgment
+
             mock_output = QualityJudgment(
-                segment_id='mock_seg', speaker_clarity=0.9, emotion_match=0.9,
-                prosody_naturalness=0.9, text_audio_alignment=0.9,
-                overall_score=0.9, issues=[], fix_suggestions=[],
-                needs_regeneration=False
+                segment_id="mock_seg",
+                speaker_clarity=0.9,
+                emotion_match=0.9,
+                prosody_naturalness=0.9,
+                text_audio_alignment=0.9,
+                overall_score=0.9,
+                issues=[],
+                fix_suggestions=[],
+                needs_regeneration=False,
             )
         elif response_model == TtsEditOutput:
-            from ..schemas import TtsEditOutput
+
             mock_output = TtsEditOutput(
-                edited_text='这是模拟编辑后的文本，用于测试。', changes_made=['heuristic_fallback_no_llm_available'],
-                forbidden_content_removed=[], confidence=0.8, rationale='LLM unavailable, using heuristic fallback'
+                edited_text="这是模拟编辑后的文本，用于测试。",
+                changes_made=["heuristic_fallback_no_llm_available"],
+                forbidden_content_removed=[],
+                confidence=0.8,
+                rationale="LLM unavailable, using heuristic fallback",
             )
         elif response_model == TtsRoutingDecision:
-            from ..schemas import TtsRoutingDecision
+
             mock_output = TtsRoutingDecision(
-                segment_id='mock_seg', engine_choice='kokoro', voice_id='v1',
-                prosody_overrides=None, fallback_engine='edge', reasoning='Mock',
-                estimated_cost_usd=0.0, estimated_duration_ms=1000
+                segment_id="mock_seg",
+                engine_choice="kokoro",
+                voice_id="v1",
+                prosody_overrides=None,
+                fallback_engine="edge",
+                reasoning="Mock",
+                estimated_cost_usd=0.0,
+                estimated_duration_ms=1000,
             )
-        elif response_model == 'FeedbackAnalysis':
+        elif response_model == "FeedbackAnalysis":
             from ..schemas import FeedbackAnalysis
+
             mock_output = FeedbackAnalysis(
-                pattern_tags=['mock_feedback_tag'],
-                semantic_summary='[Mock] Feedback analysis for testing purposes.',
-                severity='medium',
-                actionable_instruction='Mock actionable instruction for testing.',
-                root_cause='Mock root cause for testing.',
+                pattern_tags=["mock_feedback_tag"],
+                semantic_summary="[Mock] Feedback analysis for testing purposes.",
+                severity="medium",
+                actionable_instruction="Mock actionable instruction for testing.",
+                root_cause="Mock root cause for testing.",
                 confidence=0.85,
             )
         else:
             # Try to create a default instance, but handle list types gracefully
             try:
                 mock_output = response_model()
-            except (TypeError, Exception):
+            except (TypeError, Exception):  # noqa: B014
                 # For types that can't be instantiated without arguments (like list),
                 # or Pydantic models with required fields, return None
                 mock_output = None
@@ -399,7 +523,7 @@ class LLMClient:
             cost_usd=0.0,
             latency_ms=1,
             schema_compliance=True,
-            raw_response=mock_output.model_dump() if hasattr(mock_output, 'model_dump') else {},
+            raw_response=(mock_output.model_dump() if hasattr(mock_output, "model_dump") else {}),
         )
 
 
@@ -408,8 +532,10 @@ def create_client(
     temperature: float = 0.1,
     max_tokens: int = 4000,
     max_retries: int = 3,
-    timeout: int = 60,
+    timeout: Optional[int] = 60,  # None or 0 = no timeout
     api_base: Optional[str] = None,
+    api_key: Optional[str] = None,
+    extra_headers: Optional[Dict[str, str]] = None,
     langfuse_public_key: Optional[str] = None,
     langfuse_secret_key: Optional[str] = None,
     langfuse_host: str = "https://cloud.langfuse.com",
@@ -423,6 +549,8 @@ def create_client(
         max_retries=max_retries,
         timeout=timeout,
         api_base=api_base,
+        api_key=api_key,
+        extra_headers=extra_headers,
         langfuse_public_key=langfuse_public_key,
         langfuse_secret_key=langfuse_secret_key,
         langfuse_host=langfuse_host,

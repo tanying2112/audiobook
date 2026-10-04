@@ -1,19 +1,34 @@
 """Tests for monitoring module (standalone monitoring.py)."""
 
+# Import the standalone monitoring.py module using importlib.
+# P1.6.3: resolve the path RELATIVE to this file instead of hardcoding the
+# repo's pre-move absolute path ("/Users/guwj/Desktop/AI_Lab/audiobook/..."),
+# which raised FileNotFoundError and aborted the whole unit collection.
+import importlib.util
 import tempfile
 from pathlib import Path
 
 import pytest
 
-# Import the standalone monitoring.py module using importlib
-import importlib.util
-
 spec = importlib.util.spec_from_file_location(
-    'monitoring_standalone',
-    '/Users/guwj/Desktop/AI_Lab/audiobook/src/audiobook_studio/monitoring.py'
+    "monitoring_standalone",
+    str(Path(__file__).resolve().parents[2] / "src" / "audiobook_studio" / "monitoring.py"),
 )
 monitoring = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(monitoring)
+
+
+@pytest.fixture(autouse=True)  # noqa: E303
+def _reset_monitoring_collector():
+    """Reset the standalone collector after each test for order-independence.
+
+    The collector is a module-level singleton loaded via importlib under the
+    name ``monitoring_standalone``; the global conftest reset targets the
+    ``src.audiobook_studio.monitoring`` module, a different object, so this
+    file must reset its own collector to avoid cross-test record leakage.
+    """
+    yield
+    monitoring.reset_collector()
 
 
 class TestStagePerformanceRecord:
@@ -106,9 +121,31 @@ class TestPerformanceCollector:
     def test_record_multiple(self):
         """Test recording multiple entries."""
         collector = monitoring.PerformanceCollector()
-        collector.record(stage="annotate", latency_ms=100, tokens_in=10, tokens_out=5, cost_usd=0.001, success=True)
-        collector.record(stage="synthesize", latency_ms=500, tokens_in=0, tokens_out=0, cost_usd=0.0, success=True)
-        collector.record(stage="quality_check", latency_ms=200, tokens_in=20, tokens_out=10, cost_usd=0.003, success=False, error="Validation failed")
+        collector.record(
+            stage="annotate",
+            latency_ms=100,
+            tokens_in=10,
+            tokens_out=5,
+            cost_usd=0.001,
+            success=True,
+        )
+        collector.record(
+            stage="synthesize",
+            latency_ms=500,
+            tokens_in=0,
+            tokens_out=0,
+            cost_usd=0.0,
+            success=True,
+        )
+        collector.record(
+            stage="quality_check",
+            latency_ms=200,
+            tokens_in=20,
+            tokens_out=10,
+            cost_usd=0.003,
+            success=False,
+            error="Validation failed",
+        )
         assert len(collector.records) == 3
 
     def test_get_stage_stats_empty(self):
@@ -120,7 +157,14 @@ class TestPerformanceCollector:
     def test_get_stage_stats_single(self):
         """Test getting stats for a stage with one record."""
         collector = monitoring.PerformanceCollector()
-        collector.record(stage="annotate", latency_ms=100, tokens_in=10, tokens_out=5, cost_usd=0.001, success=True)
+        collector.record(
+            stage="annotate",
+            latency_ms=100,
+            tokens_in=10,
+            tokens_out=5,
+            cost_usd=0.001,
+            success=True,
+        )
         stats = collector.get_stage_stats("annotate")
         assert stats["stage"] == "annotate"
         assert stats["count"] == 1
@@ -133,13 +177,37 @@ class TestPerformanceCollector:
     def test_get_stage_stats_multiple(self):
         """Test getting stats for a stage with multiple records."""
         collector = monitoring.PerformanceCollector()
-        collector.record(stage="annotate", latency_ms=100, tokens_in=10, tokens_out=5, cost_usd=0.001, success=True, quality_score=0.9)
-        collector.record(stage="annotate", latency_ms=200, tokens_in=20, tokens_out=10, cost_usd=0.002, success=True, quality_score=0.8)
-        collector.record(stage="annotate", latency_ms=300, tokens_in=30, tokens_out=15, cost_usd=0.003, success=False, error="Failed")
+        collector.record(
+            stage="annotate",
+            latency_ms=100,
+            tokens_in=10,
+            tokens_out=5,
+            cost_usd=0.001,
+            success=True,
+            quality_score=0.9,
+        )
+        collector.record(
+            stage="annotate",
+            latency_ms=200,
+            tokens_in=20,
+            tokens_out=10,
+            cost_usd=0.002,
+            success=True,
+            quality_score=0.8,
+        )
+        collector.record(
+            stage="annotate",
+            latency_ms=300,
+            tokens_in=30,
+            tokens_out=15,
+            cost_usd=0.003,
+            success=False,
+            error="Failed",
+        )
         stats = collector.get_stage_stats("annotate")
         assert stats["count"] == 3
         assert stats["success_count"] == 2
-        assert stats["success_rate"] == pytest.approx(2/3)
+        assert stats["success_rate"] == pytest.approx(2 / 3)
         assert stats["avg_latency_ms"] == 200.0
         assert stats["total_cost_usd"] == 0.006
         assert stats["avg_quality_score"] == pytest.approx(0.85)
@@ -147,8 +215,22 @@ class TestPerformanceCollector:
     def test_get_stage_stats_no_quality_scores(self):
         """Test stats when no quality scores available."""
         collector = monitoring.PerformanceCollector()
-        collector.record(stage="synthesize", latency_ms=100, tokens_in=0, tokens_out=0, cost_usd=0.0, success=True)
-        collector.record(stage="synthesize", latency_ms=200, tokens_in=0, tokens_out=0, cost_usd=0.0, success=True)
+        collector.record(
+            stage="synthesize",
+            latency_ms=100,
+            tokens_in=0,
+            tokens_out=0,
+            cost_usd=0.0,
+            success=True,
+        )
+        collector.record(
+            stage="synthesize",
+            latency_ms=200,
+            tokens_in=0,
+            tokens_out=0,
+            cost_usd=0.0,
+            success=True,
+        )
         stats = collector.get_stage_stats("synthesize")
         assert stats["avg_quality_score"] is None
 
@@ -163,9 +245,30 @@ class TestPerformanceCollector:
     def test_get_summary_multiple_stages(self):
         """Test summary with multiple stages."""
         collector = monitoring.PerformanceCollector()
-        collector.record(stage="annotate", latency_ms=100, tokens_in=10, tokens_out=5, cost_usd=0.001, success=True)
-        collector.record(stage="synthesize", latency_ms=500, tokens_in=0, tokens_out=0, cost_usd=0.0, success=True)
-        collector.record(stage="annotate", latency_ms=200, tokens_in=20, tokens_out=10, cost_usd=0.002, success=False)
+        collector.record(
+            stage="annotate",
+            latency_ms=100,
+            tokens_in=10,
+            tokens_out=5,
+            cost_usd=0.001,
+            success=True,
+        )
+        collector.record(
+            stage="synthesize",
+            latency_ms=500,
+            tokens_in=0,
+            tokens_out=0,
+            cost_usd=0.0,
+            success=True,
+        )
+        collector.record(
+            stage="annotate",
+            latency_ms=200,
+            tokens_in=20,
+            tokens_out=10,
+            cost_usd=0.002,
+            success=False,
+        )
         summary = collector.get_summary()
         assert summary["total_records"] == 3
         assert summary["total_cost_usd"] == 0.003
@@ -179,7 +282,14 @@ class TestPerformanceCollector:
         with tempfile.TemporaryDirectory() as tmpdir:
             log_dir = Path(tmpdir)
             collector = monitoring.PerformanceCollector(log_dir=log_dir)
-            collector.record(stage="annotate", latency_ms=100, tokens_in=10, tokens_out=5, cost_usd=0.001, success=True)
+            collector.record(
+                stage="annotate",
+                latency_ms=100,
+                tokens_in=10,
+                tokens_out=5,
+                cost_usd=0.001,
+                success=True,
+            )
 
             log_files = list(log_dir.glob("*_perf.jsonl"))
             assert len(log_files) == 1
@@ -199,7 +309,14 @@ class TestGlobalCollector:
     def test_reset_collector(self):
         """Test reset_collector creates new instance."""
         collector1 = monitoring.get_collector()
-        collector1.record(stage="test", latency_ms=100, tokens_in=10, tokens_out=5, cost_usd=0.001, success=True)
+        collector1.record(
+            stage="test",
+            latency_ms=100,
+            tokens_in=10,
+            tokens_out=5,
+            cost_usd=0.001,
+            success=True,
+        )
         assert len(collector1.records) == 1
 
         monitoring.reset_collector()
@@ -242,13 +359,35 @@ if __name__ == "__main__":
 
 """Tests for monitoring module (src/audiobook_studio/monitoring/)."""
 
-import tempfile
 import json
-from pathlib import Path
 from datetime import datetime, timedelta
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
+from pathlib import Path
+from unittest.mock import patch
 
 import pytest
+
+from src.audiobook_studio.monitoring.alert import (
+    AlertConfig,
+    AlertLevel,
+    AlertManager,
+    AlertRecord,
+    collect_self_iteration_logs,
+    compute_metrics,
+    compute_self_iteration_metrics,
+    format_alert_message,
+    send_dingtalk_alert,
+    send_slack_alert,
+)
+from src.audiobook_studio.monitoring.compliance import (
+    ComplianceMonitor,
+)
+from src.audiobook_studio.monitoring.cost_dashboard import (
+    CostBreakdown,
+    CostDashboard,
+    compute_cost_breakdown,
+    enrich_records_with_context,
+    format_table,
+)
 from src.audiobook_studio.monitoring.dashboard import (
     MonitoringDashboard,
     collect_logs,
@@ -256,59 +395,23 @@ from src.audiobook_studio.monitoring.dashboard import (
     detect_anomalies,
     format_dashboard,
 )
-from src.audiobook_studio.monitoring.alert import (
-    AlertLevel,
-    AlertConfig,
-    AlertRecord,
-    AlertManager,
-    collect_self_iteration_logs,
-    compute_self_iteration_metrics,
-    compute_metrics,
-    send_dingtalk_alert,
-    send_slack_alert,
-    format_alert_message,
-)
-from src.audiobook_studio.monitoring.cost_dashboard import (
-    CostDashboard,
-    CostBreakdown,
-    collect_logs as cost_collect_logs,
-    enrich_records_with_context,
-    compute_cost_breakdown,
-    format_table,
-)
-from src.audiobook_studio.monitoring.offline_monitoring import (
-    OfflineMonitor,
-    DummyOfflineMonitor,
-    create_offline_monitor,
-)
 from src.audiobook_studio.monitoring.metrics_exporter import (
+    _get_metrics_file_path,
+    _read_existing_metrics,
+    _write_metrics,
+    export_all_metrics,
     export_circuit_breaker_metrics,
+    export_compliance_rate,
+    export_contract_version,
+    export_fallback_rate,
     export_health_probe_metrics,
     export_key_pool_metrics,
     export_router_metrics,
-    export_fallback_rate,
-    export_compliance_rate,
-    export_contract_version,
-    export_all_metrics,
-    get_metrics_for_ci,
-    _read_existing_metrics,
-    _write_metrics,
-    _get_metrics_file_path,
 )
-from src.audiobook_studio.monitoring.baseline import (
-    BaselineRecorder,
-    PerformanceMetric,
-    GrowthMetric,
-    get_baseline_recorder,
-    record_stage_performance,
-    record_growth_metric,
-)
-from src.audiobook_studio.monitoring.compliance import (
-    ComplianceMonitor,
-    ComplianceRecord,
-    StageComplianceSummary,
-    get_compliance_monitor,
-    record_pipeline_compliance,
+from src.audiobook_studio.monitoring.offline_monitoring import (
+    DummyOfflineMonitor,
+    OfflineMonitor,
+    create_offline_monitor,
 )
 
 
@@ -322,6 +425,7 @@ class TestDashboardModule:
 
     def teardown_method(self):
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def create_test_log(self, records: list, filename: str = "test_perf.jsonl"):
@@ -340,8 +444,20 @@ class TestDashboardModule:
     def test_collect_logs_with_data(self):
         """Test collecting logs with valid records."""
         records = [
-            {"stage": "annotate", "latency_ms": 100, "success": True, "cost_usd": 0.001, "timestamp": datetime.now().isoformat()},
-            {"stage": "synthesize", "latency_ms": 500, "success": True, "cost_usd": 0.002, "timestamp": datetime.now().isoformat()},
+            {
+                "stage": "annotate",
+                "latency_ms": 100,
+                "success": True,
+                "cost_usd": 0.001,
+                "timestamp": datetime.now().isoformat(),
+            },
+            {
+                "stage": "synthesize",
+                "latency_ms": 500,
+                "success": True,
+                "cost_usd": 0.002,
+                "timestamp": datetime.now().isoformat(),
+            },
         ]
         self.create_test_log(records)
 
@@ -355,8 +471,18 @@ class TestDashboardModule:
         old_timestamp = (datetime.now() - timedelta(hours=48)).isoformat()
         recent_timestamp = datetime.now().isoformat()
         records = [
-            {"stage": "annotate", "latency_ms": 100, "success": True, "timestamp": old_timestamp},
-            {"stage": "synthesize", "latency_ms": 500, "success": True, "timestamp": recent_timestamp},
+            {
+                "stage": "annotate",
+                "latency_ms": 100,
+                "success": True,
+                "timestamp": old_timestamp,
+            },
+            {
+                "stage": "synthesize",
+                "latency_ms": 500,
+                "success": True,
+                "timestamp": recent_timestamp,
+            },
         ]
         self.create_test_log(records)
 
@@ -367,13 +493,28 @@ class TestDashboardModule:
     def test_collect_logs_handles_invalid_json(self):
         """Test collecting logs skips invalid JSON lines."""
         records = [
-            {"stage": "annotate", "latency_ms": 100, "success": True, "timestamp": datetime.now().isoformat()},
+            {
+                "stage": "annotate",
+                "latency_ms": 100,
+                "success": True,
+                "timestamp": datetime.now().isoformat(),
+            },
         ]
         log_file = self.logs_dir / "test_perf.jsonl"
         with open(log_file, "w", encoding="utf-8") as f:
             f.write(json.dumps(records[0]) + "\n")
             f.write("invalid json\n")
-            f.write(json.dumps({"stage": "synthesize", "latency_ms": 500, "success": True, "timestamp": datetime.now().isoformat()}) + "\n")
+            f.write(
+                json.dumps(
+                    {
+                        "stage": "synthesize",
+                        "latency_ms": 500,
+                        "success": True,
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                )
+                + "\n"
+            )
 
         collected = collect_logs(self.logs_dir, 24)
         assert len(collected) == 2
@@ -387,10 +528,41 @@ class TestDashboardModule:
     def test_compute_summary_with_data(self):
         """Test computing summary with records."""
         records = [
-            {"stage": "annotate", "latency_ms": 100, "cost_usd": 0.001, "success": True, "quality_score": 0.9, "provider": "gemini", "schema_compliance": True},
-            {"stage": "annotate", "latency_ms": 200, "cost_usd": 0.002, "success": True, "quality_score": 0.8, "provider": "gemini", "schema_compliance": True},
-            {"stage": "synthesize", "latency_ms": 500, "cost_usd": 0.0, "success": True, "provider": "kokoro", "schema_compliance": True},
-            {"stage": "quality_check", "latency_ms": 800, "cost_usd": 0.003, "success": False, "error": "Validation failed", "provider": "llm_judge", "schema_compliance": False},
+            {
+                "stage": "annotate",
+                "latency_ms": 100,
+                "cost_usd": 0.001,
+                "success": True,
+                "quality_score": 0.9,
+                "provider": "gemini",
+                "schema_compliance": True,
+            },
+            {
+                "stage": "annotate",
+                "latency_ms": 200,
+                "cost_usd": 0.002,
+                "success": True,
+                "quality_score": 0.8,
+                "provider": "gemini",
+                "schema_compliance": True,
+            },
+            {
+                "stage": "synthesize",
+                "latency_ms": 500,
+                "cost_usd": 0.0,
+                "success": True,
+                "provider": "kokoro",
+                "schema_compliance": True,
+            },
+            {
+                "stage": "quality_check",
+                "latency_ms": 800,
+                "cost_usd": 0.003,
+                "success": False,
+                "error": "Validation failed",
+                "provider": "llm_judge",
+                "schema_compliance": False,
+            },
         ]
         summary = compute_summary(records)
         assert summary["total_records"] == 4
@@ -408,25 +580,61 @@ class TestDashboardModule:
 
     def test_detect_anomalies_low_success_rate(self):
         """Test anomaly detection for low success rate."""
-        summary = {"stages": {"annotate": {"success_rate": 0.5, "quality_avg": 0.9, "schema_compliance_rate": 1.0, "count": 10}}}
+        summary = {
+            "stages": {
+                "annotate": {
+                    "success_rate": 0.5,
+                    "quality_avg": 0.9,
+                    "schema_compliance_rate": 1.0,
+                    "count": 10,
+                }
+            }
+        }
         anomalies = detect_anomalies(summary)
         assert any("Low success rate" in a for a in anomalies)
 
     def test_detect_anomalies_low_quality(self):
         """Test anomaly detection for low quality score."""
-        summary = {"stages": {"synthesize": {"success_rate": 1.0, "quality_avg": 0.5, "schema_compliance_rate": 1.0, "count": 10}}}
+        summary = {
+            "stages": {
+                "synthesize": {
+                    "success_rate": 1.0,
+                    "quality_avg": 0.5,
+                    "schema_compliance_rate": 1.0,
+                    "count": 10,
+                }
+            }
+        }
         anomalies = detect_anomalies(summary)
         assert any("Low quality score" in a for a in anomalies)
 
     def test_detect_anomalies_low_compliance(self):
         """Test anomaly detection for low schema compliance."""
-        summary = {"stages": {"quality": {"success_rate": 1.0, "quality_avg": 0.9, "schema_compliance_rate": 0.95, "count": 10}}}
+        summary = {
+            "stages": {
+                "quality": {
+                    "success_rate": 1.0,
+                    "quality_avg": 0.9,
+                    "schema_compliance_rate": 0.95,
+                    "count": 10,
+                }
+            }
+        }
         anomalies = detect_anomalies(summary)
         assert any("Low schema compliance rate" in a for a in anomalies)
 
     def test_detect_anomalies_no_data(self):
         """Test anomaly detection for no data."""
-        summary = {"stages": {"annotate": {"success_rate": 0.0, "quality_avg": None, "schema_compliance_rate": None, "count": 0}}}
+        summary = {
+            "stages": {
+                "annotate": {
+                    "success_rate": 0.0,
+                    "quality_avg": None,
+                    "schema_compliance_rate": None,
+                    "count": 0,
+                }
+            }
+        }
         anomalies = detect_anomalies(summary)
         assert any("No data recorded" in a for a in anomalies)
 
@@ -436,10 +644,32 @@ class TestDashboardModule:
             "total_records": 10,
             "unique_stages": 3,
             "stages": {
-                "annotate": {"count": 5, "latency_avg_ms": 150, "cost_total_usd": 0.01, "success_rate": 1.0, "quality_avg": 0.9, "schema_compliance_rate": 1.0, "providers": ["gemini"]},
-                "synthesize": {"count": 5, "latency_avg_ms": 500, "cost_total_usd": 0.0, "success_rate": 1.0, "quality_avg": None, "schema_compliance_rate": 1.0, "providers": ["kokoro"]},
+                "annotate": {
+                    "count": 5,
+                    "latency_avg_ms": 150,
+                    "cost_total_usd": 0.01,
+                    "success_rate": 1.0,
+                    "quality_avg": 0.9,
+                    "schema_compliance_rate": 1.0,
+                    "providers": ["gemini"],
+                },
+                "synthesize": {
+                    "count": 5,
+                    "latency_avg_ms": 500,
+                    "cost_total_usd": 0.0,
+                    "success_rate": 1.0,
+                    "quality_avg": None,
+                    "schema_compliance_rate": 1.0,
+                    "providers": ["kokoro"],
+                },
             },
-            "overall": {"latency_avg_ms": 325, "cost_total_usd": 0.01, "success_rate": 1.0, "quality_avg": 0.9, "schema_compliance_rate": 1.0},
+            "overall": {
+                "latency_avg_ms": 325,
+                "cost_total_usd": 0.01,
+                "success_rate": 1.0,
+                "quality_avg": 0.9,
+                "schema_compliance_rate": 1.0,
+            },
         }
         dashboard = format_dashboard(summary, 24)
         assert "Audiobook Studio" in dashboard
@@ -466,6 +696,7 @@ class TestAlertModule:
 
     def teardown_method(self):
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_alert_level_enum(self):
@@ -492,7 +723,7 @@ class TestAlertModule:
             level=AlertLevel.WARNING,
             message="Test alert",
             timestamp=1234567890.0,
-            context={"key": "value"}
+            context={"key": "value"},
         )
         assert record.level == AlertLevel.WARNING
         assert record.message == "Test alert"
@@ -536,8 +767,20 @@ class TestAlertModule:
     def test_collect_self_iteration_logs_with_data(self):
         """Test collecting self-iteration logs with valid data."""
         records = [
-            {"iteration": 1, "promoted": True, "feedback_count": 5, "system_health_score": 80, "timestamp": datetime.now().isoformat()},
-            {"iteration": 2, "promoted": False, "feedback_count": 3, "system_health_score": 70, "timestamp": datetime.now().isoformat()},
+            {
+                "iteration": 1,
+                "promoted": True,
+                "feedback_count": 5,
+                "system_health_score": 80,
+                "timestamp": datetime.now().isoformat(),
+            },
+            {
+                "iteration": 2,
+                "promoted": False,
+                "feedback_count": 3,
+                "system_health_score": 70,
+                "timestamp": datetime.now().isoformat(),
+            },
         ]
         for log_file in self.logs_dir.glob("*_self_iteration.jsonl"):
             log_file.unlink()
@@ -548,6 +791,21 @@ class TestAlertModule:
 
         collected = collect_self_iteration_logs(self.logs_dir, 24)
         assert len(collected) == 2
+
+    def test_collect_self_iteration_logs_canonical_filename(self):
+        """The canonical `self_iteration.jsonl` written by
+        integration._log_self_iteration_event must be picked up (S1-5: the old
+        `*_self_iteration.jsonl` glob alone misses it)."""
+        for log_file in list(self.logs_dir.glob("*_self_iteration.jsonl")):
+            log_file.unlink()
+        log_file = self.logs_dir / "self_iteration.jsonl"
+        with open(log_file, "w", encoding="utf-8") as f:
+            f.write(json.dumps({"promoted": True, "feedback_count": 5, "system_health_score": 80}) + "\n")
+            f.write(json.dumps({"promoted": False, "feedback_count": 3, "system_health_score": 70}) + "\n")
+
+        collected = collect_self_iteration_logs(self.logs_dir, 24)
+        assert len(collected) == 2
+        assert all("system_health_score" in r for r in collected)
 
     def test_compute_self_iteration_metrics_empty(self):
         """Test computing self-iteration metrics with no records."""
@@ -567,8 +825,8 @@ class TestAlertModule:
         ]
         metrics = compute_self_iteration_metrics(records)
         assert metrics["total_iterations"] == 3
-        assert metrics["promotion_rate"] == pytest.approx(2/3)
-        assert metrics["avg_feedback_per_iteration"] == pytest.approx(10/3)
+        assert metrics["promotion_rate"] == pytest.approx(2 / 3)
+        assert metrics["avg_feedback_per_iteration"] == pytest.approx(10 / 3)
         assert metrics["system_health_score"] == 70.0
         assert "alerts" in metrics
 
@@ -604,12 +862,16 @@ class TestAlertModule:
         records = [
             {"schema_compliance": True, "model": "gemini", "cost_usd": 0.001},
             {"schema_compliance": True, "model": "gemini", "cost_usd": 0.002},
-            {"schema_compliance": False, "model": "heuristic_fallback", "cost_usd": 0.001},
+            {
+                "schema_compliance": False,
+                "model": "heuristic_fallback",
+                "cost_usd": 0.001,
+            },
         ]
         metrics = compute_metrics(records)
         assert metrics["total_records"] == 3
-        assert metrics["schema_compliance_rate"] == pytest.approx(2/3)
-        assert metrics["fallback_rate"] == pytest.approx(1/3)
+        assert metrics["schema_compliance_rate"] == pytest.approx(2 / 3)
+        assert metrics["fallback_rate"] == pytest.approx(1 / 3)
         assert metrics["total_cost_usd"] == 0.004
 
     def test_compute_metrics_schema_compliance_alert(self):
@@ -620,7 +882,14 @@ class TestAlertModule:
 
     def test_compute_metrics_fallback_rate_alert(self):
         """Test fallback rate alert."""
-        records = [{"schema_compliance": True, "model": "heuristic_fallback", "cost_usd": 0.001} for _ in range(100)]
+        records = [
+            {
+                "schema_compliance": True,
+                "model": "heuristic_fallback",
+                "cost_usd": 0.001,
+            }
+            for _ in range(100)
+        ]
         metrics = compute_metrics(records)
         assert any(a["type"] == "fallback_rate" for a in metrics["alerts"])
 
@@ -693,6 +962,7 @@ class TestCostDashboardModule:
 
     def teardown_method(self):
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_cost_breakdown_model(self):
@@ -713,9 +983,34 @@ class TestCostDashboardModule:
     def test_enrich_records_with_context(self):
         """Test enriching records with context."""
         records = [
-            {"stage": "annotate", "tokens_out": 100, "cost_usd": 0.001, "success": True, "provider": "gemini", "model": "gemini-2.0-flash", "difficulty": "B"},
-            {"stage": "synthesize", "tokens_out": 0, "cost_usd": 0.0, "success": True, "provider": "kokoro", "model": "kokoro", "difficulty": "B"},
-            {"stage": "quality_check", "tokens_out": 50, "cost_usd": 0.002, "success": False, "error": "Failed", "provider": "llm_judge", "model": "gpt-4", "difficulty": "A"},
+            {
+                "stage": "annotate",
+                "tokens_out": 100,
+                "cost_usd": 0.001,
+                "success": True,
+                "provider": "gemini",
+                "model": "gemini-2.0-flash",
+                "difficulty": "B",
+            },
+            {
+                "stage": "synthesize",
+                "tokens_out": 0,
+                "cost_usd": 0.0,
+                "success": True,
+                "provider": "kokoro",
+                "model": "kokoro",
+                "difficulty": "B",
+            },
+            {
+                "stage": "quality_check",
+                "tokens_out": 50,
+                "cost_usd": 0.002,
+                "success": False,
+                "error": "Failed",
+                "provider": "llm_judge",
+                "model": "gpt-4",
+                "difficulty": "A",
+            },
         ]
         enriched = enrich_records_with_context(records)
         assert len(enriched) == 3
@@ -729,10 +1024,46 @@ class TestCostDashboardModule:
     def test_compute_cost_breakdown(self):
         """Test computing cost breakdown."""
         records = [
-            {"stage": "annotate", "tokens_out": 100, "cost_usd": 0.001, "success": True, "provider": "gemini", "model": "gemini-2.0-flash", "difficulty": "B", "is_retry": False},
-            {"stage": "annotate", "tokens_out": 200, "cost_usd": 0.002, "success": True, "provider": "gemini", "model": "gemini-2.0-flash", "difficulty": "B", "is_retry": False},
-            {"stage": "synthesize", "tokens_out": 500, "cost_usd": 0.0, "success": True, "provider": "kokoro", "model": "kokoro", "difficulty": "B", "is_retry": False},
-            {"stage": "quality_check", "tokens_out": 50, "cost_usd": 0.003, "success": False, "provider": "llm_judge", "model": "gpt-4", "difficulty": "A", "is_retry": True},
+            {
+                "stage": "annotate",
+                "tokens_out": 100,
+                "cost_usd": 0.001,
+                "success": True,
+                "provider": "gemini",
+                "model": "gemini-2.0-flash",
+                "difficulty": "B",
+                "is_retry": False,
+            },
+            {
+                "stage": "annotate",
+                "tokens_out": 200,
+                "cost_usd": 0.002,
+                "success": True,
+                "provider": "gemini",
+                "model": "gemini-2.0-flash",
+                "difficulty": "B",
+                "is_retry": False,
+            },
+            {
+                "stage": "synthesize",
+                "tokens_out": 500,
+                "cost_usd": 0.0,
+                "success": True,
+                "provider": "kokoro",
+                "model": "kokoro",
+                "difficulty": "B",
+                "is_retry": False,
+            },
+            {
+                "stage": "quality_check",
+                "tokens_out": 50,
+                "cost_usd": 0.003,
+                "success": False,
+                "provider": "llm_judge",
+                "model": "gpt-4",
+                "difficulty": "A",
+                "is_retry": True,
+            },
         ]
         breakdown = compute_cost_breakdown(records)
         assert "overall" in breakdown
@@ -776,19 +1107,61 @@ class TestCostDashboardModule:
                 "retry_rate": 0.2,
             },
             "by_stage": {
-                "annotate": {"cost_usd": 0.005, "count": 5, "chars": 2000, "cost_per_1k_chars_usd": 2.5, "avg_cost_per_record": 0.001},
-                "synthesize": {"cost_usd": 0.0, "count": 5, "chars": 3000, "cost_per_1k_chars_usd": 0.0, "avg_cost_per_record": 0.0},
+                "annotate": {
+                    "cost_usd": 0.005,
+                    "count": 5,
+                    "chars": 2000,
+                    "cost_per_1k_chars_usd": 2.5,
+                    "avg_cost_per_record": 0.001,
+                },
+                "synthesize": {
+                    "cost_usd": 0.0,
+                    "count": 5,
+                    "chars": 3000,
+                    "cost_per_1k_chars_usd": 0.0,
+                    "avg_cost_per_record": 0.0,
+                },
             },
             "by_model": {
-                "gemini": {"cost_usd": 0.005, "count": 5, "chars": 2000, "cost_per_1k_chars_usd": 2.5, "avg_cost_per_record": 0.001},
-                "kokoro": {"cost_usd": 0.0, "count": 5, "chars": 3000, "cost_per_1k_chars_usd": 0.0, "avg_cost_per_record": 0.0},
+                "gemini": {
+                    "cost_usd": 0.005,
+                    "count": 5,
+                    "chars": 2000,
+                    "cost_per_1k_chars_usd": 2.5,
+                    "avg_cost_per_record": 0.001,
+                },
+                "kokoro": {
+                    "cost_usd": 0.0,
+                    "count": 5,
+                    "chars": 3000,
+                    "cost_per_1k_chars_usd": 0.0,
+                    "avg_cost_per_record": 0.0,
+                },
             },
             "by_provider": {
-                "gemini": {"cost_usd": 0.005, "count": 5, "chars": 2000, "cost_per_1k_chars_usd": 2.5, "avg_cost_per_record": 0.001},
-                "kokoro": {"cost_usd": 0.0, "count": 5, "chars": 3000, "cost_per_1k_chars_usd": 0.0, "avg_cost_per_record": 0.0},
+                "gemini": {
+                    "cost_usd": 0.005,
+                    "count": 5,
+                    "chars": 2000,
+                    "cost_per_1k_chars_usd": 2.5,
+                    "avg_cost_per_record": 0.001,
+                },
+                "kokoro": {
+                    "cost_usd": 0.0,
+                    "count": 5,
+                    "chars": 3000,
+                    "cost_per_1k_chars_usd": 0.0,
+                    "avg_cost_per_record": 0.0,
+                },
             },
             "by_difficulty": {
-                "B": {"cost_usd": 0.005, "count": 10, "chars": 5000, "cost_per_1k_chars_usd": 1.0, "avg_cost_per_record": 0.0005},
+                "B": {
+                    "cost_usd": 0.005,
+                    "count": 10,
+                    "chars": 5000,
+                    "cost_per_1k_chars_usd": 1.0,
+                    "avg_cost_per_record": 0.0005,
+                },
             },
         }
         table = format_table(breakdown)
@@ -834,7 +1207,8 @@ class TestMetricsExporterModule:
         probe = router.health_probe
         result = export_health_probe_metrics(probe)
 
-        assert "gemini_flash" in result or "opencode_zen" in result
+        # In mock_mode, only "mock-gpt" provider is registered
+        assert "mock-gpt" in result
 
     def test_export_health_probe_metrics_none(self):
         """Test exporting health probe metrics with None."""
@@ -884,7 +1258,6 @@ class TestMetricsExporterModule:
 
     def test_export_compliance_rate(self, tmp_path):
         """Test exporting compliance rate."""
-        from src.audiobook_studio.monitoring.compliance import ComplianceMonitor
 
         monitor = ComplianceMonitor()
         # Add some mock data
@@ -908,7 +1281,6 @@ class TestMetricsExporterModule:
 
     def test_export_contract_version(self, tmp_path):
         """Test exporting contract version."""
-        from src.audiobook_studio.monitoring.compliance import ComplianceMonitor
 
         monitor = ComplianceMonitor()
         for _ in range(5):
@@ -935,7 +1307,6 @@ class TestMetricsExporterModule:
     def test_export_all_metrics(self, tmp_path):
         """Test exporting all metrics at once."""
         from src.audiobook_studio.llm.router import LLMRouter
-        from src.audiobook_studio.monitoring.compliance import ComplianceMonitor
 
         router = LLMRouter(mock_mode=True)
         monitor = ComplianceMonitor()
@@ -959,7 +1330,6 @@ class TestMetricsExporterModule:
     def test_get_metrics_for_ci(self, tmp_path):
         """Test getting metrics for CI consumption."""
         # First export some metrics
-        from src.audiobook_studio.monitoring.compliance import ComplianceMonitor
 
         monitor = ComplianceMonitor()
         for _ in range(10):
@@ -971,6 +1341,7 @@ class TestMetricsExporterModule:
 
         # Mock the file path for get_metrics_for_ci
         import src.audiobook_studio.monitoring.metrics_exporter as me
+
         original_fn = me._get_metrics_file_path
         me._get_metrics_file_path = lambda: Path(output_path)
 
@@ -987,7 +1358,6 @@ class TestMetricsExporterModule:
 
     def test_read_existing_metrics_nonexistent(self, tmp_path):
         """Test reading metrics from nonexistent file."""
-        from pathlib import Path as PathLib
 
         output_path = tmp_path / "nonexistent.json"
         result = _read_existing_metrics(output_path)
@@ -1004,6 +1374,7 @@ class TestMetricsExporterModule:
         """Test reading metrics from valid JSON file."""
         output_path = tmp_path / "valid.json"
         import json
+
         test_data = {"test_key": "test_value"}
         with open(output_path, "w") as f:
             json.dump(test_data, f)
@@ -1018,6 +1389,7 @@ class TestMetricsExporterModule:
         _write_metrics(output_path, test_data)
 
         import json
+
         with open(output_path) as f:
             written = json.load(f)
         assert written == test_data
@@ -1045,11 +1417,11 @@ class TestOfflineMonitoringModule:
 
     def teardown_method(self):
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_offline_monitor_init(self):
         """Test OfflineMonitor initialization."""
-        from src.audiobook_studio.monitoring.offline_monitoring import OfflineMonitor
 
         monitor = OfflineMonitor(offline_dir=self.offline_dir)
         assert monitor.offline_dir == self.offline_dir
@@ -1057,7 +1429,6 @@ class TestOfflineMonitoringModule:
 
     def test_log_performance_success(self, monkeypatch):
         """Test logging performance when external service works."""
-        from src.audiobook_studio.monitoring.offline_monitoring import OfflineMonitor
 
         monitor = OfflineMonitor(offline_dir=self.offline_dir)
 
@@ -1072,7 +1443,6 @@ class TestOfflineMonitoringModule:
 
     def test_log_performance_fallback(self, monkeypatch):
         """Test fallback to offline storage when external fails."""
-        from src.audiobook_studio.monitoring.offline_monitoring import OfflineMonitor
 
         monitor = OfflineMonitor(offline_dir=self.offline_dir)
 
@@ -1087,7 +1457,6 @@ class TestOfflineMonitoringModule:
 
     def test_save_to_offline_error(self, monkeypatch):
         """Test error handling when saving to offline."""
-        from src.audiobook_studio.monitoring.offline_monitoring import OfflineMonitor
 
         monitor = OfflineMonitor(offline_dir=self.offline_dir)
 
@@ -1100,10 +1469,9 @@ class TestOfflineMonitoringModule:
 
     def test_sync_offline_data_success(self, monkeypatch):
         """Test syncing offline data to external service."""
-        from src.audiobook_studio.monitoring.offline_monitoring import OfflineMonitor
         import json
 
-        monitor = OfflineMonitor(offline_dir=self.offline_dir)
+        monitor = OfflineMonitor(offline_dir=self.offline_dir)  # noqa: E303
         date_str = datetime.now().strftime("%Y-%m-%d")
         offline_file = self.offline_dir / f"performance_{date_str}.jsonl"
         test_record = {"stage": "test", "latency_ms": 100}
@@ -1120,7 +1488,6 @@ class TestOfflineMonitoringModule:
 
     def test_dummy_offline_monitor(self):
         """Test DummyOfflineMonitor stub class."""
-        from src.audiobook_studio.monitoring.offline_monitoring import DummyOfflineMonitor
 
         dummy = DummyOfflineMonitor()
         dummy.start()
@@ -1129,7 +1496,6 @@ class TestOfflineMonitoringModule:
 
     def test_create_offline_monitor(self):
         """Test create_offline_monitor factory function."""
-        from src.audiobook_studio.monitoring.offline_monitoring import create_offline_monitor, DummyOfflineMonitor
 
         result = create_offline_monitor()
         assert isinstance(result, DummyOfflineMonitor)
@@ -1140,6 +1506,7 @@ class TestLangfuseClientModule:
 
     def setup_method(self):
         import src.audiobook_studio.monitoring.langfuse_client as lc
+
         lc._langfuse_client = None
         lc._enabled = False
 
@@ -1165,7 +1532,7 @@ class TestLangfuseClientModule:
     @patch("langfuse.Langfuse")
     def test_init_langfuse_with_keys(self, mock_langfuse, monkeypatch):
         """Test init with API keys."""
-        from src.audiobook_studio.monitoring.langfuse_client import init_langfuse, get_langfuse_client
+        from src.audiobook_studio.monitoring.langfuse_client import get_langfuse_client, init_langfuse
 
         monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "test-public")
         monkeypatch.setenv("LANGFUSE_SECRET_KEY", "test-secret")
@@ -1178,7 +1545,7 @@ class TestLangfuseClientModule:
     @patch("langfuse.Langfuse")
     def test_flush_langfuse(self, mock_langfuse, monkeypatch):
         """Test flush_langfuse function."""
-        from src.audiobook_studio.monitoring.langfuse_client import init_langfuse, flush_langfuse
+        from src.audiobook_studio.monitoring.langfuse_client import flush_langfuse, init_langfuse
 
         monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "test-public")
         monkeypatch.setenv("LANGFUSE_SECRET_KEY", "test-secret")
@@ -1190,7 +1557,7 @@ class TestLangfuseClientModule:
     @patch("langfuse.Langfuse")
     def test_flush_langfuse_error(self, mock_langfuse, monkeypatch):
         """Test flush_langfuse with error."""
-        from src.audiobook_studio.monitoring.langfuse_client import init_langfuse, flush_langfuse
+        from src.audiobook_studio.monitoring.langfuse_client import flush_langfuse, init_langfuse
 
         monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "test-public")
         monkeypatch.setenv("LANGFUSE_SECRET_KEY", "test-secret")

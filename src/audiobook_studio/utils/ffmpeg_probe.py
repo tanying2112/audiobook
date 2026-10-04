@@ -11,19 +11,20 @@ import logging
 import re
 import subprocess
 from pathlib import Path
-from typing import List, Tuple
+from typing import Any, List, Tuple
 
 import numpy as np
+
+from .async_utils import run_sync
 
 logger = logging.getLogger(__name__)
 
 
-async def _run_ffprobe(
-    args: List[str], timeout: int = 30
-) -> subprocess.CompletedProcess:
+async def _run_ffprobe(args: List[str], timeout: int = 30) -> subprocess.CompletedProcess[str]:
     """Run ffprobe asynchronously and return result."""
     proc = await asyncio.create_subprocess_exec(
-        "ffprobe", *args,
+        "ffprobe",
+        *args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -42,21 +43,37 @@ async def _run_ffprobe(
 
 
 async def _run_ffmpeg(
-    args: List[str], timeout: int = 60
-) -> subprocess.CompletedProcess:
-    """Run ffmpeg asynchronously and return result."""
+    args: List[str], timeout: int = 60, binary_output: bool = False
+) -> subprocess.CompletedProcess[str | bytes]:
+    """Run ffmpeg asynchronously and return result.
+
+    Args:
+        args: ffmpeg arguments
+        timeout: timeout in seconds
+        binary_output: If True, return raw bytes in stdout instead of decoded text
+    """
     proc = await asyncio.create_subprocess_exec(
-        "ffmpeg", *args,
+        "ffmpeg",
+        *args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
     try:
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        # stderr is always decoded to str in both branches
+        stderr_str = stderr.decode("utf-8", errors="ignore")
+        if binary_output:
+            return subprocess.CompletedProcess(
+                args=["ffmpeg"] + args,
+                returncode=proc.returncode,
+                stdout=stdout,
+                stderr=stderr_str,
+            )
         return subprocess.CompletedProcess(
             args=["ffmpeg"] + args,
             returncode=proc.returncode,
             stdout=stdout.decode("utf-8", errors="ignore"),
-            stderr=stderr.decode("utf-8", errors="ignore"),
+            stderr=stderr_str,
         )
     except asyncio.TimeoutError:
         proc.kill()
@@ -73,12 +90,16 @@ async def get_duration(path: Path) -> int:
     Returns:
         Duration in milliseconds
     """
-    result = await _run_ffprobe([
-        "-v", "quiet",
-        "-print_format", "json",
-        "-show_format",
-        str(path),
-    ])
+    result = await _run_ffprobe(
+        [
+            "-v",
+            "quiet",
+            "-print_format",
+            "json",
+            "-show_format",
+            str(path),
+        ]
+    )
 
     if result.returncode != 0:
         raise RuntimeError(f"ffprobe failed: {result.stderr}")
@@ -103,15 +124,20 @@ async def detect_silence(
     Returns:
         List of (start_ms, end_ms) tuples for silence regions
     """
-    result = await _run_ffmpeg([
-        "-v", "error",
-        "-i", str(path),
-        "-af", f"silencedetect=noise={threshold_db}dB:d={min_duration_ms/1000}",
-        "-f", "null", "-",
-    ])
+    result = await _run_ffmpeg(
+        [
+            "-i",
+            str(path),
+            "-af",
+            f"silencedetect=noise={threshold_db}dB:d={min_duration_ms/1000}",
+            "-f",
+            "null",
+            "-",
+        ]
+    )
 
     if result.returncode != 0:
-        raise RuntimeError(f"ffmpeg silencedetect failed: {result.stderr}")
+        raise RuntimeError(f"ffmpeg silencedetect failed: {result.stderr}")  # type: ignore[str-bytes-safe]
 
     stderr = result.stderr
     silence_starts: List[float] = []
@@ -151,15 +177,22 @@ async def get_rms_peak(path: Path) -> Tuple[float, float]:
     Returns:
         Tuple of (rms_db, peak_db)
     """
-    result = await _run_ffmpeg([
-        "-v", "error",
-        "-i", str(path),
-        "-af", "astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level:key=lavfi.astats.Overall.Peak_level",
-        "-f", "null", "-",
-    ])
+    result = await _run_ffmpeg(
+        [
+            "-v",
+            "error",
+            "-i",
+            str(path),
+            "-af",
+            "astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level:key=lavfi.astats.Overall.Peak_level",
+            "-f",
+            "null",
+            "-",
+        ]
+    )
 
     if result.returncode != 0:
-        raise RuntimeError(f"ffmpeg astats failed: {result.stderr}")
+        raise RuntimeError(f"ffmpeg astats failed: {result.stderr}")  # type: ignore[str-bytes-safe]
 
     stderr = result.stderr
     rms_db = -60.0
@@ -177,14 +210,21 @@ async def get_rms_peak(path: Path) -> Tuple[float, float]:
             except (ValueError, IndexError):
                 pass
 
-    # If astats didn't work, fallback to volumedetect
+    # If astats didn't work, fallback to volumedetect (need info level for output)
     if rms_db == -60.0 and peak_db == -60.0:
-        result = await _run_ffmpeg([
-            "-v", "error",
-            "-i", str(path),
-            "-af", "volumedetect",
-            "-f", "null", "-",
-        ])
+        result = await _run_ffmpeg(
+            [
+                "-v",
+                "info",  # volumedetect outputs at info level
+                "-i",
+                str(path),
+                "-af",
+                "volumedetect",
+                "-f",
+                "null",
+                "-",
+            ]
+        )
 
         if result.returncode == 0:
             stderr = result.stderr
@@ -203,7 +243,7 @@ async def get_rms_peak(path: Path) -> Tuple[float, float]:
     return (rms_db, peak_db)
 
 
-async def get_audio_info(path: Path) -> dict:
+async def get_audio_info(path: Path) -> dict[str, Any]:
     """Get comprehensive audio info using ffprobe.
 
     Args:
@@ -212,18 +252,22 @@ async def get_audio_info(path: Path) -> dict:
     Returns:
         Dictionary with format and stream info
     """
-    result = await _run_ffprobe([
-        "-v", "quiet",
-        "-print_format", "json",
-        "-show_format",
-        "-show_streams",
-        str(path),
-    ])
+    result = await _run_ffprobe(
+        [
+            "-v",
+            "quiet",
+            "-print_format",
+            "json",
+            "-show_format",
+            "-show_streams",
+            str(path),
+        ]
+    )
 
     if result.returncode != 0:
         raise RuntimeError(f"ffprobe failed: {result.stderr}")
 
-    return json.loads(result.stdout)
+    return json.loads(result.stdout)  # type: ignore[no-any-return]
 
 
 async def read_pcm_samples(path: Path, sample_rate: int = 16000, channels: int = 1) -> np.ndarray:
@@ -237,20 +281,29 @@ async def read_pcm_samples(path: Path, sample_rate: int = 16000, channels: int =
     Returns:
         NumPy array of float32 samples
     """
-    result = await _run_ffmpeg([
-        "-v", "quiet",
-        "-i", str(path),
-        "-f", "f32le",
-        "-acodec", "pcm_f32le",
-        "-ar", str(sample_rate),
-        "-ac", str(channels),
-        "-",
-    ])
+    result = await _run_ffmpeg(
+        [
+            "-v",
+            "quiet",
+            "-i",
+            str(path),
+            "-f",
+            "f32le",
+            "-acodec",
+            "pcm_f32le",
+            "-ar",
+            str(sample_rate),
+            "-ac",
+            str(channels),
+            "-",
+        ],
+        binary_output=True,
+    )
 
     if result.returncode != 0:
-        raise RuntimeError(f"ffmpeg PCM extraction failed: {result.stderr}")
+        raise RuntimeError(f"ffmpeg PCM extraction failed: {result.stderr}")  # type: ignore[str-bytes-safe]
 
-    raw_bytes = result.stdout.encode("latin-1") if isinstance(result.stdout, str) else result.stdout
+    raw_bytes = result.stdout
     if not raw_bytes:
         return np.array([], dtype=np.float32)
 
@@ -260,8 +313,12 @@ async def read_pcm_samples(path: Path, sample_rate: int = 16000, channels: int =
 
 # Synchronous wrappers for backward compatibility
 def get_duration_sync(path: Path) -> int:
-    """Synchronous wrapper for get_duration."""
-    return asyncio.run(get_duration(path))
+    """Synchronous wrapper for get_duration.
+
+    Reentrancy-safe: works even when called from inside a running event loop
+    (e.g. from an async TTS/export pipeline) thanks to :func:`run_sync`.
+    """
+    return run_sync(get_duration(path))
 
 
 def detect_silence_sync(
@@ -270,22 +327,22 @@ def detect_silence_sync(
     min_duration_ms: int = 500,
 ) -> List[Tuple[float, float]]:
     """Synchronous wrapper for detect_silence."""
-    return asyncio.run(detect_silence(path, threshold_db, min_duration_ms))
+    return run_sync(detect_silence(path, threshold_db, min_duration_ms))
 
 
 def get_rms_peak_sync(path: Path) -> Tuple[float, float]:
     """Synchronous wrapper for get_rms_peak."""
-    return asyncio.run(get_rms_peak(path))
+    return run_sync(get_rms_peak(path))
 
 
-def get_audio_info_sync(path: Path) -> dict:
+def get_audio_info_sync(path: Path) -> dict[str, Any]:
     """Synchronous wrapper for get_audio_info."""
-    return asyncio.run(get_audio_info(path))
+    return run_sync(get_audio_info(path))
 
 
 def read_pcm_samples_sync(path: Path, sample_rate: int = 16000, channels: int = 1) -> np.ndarray:
     """Synchronous wrapper for read_pcm_samples."""
-    return asyncio.run(read_pcm_samples(path, sample_rate, channels))
+    return run_sync(read_pcm_samples(path, sample_rate, channels))
 
 
 if __name__ == "__main__":  # pragma: no cover
@@ -296,10 +353,10 @@ if __name__ == "__main__":  # pragma: no cover
     if len(sys.argv) > 1:
         test_path = Path(sys.argv[1])
         if test_path.exists():
-            print(f"Duration: {get_duration_sync(test_path)}ms")
-            print(f"Silence regions: {detect_silence_sync(test_path)}")
-            print(f"RMS/Peak: {get_rms_peak_sync(test_path)}")
+            logger.info(f"Duration: {get_duration_sync(test_path)}ms")
+            logger.info(f"Silence regions: {detect_silence_sync(test_path)}")
+            logger.info(f"RMS/Peak: {get_rms_peak_sync(test_path)}")
         else:
-            print(f"File not found: {test_path}")
+            logger.info(f"File not found: {test_path}")
     else:
-        print("Usage: python -m audiobook_studio.utils.ffmpeg_probe <audio_file>")
+        logger.info("Usage: python -m audiobook_studio.utils.ffmpeg_probe <audio_file>")

@@ -1,27 +1,31 @@
 """File Upload API for Audiobook Studio.
 
-Provides endpoints for uploading source files (PDF, EPUB, DOCX, TXT)
+Provides endpoints for uploading source files (PDF, EPUB, DOCX, TXT, PNG, JPG, TIFF, BMP, WebP)
 with async text extraction and WebSocket progress updates.
+
+Uses Redis for distributed upload sessions and extraction job tracking.
 """
 
+import asyncio
+import logging
 import os
 import uuid
-import logging
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, List, Dict, Any
-from datetime import datetime
+from typing import Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, BackgroundTasks
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
+from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models import Project, Chapter
-from ..database import get_db
+from ..api.dependencies import get_async_db
+from ..api.websocket import PipelineEventType, emit_pipeline_event
 from ..auth.dependencies import get_current_active_user, require_project_permission
+from ..auth.models import RoleName
+from ..exceptions import DomainError
+from ..models import Chapter, Project, ProjectSegment
 from ..models.user import User
 from ..pipeline.extract import extract_text
-from ..api.websocket import manager, emit_pipeline_event, PipelineEventType
 
 logger = logging.getLogger(__name__)
 
@@ -32,21 +36,33 @@ UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "./data/uploads"))
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 MAX_FILE_SIZE = int(os.getenv("MAX_UPLOAD_SIZE", "100")) * 1024 * 1024  # 100MB default
 
+# Redis configuration
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+UPLOAD_TTL = int(os.getenv("UPLOAD_TTL", "86400"))  # 24 hours default
+
 # Allowed MIME types
 ALLOWED_MIME_TYPES = {
     "application/pdf",
     "application/epub+zip",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "text/plain",
+    "image/png",
+    "image/jpeg",
+    "image/jpg",
+    "image/tiff",
+    "image/bmp",
+    "image/webp",
 }
 
-ALLOWED_EXTENSIONS = {".pdf", ".epub", ".docx", ".txt"}
+ALLOWED_EXTENSIONS = {".pdf", ".epub", ".docx", ".txt", ".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".webp"}
 
 
 # ── Request/Response Models ────────────────────────────────────────────────
 
+
 class UploadInitResponse(BaseModel):
     """Response for upload initialization."""
+
     upload_id: str
     project_id: int
     filename: str
@@ -58,6 +74,7 @@ class UploadInitResponse(BaseModel):
 
 class UploadChunkRequest(BaseModel):
     """Request for uploading a chunk."""
+
     upload_id: str
     chunk_index: int
     total_chunks: int
@@ -66,6 +83,7 @@ class UploadChunkRequest(BaseModel):
 
 class UploadCompleteResponse(BaseModel):
     """Response when upload is complete."""
+
     upload_id: str
     project_id: int
     file_path: str
@@ -78,6 +96,7 @@ class UploadCompleteResponse(BaseModel):
 
 class ExtractionJobStatus(BaseModel):
     """Status of an extraction job."""
+
     job_id: str
     project_id: int
     upload_id: str
@@ -94,6 +113,7 @@ class ExtractionJobStatus(BaseModel):
 
 class ExtractionResultResponse(BaseModel):
     """Final extraction result."""
+
     job_id: str
     project_id: int
     status: str
@@ -107,66 +127,287 @@ class ExtractionResultResponse(BaseModel):
     processing_time_seconds: float
 
 
-# ── In-memory storage for upload sessions (use Redis in production) ────────
-
-# upload_id -> {file_path, metadata, chunks_received, total_chunks}
-upload_sessions: Dict[str, Dict[str, Any]] = {}
-
-# job_id -> ExtractionJobStatus
-extraction_jobs: Dict[str, ExtractionJobStatus] = {}
+# ── Redis Connection Pool ──────────────────────────────────────────────────
 
 
-# ── Helper Functions ──────────────────────────────────────────────────────
+import redis.asyncio as redis
+
+_redis_pool: Optional[redis.ConnectionPool] = None
+_redis_client: Optional[redis.Redis] = None
+
+
+async def get_redis() -> redis.Redis:
+    """Get or create Redis client with connection pool."""
+    global _redis_pool, _redis_client
+    if _redis_client is None:
+        _redis_pool = redis.ConnectionPool.from_url(REDIS_URL, decode_responses=True, max_connections=20)
+        _redis_client = redis.Redis(connection_pool=_redis_pool)
+    return _redis_client
+
+
+async def close_redis():
+    """Close Redis connections."""
+    global _redis_pool, _redis_client
+    if _redis_client:
+        await _redis_client.close()
+    if _redis_pool:
+        await _redis_pool.disconnect()
+    _redis_client = None
+    _redis_pool = None
+
+
+# ── Redis Keys ───────────────────────────────────────────────────────────────
+
+
+def upload_key(upload_id: str) -> str:
+    return f"upload:{upload_id}"
+
+
+def upload_chunks_key(upload_id: str) -> str:
+    return f"upload:{upload_id}:chunks"
+
+
+def extraction_job_key(job_id: str) -> str:
+    return f"extraction:{job_id}"
+
+
+def project_uploads_key(project_id: int) -> str:
+    return f"project:{project_id}:uploads"
+
+
+def project_extractions_key(project_id: int) -> str:
+    return f"project:{project_id}:extractions"
+
+
+# ── Helper Functions ─────────────────────────────────────────────────────────
+
 
 def validate_file(file: UploadFile) -> None:
     """Validate uploaded file."""
     if not file.filename:
-        raise HTTPException(status_code=400, detail="No filename provided")
-    
+        raise DomainError(
+            message="No filename provided",
+            error_code="BAD_REQUEST",
+            stage="upload",
+            context={"field": "filename"},
+        )
+
     ext = Path(file.filename).suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"File type {ext} not allowed. Allowed: {', '.join(ALLOWED_EXTENSIONS)}"
+        raise DomainError(
+            message=f"File type {ext} not allowed. Allowed: {', '.join(ALLOWED_EXTENSIONS)}",
+            error_code="BAD_REQUEST",
+            stage="upload",
+            context={"file_extension": ext, "allowed_extensions": list(ALLOWED_EXTENSIONS)},
         )
-    
+
     if file.content_type not in ALLOWED_MIME_TYPES:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"MIME type {file.content_type} not allowed"
+        raise DomainError(
+            message=f"MIME type {file.content_type} not allowed",
+            error_code="BAD_REQUEST",
+            stage="upload",
+            context={"mime_type": file.content_type, "allowed_mime_types": list(ALLOWED_MIME_TYPES)},
         )
 
 
-async def save_upload_chunk(upload_id: str, chunk: bytes, chunk_index: int) -> None:
-    """Save a chunk to the temporary file."""
-    session = upload_sessions.get(upload_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Upload session not found")
-    
-    file_path = session["file_path"]
-    
+async def save_upload_chunk(
+    redis_client: redis.Redis, upload_id: str, chunk: bytes, chunk_index: int, total_chunks: int
+) -> None:
+    """Save a chunk to the temporary file at the correct offset."""
+    session_key = upload_key(upload_id)
+    session_data = await redis_client.hgetall(session_key)
+
+    if not session_data:
+        raise DomainError(
+            message="Upload session not found",
+            error_code="NOT_FOUND",
+            stage="upload",
+            context={"upload_id": upload_id},
+        )
+
+    file_path = session_data["file_path"]
+    chunk_size = int(session_data.get("chunk_size", len(chunk)))
+
+    # Calculate offset for this chunk
+    offset = chunk_index * chunk_size
+
     # Write chunk at correct position
     with open(file_path, "r+b") as f:
-        # For simplicity, append chunks (in production, use proper chunk positioning)
-        f.seek(0, 2)  # Seek to end
+        f.seek(offset)
         f.write(chunk)
-    
-    session["chunks_received"].add(chunk_index)
+
+    # Track received chunks
+    await redis_client.sadd(upload_chunks_key(upload_id), chunk_index)
+
+    # Update chunks received count
+    await redis_client.hincrby(session_key, "chunks_received", 1)
+    await redis_client.expire(session_key, UPLOAD_TTL)
+    await redis_client.expire(upload_chunks_key(upload_id), UPLOAD_TTL)
 
 
-def finalize_upload(upload_id: str) -> str:
+async def finalize_upload(redis_client: redis.Redis, upload_id: str) -> str:
     """Finalize upload and return file path."""
-    session = upload_sessions.get(upload_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Upload session not found")
-    
-    if len(session["chunks_received"]) != session["total_chunks"]:
-        raise HTTPException(status_code=400, detail="Not all chunks received")
-    
-    return session["file_path"]
+    session_key = upload_key(upload_id)
+    session_data = await redis_client.hgetall(session_key)
+
+    if not session_data:
+        raise DomainError(
+            message="Upload session not found",
+            error_code="NOT_FOUND",
+            stage="upload",
+            context={"upload_id": upload_id},
+        )
+
+    # Verify all chunks received
+    chunks_received = int(session_data.get("chunks_received", 0))
+    total_chunks = int(session_data.get("total_chunks", 0))
+
+    if chunks_received != total_chunks:
+        raise DomainError(
+            message="Not all chunks received",
+            error_code="VALIDATION_ERROR",
+            stage="upload",
+            context={"upload_id": upload_id, "chunks_received": chunks_received, "total_chunks": total_chunks},
+        )
+
+    return session_data["file_path"]
+
+
+async def create_upload_session(
+    redis_client: redis.Redis,
+    project_id: int,
+    filename: str,
+    file_size: int,
+    mime_type: str,
+    user_id: int,
+) -> tuple[str, Path]:
+    """Create a new upload session in Redis."""
+    upload_id = str(uuid.uuid4())
+    file_path = UPLOAD_DIR / f"{upload_id}_{filename}"
+
+    # Create empty file
+    file_path.touch()
+
+    # Calculate optimal chunk size for offset calculation
+    chunk_size = 1024 * 1024  # 1MB chunks
+    total_chunks = (file_size + chunk_size - 1) // chunk_size
+
+    session_data = {
+        "project_id": str(project_id),
+        "filename": filename,
+        "file_size": str(file_size),
+        "mime_type": mime_type,
+        "file_path": str(file_path),
+        "chunks_received": "0",
+        "total_chunks": str(total_chunks),
+        "chunk_size": str(chunk_size),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "user_id": str(user_id),
+        "status": "initialized",
+    }
+
+    await redis_client.hset(upload_key(upload_id), mapping=session_data)
+    await redis_client.expire(upload_key(upload_id), UPLOAD_TTL)
+
+    # Track upload in project index
+    await redis_client.sadd(project_uploads_key(project_id), upload_id)
+
+    logger.info(f"Upload initialized: {upload_id} for project {project_id} ({total_chunks} chunks)")
+
+    return upload_id, file_path
+
+
+async def get_upload_session(redis_client: redis.Redis, upload_id: str) -> Optional[Dict[str, str]]:
+    """Get upload session from Redis."""
+    return await redis_client.hgetall(upload_key(upload_id))
+
+
+async def delete_upload_session(redis_client: redis.Redis, upload_id: str) -> None:
+    """Delete upload session and temp file."""
+    session_data = await get_upload_session(redis_client, upload_id)
+    if session_data:
+        # Delete temp file
+        file_path = Path(session_data.get("file_path", ""))
+        if file_path.exists():
+            file_path.unlink()
+
+        # Get project_id before deleting
+        project_id = session_data.get("project_id")
+        if project_id:
+            await redis_client.srem(project_uploads_key(int(project_id)), upload_id)
+
+        # Delete session and chunks
+        await redis_client.delete(upload_key(upload_id))
+        await redis_client.delete(upload_chunks_key(upload_id))
+
+
+async def create_extraction_job(
+    redis_client: redis.Redis,
+    project_id: int,
+    upload_id: str,
+    file_path: str,
+    mime_type: str,
+) -> str:
+    """Create an extraction job in Redis."""
+    job_id = str(uuid.uuid4())
+
+    job_data = {
+        "job_id": job_id,
+        "project_id": str(project_id),
+        "upload_id": upload_id,
+        "file_path": file_path,
+        "mime_type": mime_type,
+        "status": "pending",
+        "progress": "0.0",
+        "current_step": "initializing",
+        "extracted_chapters": "0",
+        "total_chapters": "0",
+        "error": "",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "completed_at": "",
+    }
+
+    await redis_client.hset(extraction_job_key(job_id), mapping=job_data)
+    await redis_client.expire(extraction_job_key(job_id), UPLOAD_TTL)
+
+    # Track extraction in project index
+    await redis_client.sadd(project_extractions_key(project_id), job_id)
+
+    return job_id
+
+
+async def get_extraction_job(redis_client: redis.Redis, job_id: str) -> Optional[Dict[str, str]]:
+    """Get extraction job from Redis."""
+    return await redis_client.hgetall(extraction_job_key(job_id))
+
+
+async def update_extraction_job(
+    redis_client: redis.Redis,
+    job_id: str,
+    **updates,
+) -> None:
+    """Update extraction job fields."""
+    updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+    if "status" in updates and updates["status"] in ("completed", "failed"):
+        updates["completed_at"] = datetime.now(timezone.utc).isoformat()
+    await redis_client.hset(extraction_job_key(job_id), mapping=updates)
+
+
+async def list_project_extractions(redis_client: redis.Redis, project_id: int) -> List[ExtractionJobStatus]:
+    """List all extraction jobs for a project."""
+    job_ids = await redis_client.smembers(project_extractions_key(project_id))
+    jobs = []
+    for job_id in job_ids:
+        job_data = await get_extraction_job(redis_client, job_id)
+        if job_data:
+            # Drop "" placeholders (e.g. completed_at) that fail validation.
+            jobs.append(ExtractionJobStatus(**{k: v for k, v in job_data.items() if v != ""}))
+    return sorted(jobs, key=lambda x: x.created_at, reverse=True)
 
 
 # ── API Endpoints ──────────────────────────────────────────────────────────
+
 
 @router.post("/{project_id}/upload/init", response_model=UploadInitResponse)
 async def init_upload(
@@ -174,50 +415,52 @@ async def init_upload(
     filename: str = Form(...),
     file_size: int = Form(...),
     mime_type: str = Form(...),
-    current_user: User = Depends(require_project_permission("editor")),
-    db: Session = Depends(get_db),
+    current_user: User = Depends(require_project_permission(RoleName.EDITOR)),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Initialize a multipart upload session."""
     # Verify project exists and user has access
-    project = db.query(Project).filter(Project.id == project_id).first()
+    project = await db.get(Project, project_id)
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-    
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="upload",
+            context={"project_id": project_id},
+        )
+
     # Validate file type
     ext = Path(filename).suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"File type {ext} not allowed. Allowed: {', '.join(ALLOWED_EXTENSIONS)}"
+        raise DomainError(
+            message=f"File type {ext} not allowed. Allowed: {', '.join(ALLOWED_EXTENSIONS)}",
+            error_code="BAD_REQUEST",
+            stage="upload",
+            context={"file_extension": ext, "allowed_extensions": list(ALLOWED_EXTENSIONS)},
         )
-    
+
     if mime_type not in ALLOWED_MIME_TYPES:
-        raise HTTPException(status_code=400, detail=f"MIME type {mime_type} not allowed")
-    
+        raise DomainError(
+            message=f"MIME type {mime_type} not allowed",
+            error_code="BAD_REQUEST",
+            stage="upload",
+            context={"mime_type": mime_type, "allowed_mime_types": list(ALLOWED_MIME_TYPES)},
+        )
+
     if file_size > MAX_FILE_SIZE:
-        raise HTTPException(status_code=413, detail=f"File too large. Max size: {MAX_FILE_SIZE} bytes")
-    
-    # Create upload session
-    upload_id = str(uuid.uuid4())
-    file_path = UPLOAD_DIR / f"{upload_id}_{filename}"
-    
-    # Create empty file for chunked writing
-    file_path.touch()
-    
-    upload_sessions[upload_id] = {
-        "project_id": project_id,
-        "filename": filename,
-        "file_size": file_size,
-        "mime_type": mime_type,
-        "file_path": str(file_path),
-        "chunks_received": set(),
-        "total_chunks": 0,
-        "created_at": datetime.utcnow(),
-        "user_id": current_user.id,
-    }
-    
-    logger.info(f"Upload initialized: {upload_id} for project {project_id}")
-    
+        raise DomainError(
+            message=f"File too large. Max size: {MAX_FILE_SIZE} bytes",
+            error_code="PAYLOAD_TOO_LARGE",
+            stage="upload",
+            context={"file_size": file_size, "max_file_size": MAX_FILE_SIZE},
+        )
+
+    # Create upload session in Redis
+    redis_client = await get_redis()
+    upload_id, file_path = await create_upload_session(
+        redis_client, project_id, filename, file_size, mime_type, current_user.id
+    )
+
     return UploadInitResponse(
         upload_id=upload_id,
         project_id=project_id,
@@ -231,36 +474,53 @@ async def init_upload(
 async def upload_chunk(
     project_id: int,
     upload_id: str,
+    background_tasks: BackgroundTasks,
     chunk_index: int = Form(...),
     total_chunks: int = Form(...),
     is_final: bool = Form(False),
     file: UploadFile = File(...),
-    current_user: User = Depends(require_project_permission("editor")),
-    db: Session = Depends(get_db),
+    current_user: User = Depends(require_project_permission(RoleName.EDITOR)),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Upload a file chunk."""
-    session = upload_sessions.get(upload_id)
+    redis_client = await get_redis()
+
+    session = await get_upload_session(redis_client, upload_id)
     if not session:
-        raise HTTPException(status_code=404, detail="Upload session not found")
-    
-    if session["project_id"] != project_id:
-        raise HTTPException(status_code=400, detail="Project ID mismatch")
-    
-    # Initialize total_chunks on first chunk
-    if session["total_chunks"] == 0:
-        session["total_chunks"] = total_chunks
-    elif session["total_chunks"] != total_chunks:
-        raise HTTPException(status_code=400, detail="Total chunks mismatch")
-    
+        raise DomainError(
+            message="Upload session not found",
+            error_code="NOT_FOUND",
+            stage="upload",
+            context={"upload_id": upload_id},
+        )
+
+    if session["project_id"] != str(project_id):
+        raise DomainError(
+            message="Project ID mismatch",
+            error_code="BAD_REQUEST",
+            stage="upload",
+            context={"expected_project_id": project_id, "actual_project_id": session["project_id"]},
+        )
+
+    # Verify total_chunks matches
+    if int(session.get("total_chunks", 0)) != total_chunks:
+        raise DomainError(
+            message="Total chunks mismatch",
+            error_code="BAD_REQUEST",
+            stage="upload",
+            context={"expected_chunks": total_chunks, "actual_chunks": session.get("total_chunks")},
+        )
+
     # Read chunk data
     chunk_data = await file.read()
-    
-    # Save chunk
-    await save_upload_chunk(upload_id, chunk_data, chunk_index)
-    
+
+    # Save chunk at correct offset
+    await save_upload_chunk(redis_client, upload_id, chunk_data, chunk_index, total_chunks)
+
     # Update progress
-    progress = len(session["chunks_received"]) / total_chunks * 100
-    
+    chunks_received = int(await redis_client.scard(upload_chunks_key(upload_id)))
+    progress = chunks_received / total_chunks * 100
+
     # Emit WebSocket progress
     await emit_pipeline_event(
         project_id=project_id,
@@ -272,64 +532,100 @@ async def upload_chunk(
             "chunk_index": chunk_index,
             "total_chunks": total_chunks,
             "progress": progress,
-        }
+        },
     )
-    
+
     if is_final:
         # Finalize upload
-        file_path = finalize_upload(upload_id)
-        session["status"] = "uploaded"
-        session["completed_at"] = datetime.utcnow()
-        
+        file_path = await finalize_upload(redis_client, upload_id)
+
+        # Update session status
+        await redis_client.hset(upload_key(upload_id), "status", "uploaded")
+        await redis_client.hset(upload_key(upload_id), "completed_at", datetime.now(timezone.utc).isoformat())
+
         # Start extraction job
-        job_id = await start_extraction_job(upload_id, project_id, file_path, session["mime_type"])
-        
+        job_id = await create_extraction_job(redis_client, project_id, upload_id, file_path, session["mime_type"])
+
+        # Same fix as upload_file: actually schedule extraction (was dead code).
+        background_tasks.add_task(
+            run_extraction, job_id, project_id, file_path, session["mime_type"]
+        )
+
         return UploadCompleteResponse(
             upload_id=upload_id,
             project_id=project_id,
             file_path=file_path,
-            file_size=session["file_size"],
+            file_size=int(session["file_size"]),
             mime_type=session["mime_type"],
             extraction_job_id=job_id,
         )
-    
-    return {"status": "chunk_received", "chunk_index": chunk_index, "progress": progress}
+
+    return {
+        "status": "chunk_received",
+        "chunk_index": chunk_index,
+        "progress": progress,
+    }
 
 
 @router.post("/{project_id}/upload", response_model=UploadCompleteResponse)
 async def upload_file(
     project_id: int,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    current_user: User = Depends(require_project_permission("editor")),
-    db: Session = Depends(get_db),
-    background_tasks: BackgroundTasks = BackgroundTasks(),
+    current_user: User = Depends(require_project_permission(RoleName.EDITOR)),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Simple single-request file upload (for smaller files)."""
     # Verify project
-    project = db.query(Project).filter(Project.id == project_id).first()
+    project = await db.get(Project, project_id)
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-    
+        raise DomainError(
+            message="Project not found",
+            error_code="NOT_FOUND",
+            stage="upload",
+            context={"project_id": project_id},
+        )
+
     validate_file(file)
-    
+
     # Read file content
     content = await file.read()
     if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=413, detail="File too large")
-    
+        raise DomainError(
+            message="File too large",
+            error_code="PAYLOAD_TOO_LARGE",
+            stage="upload",
+            context={"file_size": len(content), "max_file_size": MAX_FILE_SIZE},
+        )
+
     # Save file
     upload_id = str(uuid.uuid4())
     filename = file.filename or "unknown"
     file_path = UPLOAD_DIR / f"{upload_id}_{filename}"
-    
+
     with open(file_path, "wb") as f:
         f.write(content)
-    
+
     logger.info(f"File uploaded: {file_path} ({len(content)} bytes)")
-    
+
     # Start extraction in background
-    job_id = await start_extraction_job(upload_id, project_id, str(file_path), file.content_type or "application/octet-stream")
-    
+    redis_client = await get_redis()
+    job_id = await create_extraction_job(
+        redis_client,
+        project_id,
+        upload_id,
+        str(file_path),
+        file.content_type or "application/octet-stream",
+    )
+
+    # run_extraction was previously dead code — nothing scheduled it, so
+    # uploads left the job at status="pending" forever and no chapters were
+    # ever created (auto-run then "completed" in ~0.1s on an empty project).
+    background_tasks.add_task(
+        run_extraction, job_id, project_id, str(file_path),
+        file.content_type or "application/octet-stream",
+    )
+
     return UploadCompleteResponse(
         upload_id=upload_id,
         project_id=project_id,
@@ -340,81 +636,86 @@ async def upload_file(
     )
 
 
-async def start_extraction_job(
-    upload_id: str, 
-    project_id: int, 
-    file_path: str, 
-    mime_type: str
-) -> str:
-    """Start an async extraction job."""
-    job_id = str(uuid.uuid4())
-    
-    job = ExtractionJobStatus(
-        job_id=job_id,
-        project_id=project_id,
-        upload_id=upload_id,
-        status="pending",
-        progress=0.0,
-        current_step="initializing",
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
-    )
-    extraction_jobs[job_id] = job
-    
-    # Start extraction in background
-    import asyncio
-    asyncio.create_task(run_extraction(job_id, project_id, file_path, mime_type))
-    
-    return job_id
-
-
 async def run_extraction(job_id: str, project_id: int, file_path: str, mime_type: str):
     """Run text extraction in background."""
-    job = extraction_jobs.get(job_id)
+    redis_client = await get_redis()
+
+    job = await get_extraction_job(redis_client, job_id)
     if not job:
         return
-    
+
     try:
-        job.status = "running"
-        job.current_step = "extracting_text"
-        job.progress = 0.1
-        job.updated_at = datetime.utcnow()
-        
+        await update_extraction_job(
+            redis_client,
+            job_id,
+            status="running",
+            progress="0.1",
+            current_step="extracting_text",
+        )
+
         # Emit progress
         await emit_pipeline_event(
             project_id=project_id,
             event_type=PipelineEventType.STAGE_ENTER,
             stage="extract",
             progress=0.1,
-            data={"job_id": job_id, "step": "extracting_text"}
+            data={"job_id": job_id, "step": "extracting_text"},
         )
-        
+
         # Extract text using pipeline
-        result = await extract_text(file_path, mime_type)
-        
-        job.progress = 0.5
-        job.current_step = "creating_chapters"
-        job.updated_at = datetime.utcnow()
-        
+        # extract_text is sync and performs blocking vision-LLM HTTP calls per
+        # embedded image; run it in a worker thread so the event loop (and
+        # thus /health and every other request) stays responsive.
+        result = await asyncio.to_thread(extract_text, file_path, mime_type)
+
+        await update_extraction_job(
+            redis_client,
+            job_id,
+            progress="0.5",
+            current_step="creating_chapters",
+        )
+
         await emit_pipeline_event(
             project_id=project_id,
             event_type=PipelineEventType.STAGE_PROGRESS,
             stage="extract",
             progress=0.5,
-            data={"job_id": job_id, "step": "creating_chapters"}
+            data={"job_id": job_id, "step": "creating_chapters"},
         )
-        
+
         # Create chapters from extracted text
-        from ..database import SessionLocal
-        from ..models import Project, Chapter
-        db = SessionLocal()
-        try:
-            project = db.query(Project).filter(Project.id == project_id).first()
+        from ..database import create_async_session
+        from ..models import Project
+        from ..schemas.paragraph import ContentRating
+
+        async with create_async_session() as db:
+            project = await db.get(Project, project_id)
             if project:
-                # Simple chapter splitting (by page breaks or fixed size)
                 chapters = split_into_chapters(result.raw_text)
-                job.total_chapters = len(chapters)
-                
+                await update_extraction_job(redis_client, job_id, total_chapters=len(chapters))
+
+                # Save project segments for OCR/content rating tracking
+                if mime_type in ("image/png", "image/jpeg", "image/jpg", "image/tiff", "image/bmp", "image/webp"):
+                    # For image files, save the whole extracted text as an OCR segment
+                    segment = ProjectSegment(
+                        project_id=project_id,
+                        segment_index=0,
+                        source_page=1,
+                        source_format=mime_type.split("/")[-1],
+                        text=result.raw_text,
+                        char_count=len(result.raw_text),
+                        is_ocr=result.has_ocr,
+                        ocr_confidence=None,  # pytesseract doesn't easily expose this
+                        ocr_languages=["chi_sim", "eng"] if result.has_ocr else [],
+                        content_rating=ContentRating.GENERAL,
+                        detected_language=result.language,
+                    )
+                    db.add(segment)
+                else:
+                    # For document files, could save per-page segments in the future
+                    # For now, skip segment creation for non-image files
+                    pass
+
                 for i, chapter_text in enumerate(chapters):
                     chapter = Chapter(
                         project_id=project_id,
@@ -425,27 +726,30 @@ async def run_extraction(job_id: str, project_id: int, file_path: str, mime_type
                         status="completed",
                     )
                     db.add(chapter)
-                    job.extracted_chapters = i + 1
-                    job.progress = 0.5 + (0.4 * (i + 1) / len(chapters))
-                    job.updated_at = datetime.utcnow()
-                
-                db.commit()
-                
+
+                    await update_extraction_job(
+                        redis_client,
+                        job_id,
+                        extracted_chapters=i + 1,
+                        progress=0.5 + (0.4 * (i + 1) / len(chapters)),
+                    )
+
+                await db.commit()
+
                 # Update project status
                 project.current_stage = "analyze"
                 project.progress = 0.15
-                db.commit()
-        
-        finally:
-            db.close()
-        
+                await db.commit()
+
         # Complete
-        job.status = "completed"
-        job.progress = 1.0
-        job.current_step = "completed"
-        job.completed_at = datetime.utcnow()
-        job.updated_at = datetime.utcnow()
-        
+        await update_extraction_job(
+            redis_client,
+            job_id,
+            status="completed",
+            progress="1.0",
+            current_step="completed",
+        )
+
         await emit_pipeline_event(
             project_id=project_id,
             event_type=PipelineEventType.STAGE_EXIT,
@@ -453,45 +757,47 @@ async def run_extraction(job_id: str, project_id: int, file_path: str, mime_type
             progress=1.0,
             data={
                 "job_id": job_id,
-                "chapters_created": job.extracted_chapters,
+                "chapters_created": int(job.get("extracted_chapters", 0)),
                 "total_paragraphs": result.raw_text.count("\n\n") + 1,
                 "language": result.language,
                 "page_count": result.page_count,
                 "has_ocr": result.has_ocr,
                 "ocr_page_ratio": result.ocr_page_ratio,
-            }
+            },
         )
-        
+
         logger.info(f"Extraction job {job_id} completed for project {project_id}")
-        
+
     except Exception as e:
-        job.status = "failed"
-        job.error = str(e)
-        job.updated_at = datetime.utcnow()
-        
+        await update_extraction_job(
+            redis_client,
+            job_id,
+            status="failed",
+            error=str(e),
+        )
+
         await emit_pipeline_event(
             project_id=project_id,
             event_type=PipelineEventType.ERROR,
             stage="extract",
-            data={"job_id": job_id, "error": str(e)}
+            data={"job_id": job_id, "error": str(e)},
         )
-        
+
         logger.error(f"Extraction job {job_id} failed: {e}")
 
 
 def split_into_chapters(text: str) -> List[str]:
     """Split text into chapters (simple heuristic)."""
-    # Split by common chapter markers
     import re
-    
+
     # Try to find chapter markers
     chapter_patterns = [
-        r'\n\s*第[一二三四五六七八九十百千万\d]+\s*[章回节]\s*\n',
-        r'\n\s*Chapter\s+\d+\s*\n',
-        r'\n\s*CHAPTER\s+\d+\s*\n',
-        r'\n\s*第\s*\d+\s*章\s*\n',
+        r"\n\s*第[一二三四五六七八九十百千万\d]+\s*[章回节]\s*\n",
+        r"\n\s*Chapter\s+\d+\s*\n",
+        r"\n\s*CHAPTER\s+\d+\s*\n",
+        r"\n\s*第\s*\d+\s*章\s*\n",
     ]
-    
+
     for pattern in chapter_patterns:
         matches = list(re.finditer(pattern, text))
         if len(matches) > 1:
@@ -501,13 +807,13 @@ def split_into_chapters(text: str) -> List[str]:
                 end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
                 chapters.append(text[start:end].strip())
             return [c for c in chapters if c]
-    
+
     # Fallback: split by double newlines, group into chunks
     paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
     chapter_size = max(1, len(paragraphs) // 10)  # ~10 chapters
     chapters = []
     for i in range(0, len(paragraphs), chapter_size):
-        chapters.append("\n\n".join(paragraphs[i:i + chapter_size]))
+        chapters.append("\n\n".join(paragraphs[i : i + chapter_size]))
     return chapters
 
 
@@ -516,24 +822,40 @@ async def get_upload_status(
     project_id: int,
     upload_id: str,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Get upload session status."""
-    session = upload_sessions.get(upload_id)
+    redis_client = await get_redis()
+    session = await get_upload_session(redis_client, upload_id)
+
     if not session:
-        raise HTTPException(status_code=404, detail="Upload session not found")
-    
-    if session["project_id"] != project_id:
-        raise HTTPException(status_code=400, detail="Project ID mismatch")
-    
+        raise DomainError(
+            message="Upload session not found",
+            error_code="NOT_FOUND",
+            stage="upload",
+            context={"upload_id": upload_id},
+        )
+
+    if session["project_id"] != str(project_id):
+        raise DomainError(
+            message="Project ID mismatch",
+            error_code="BAD_REQUEST",
+            stage="upload",
+            context={"expected_project_id": project_id, "actual_project_id": session["project_id"]},
+        )
+
+    chunks_received = await redis_client.scard(upload_chunks_key(upload_id))
+    total_chunks = int(session.get("total_chunks", 0))
+    progress = chunks_received / max(total_chunks, 1) * 100
+
     return {
         "upload_id": upload_id,
         "project_id": project_id,
         "filename": session["filename"],
         "status": session.get("status", "initialized"),
-        "chunks_received": len(session["chunks_received"]),
-        "total_chunks": session["total_chunks"],
-        "progress": len(session["chunks_received"]) / max(session["total_chunks"], 1) * 100,
+        "chunks_received": chunks_received,
+        "total_chunks": total_chunks,
+        "progress": progress,
     }
 
 
@@ -542,51 +864,72 @@ async def get_extraction_status(
     project_id: int,
     job_id: str,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Get extraction job status."""
-    job = extraction_jobs.get(job_id)
+    redis_client = await get_redis()
+    job = await get_extraction_job(redis_client, job_id)
+
     if not job:
-        raise HTTPException(status_code=404, detail="Extraction job not found")
-    
-    if job.project_id != project_id:
-        raise HTTPException(status_code=400, detail="Project ID mismatch")
-    
-    return job
+        raise DomainError(
+            message="Extraction job not found",
+            error_code="NOT_FOUND",
+            stage="upload",
+            context={"job_id": job_id},
+        )
+
+    if job["project_id"] != str(project_id):
+        raise DomainError(
+            message="Project ID mismatch",
+            error_code="BAD_REQUEST",
+            stage="upload",
+            context={"expected_project_id": project_id, "actual_project_id": job["project_id"]},
+        )
+
+    # Redis hash stores unset optional fields as "" which fails datetime
+    # validation (completed_at=""), turning every status poll into a 500.
+    cleaned = {k: v for k, v in job.items() if v != ""}
+    return ExtractionJobStatus(**cleaned)
 
 
 @router.get("/{project_id}/extractions", response_model=List[ExtractionJobStatus])
 async def list_extractions(
     project_id: int,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """List all extraction jobs for a project."""
-    jobs = [j for j in extraction_jobs.values() if j.project_id == project_id]
-    return sorted(jobs, key=lambda x: x.created_at, reverse=True)
+    redis_client = await get_redis()
+    return await list_project_extractions(redis_client, project_id)
 
 
 @router.delete("/{project_id}/upload/{upload_id}")
 async def cancel_upload(
     project_id: int,
     upload_id: str,
-    current_user: User = Depends(require_project_permission("editor")),
-    db: Session = Depends(get_db),
+    current_user: User = Depends(require_project_permission(RoleName.EDITOR)),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Cancel an upload session and cleanup."""
-    session = upload_sessions.get(upload_id)
+    redis_client = await get_redis()
+
+    session = await get_upload_session(redis_client, upload_id)
     if not session:
-        raise HTTPException(status_code=404, detail="Upload session not found")
-    
-    if session["project_id"] != project_id:
-        raise HTTPException(status_code=400, detail="Project ID mismatch")
-    
-    # Delete temp file
-    file_path = Path(session["file_path"])
-    if file_path.exists():
-        file_path.unlink()
-    
-    # Remove session
-    del upload_sessions[upload_id]
-    
+        raise DomainError(
+            message="Upload session not found",
+            error_code="NOT_FOUND",
+            stage="upload",
+            context={"upload_id": upload_id},
+        )
+
+    if session["project_id"] != str(project_id):
+        raise DomainError(
+            message="Project ID mismatch",
+            error_code="BAD_REQUEST",
+            stage="upload",
+            context={"expected_project_id": project_id, "actual_project_id": session["project_id"]},
+        )
+
+    await delete_upload_session(redis_client, upload_id)
+
     return {"message": "Upload cancelled and cleaned up"}

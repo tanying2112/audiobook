@@ -6,15 +6,11 @@ Target coverage: >= 75%
 """
 
 import os
-import sys
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pytest
 
-sys.path.insert(0, "src")
-
-from audiobook_studio.pipeline import analyze_structure
-from audiobook_studio.pipeline.analyze_structure import AnalyzeStructurePipeline
+from audiobook_studio.pipeline.analyze_structure import AnalyzeStructurePipeline, analyze_structure
 from audiobook_studio.schemas import BookAnalysisInput, BookAnalysisOutput
 
 
@@ -71,12 +67,7 @@ class TestAnalyzeStructurePipeline:
 
     def test_run_non_mock_router_call(self):
         """Test run method calls router with correct parameters."""
-        from audiobook_studio.schemas import (
-            BookAnalysisOutput,
-            BookMeta,
-            CharacterVoiceBinding,
-            EmotionSnapshot,
-        )
+        from audiobook_studio.schemas import BookAnalysisOutput, BookMeta, CharacterVoiceBinding, EmotionSnapshot
 
         mock_router = Mock()
         mock_output = BookAnalysisOutput(
@@ -89,14 +80,8 @@ class TestAnalyzeStructurePipeline:
                 era="现代",
                 total_chapters_estimated=10,
             ),
-            character_voice_map=[
-                CharacterVoiceBinding(
-                    canonical_name="narrator", sample_quote="旁白文本"
-                )
-            ],
-            emotion_snapshots=[
-                EmotionSnapshot(chapter=1, dominant_emotion="neutral", intensity=0.5)
-            ],
+            character_voice_map=[CharacterVoiceBinding(canonical_name="narrator", sample_quote="旁白文本")],
+            emotion_snapshots=[EmotionSnapshot(chapter=1, dominant_emotion="neutral", intensity=0.5)],
             story_line_summary="This is a test summary that is long enough to pass the minimum length requirement of 100 characters.",
             global_style_notes="Test style notes",
         )

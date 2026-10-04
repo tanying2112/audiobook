@@ -8,7 +8,7 @@ import logging
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date
 from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -313,9 +313,11 @@ class QuotaRegistry:
                     "total_failures_today": usage.total_failures_today,
                     "last_successful_request": usage.last_successful_request,
                 },
-                "healthy": daily_request_pct < 95 and daily_token_pct < 95
-                    and minute_request_pct < 90 and minute_token_pct < 90
-                    and usage.consecutive_failures < 5,
+                "healthy": daily_request_pct < 95
+                and daily_token_pct < 95
+                and minute_request_pct < 90
+                and minute_token_pct < 90
+                and usage.consecutive_failures < 5,
             }
 
     def get_all_statuses(self) -> Dict[str, Dict]:
@@ -360,6 +362,7 @@ class QuotaRegistry:
 def get_quota_registry() -> QuotaRegistry:
     """Deprecated: use get_app_container().get(QuotaRegistry)"""
     from ..di import get_app_container
+
     return get_app_container().get(QuotaRegistry)
 
 

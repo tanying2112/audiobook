@@ -36,8 +36,12 @@ def _get_db() -> Session:
     return SessionLocal()
 
 
-def _find_run(db: Session, project_id: int, run_id: Optional[int] = None,
-              tag: Optional[str] = None) -> Optional[ProcessingRun]:
+def _find_run(
+    db: Session,
+    project_id: int,
+    run_id: Optional[int] = None,
+    tag: Optional[str] = None,
+) -> Optional[ProcessingRun]:
     """Locate a processing run by id, tag, or latest for project."""
     if run_id:
         return db.query(ProcessingRun).filter(ProcessingRun.id == run_id).first()
@@ -66,12 +70,7 @@ def _collect_stages_config(db: Session, project_id: int) -> Dict[str, Any]:
     """Gather current project processing state into a snapshot dict."""
     from src.audiobook_studio.models import Chapter, Paragraph
 
-    chapters = (
-        db.query(Chapter)
-        .filter(Chapter.project_id == project_id)
-        .order_by(Chapter.index)
-        .all()
-    )
+    chapters = db.query(Chapter).filter(Chapter.project_id == project_id).order_by(Chapter.index).all()
     stages_set: set = set()
     total_paragraphs = 0
     processed_paragraphs = 0
@@ -152,7 +151,7 @@ def save_run(
 
         run = ProcessingRun(
             project_id=project_id,
-            config_json=config_snapshot if isinstance(config_snapshot, str) else json.dumps(config_snapshot),
+            config_json=(config_snapshot if isinstance(config_snapshot, str) else json.dumps(config_snapshot)),
             prompt_versions=prompt_versions or {},
             stages_completed=state["stages_completed"],
             status="completed",
@@ -165,10 +164,14 @@ def save_run(
 
         # Link to parent if specified
         if parent_run_id:
-            parent = db.query(ProcessingRun).filter(
-                ProcessingRun.id == parent_run_id,
-                ProcessingRun.project_id == project_id,
-            ).first()
+            parent = (
+                db.query(ProcessingRun)
+                .filter(
+                    ProcessingRun.id == parent_run_id,
+                    ProcessingRun.project_id == project_id,
+                )
+                .first()
+            )
             if parent:
                 run.parent_run_id = parent.id
             else:
@@ -195,8 +198,10 @@ def save_run(
         if tag:
             logger.info(f"   Tag: {tag}")
         logger.info(f"   Stages: {', '.join(state['stages_completed']) or '(none)'}")
-        logger.info(f"   Chapters: {state['chapter_count']}, "
-                    f"Paragraphs: {state['processed_paragraphs']}/{state['total_paragraphs']}")
+        logger.info(
+            f"   Chapters: {state['chapter_count']}, "
+            f"Paragraphs: {state['processed_paragraphs']}/{state['total_paragraphs']}"
+        )
         return run
     finally:
         db.close()
@@ -217,8 +222,7 @@ def list_runs(project_id: int) -> List[ProcessingRun]:
         db.close()
 
 
-def get_run(project_id: int, run_id: Optional[int] = None,
-            tag: Optional[str] = None) -> Optional[ProcessingRun]:
+def get_run(project_id: int, run_id: Optional[int] = None, tag: Optional[str] = None) -> Optional[ProcessingRun]:
     """Get a processing run by ID or tag."""
     db = _get_db()
     try:
@@ -263,11 +267,9 @@ def rollback_to_run(
         )
 
         logger.info(f"Rollback Plan for project {project_id}")
-        logger.info(f"  Target:   Run #{target.id} ({target.version_tag or '-'}) "
-                    f"from {target.started_at}")
+        logger.info(f"  Target:   Run #{target.id} ({target.version_tag or '-'}) " f"from {target.started_at}")
         if latest:
-            logger.info(f"  Current:  Run #{latest.id} ({latest.version_tag or '-'}) "
-                        f"from {latest.started_at}")
+            logger.info(f"  Current:  Run #{latest.id} ({latest.version_tag or '-'}) " f"from {latest.started_at}")
 
         if apply:
             # MVP: record rollback as a new run pointing to target as parent
@@ -313,7 +315,7 @@ def diff_runs(run_a_id: int, run_b_id: int) -> Dict[str, Any]:
         diff = {
             "run_a": {"id": run_a.id, "tag": run_a.version_tag, "status": run_a.status},
             "run_b": {"id": run_b.id, "tag": run_b.version_tag, "status": run_b.status},
-            "differences": {}
+            "differences": {},
         }
 
         # Status
@@ -322,7 +324,10 @@ def diff_runs(run_a_id: int, run_b_id: int) -> Dict[str, Any]:
 
         # Score
         if run_a.golden_score != run_b.golden_score:
-            diff["differences"]["golden_score"] = {"from": run_a.golden_score, "to": run_b.golden_score}
+            diff["differences"]["golden_score"] = {
+                "from": run_a.golden_score,
+                "to": run_b.golden_score,
+            }
 
         # Stages
         stages_a = set(run_a.stages_completed or [])
@@ -398,11 +403,7 @@ def restore_state(project_id: int, run_id: int, force: bool = False) -> Dict[str
         chapters_updated = 0
         paragraphs_updated = 0
 
-        chapters = (
-            db.query(Chapter)
-            .filter(Chapter.project_id == project_id)
-            .all()
-        )
+        chapters = db.query(Chapter).filter(Chapter.project_id == project_id).all()
         for ch in chapters:
             changed = False
             for stage_name, field in stage_field_map.items():
@@ -446,6 +447,9 @@ def restore_state(project_id: int, run_id: int, force: bool = False) -> Dict[str
         db.commit()
         logger.info(f"State restored: {chapters_updated} chapters, {paragraphs_updated} paragraphs updated")
         logger.info(f"  Active stages: {', '.join(stages)}")
-        return {"chapters_updated": chapters_updated, "paragraphs_updated": paragraphs_updated}
+        return {
+            "chapters_updated": chapters_updated,
+            "paragraphs_updated": paragraphs_updated,
+        }
     finally:
         db.close()

@@ -5,21 +5,30 @@ to avoid circular imports.
 """
 
 import json
-from typing import Any, Type, Dict, TypeVar
+from typing import Any, Protocol, TypeVar
 
 T = TypeVar("T")
+
+
+class SupportsModelValidate(Protocol):
+    """Protocol for Pydantic models with model_validate method."""
+
+    @classmethod
+    def model_validate(cls: type[T], obj: Any) -> T: ...
 
 
 class LLMParseError(Exception):
     """Raised when LLM response cannot be parsed as valid JSON or fails schema validation."""
 
-    def __init__(self, message: str, raw_response: str = "", stage: str = ""):
+    def __init__(self, message: str, raw_response: str = "", stage: str = ""):  # noqa: B042
         super().__init__(message)
         self.raw_response = raw_response
         self.stage = stage
 
 
-def validate_and_parse_llm_response(raw_response: Any, response_model: Type[T], stage: str) -> T:
+def validate_and_parse_llm_response(
+    raw_response: Any, response_model: type[SupportsModelValidate], stage: str
+) -> SupportsModelValidate:
     """
     Pre-validate LLM response before Pydantic model validation.
 
@@ -31,11 +40,7 @@ def validate_and_parse_llm_response(raw_response: Any, response_model: Type[T], 
     """
     # Handle None or empty response
     if raw_response is None:
-        raise LLMParseError(
-            "LLM returned None response",
-            raw_response=str(raw_response),
-            stage=stage
-        )
+        raise LLMParseError("LLM returned None response", raw_response=str(raw_response), stage=stage)
 
     # Handle empty string
     if isinstance(raw_response, str):
@@ -43,7 +48,7 @@ def validate_and_parse_llm_response(raw_response: Any, response_model: Type[T], 
             raise LLMParseError(
                 "LLM returned empty string response",
                 raw_response=raw_response,
-                stage=stage
+                stage=stage,
             )
         # Try to parse JSON string
         try:
@@ -52,24 +57,20 @@ def validate_and_parse_llm_response(raw_response: Any, response_model: Type[T], 
             raise LLMParseError(
                 f"LLM returned invalid JSON: {e}",
                 raw_response=raw_response,
-                stage=stage
-            )
+                stage=stage,
+            ) from e
 
     # Ensure it's a dict
     if not isinstance(raw_response, dict):
         raise LLMParseError(
             f"LLM response is not a JSON object: got {type(raw_response).__name__}",
             raw_response=str(raw_response),
-            stage=stage
+            stage=stage,
         )
 
     # Check for empty dict
     if not raw_response:
-        raise LLMParseError(
-            "LLM returned empty JSON object {}",
-            raw_response="{}",
-            stage=stage
-        )
+        raise LLMParseError("LLM returned empty JSON object {}", raw_response="{}", stage=stage)
 
     # Stage-specific validation
     if stage == "judge":
@@ -77,7 +78,10 @@ def validate_and_parse_llm_response(raw_response: Any, response_model: Type[T], 
             raise LLMParseError(
                 "LLM response missing required 'segment_id' field for judge stage",
                 raw_response=json.dumps(raw_response, ensure_ascii=False),
-                stage=stage
+                stage=stage,
             )
 
+    # Validate against Pydantic model if it has model_validate method
+    if hasattr(response_model, "model_validate"):
+        return response_model.model_validate(raw_response)
     return raw_response  # type: ignore[return-value]

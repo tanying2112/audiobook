@@ -21,31 +21,24 @@ Covers:
 
 import os
 import time
-import json
-from collections import defaultdict
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
-import pytest
-
+from src.audiobook_studio.llm.config_loader import LLMProvidersConfig
 from src.audiobook_studio.llm.router import (
+    LLMRouter,
     PromptCompressor,
     ProviderRateLimiter,
-    LLMRouter,
-    CostTracker,
     create_router,
     reset_cost_tracker,
-    ModelConfig,
-    StageRoutingConfig,
 )
-from src.audiobook_studio.llm.config_loader import LLMProvidersConfig
 from src.audiobook_studio.schemas import (
     BookAnalysisOutput,
+    ExtractionResult,
+    FeedbackAnalysis,
+    ParagraphAnnotation,
     QualityJudgment,
+    TtsEditOutput,
 )
-from src.audiobook_studio.schemas import TtsEditOutput
-from src.audiobook_studio.schemas import ExtractionResult
-from src.audiobook_studio.schemas import FeedbackAnalysis
-from src.audiobook_studio.schemas import ParagraphAnnotation
 
 
 def _make_config():
@@ -167,6 +160,7 @@ class TestResetCostTracker:
 
     def test_reset_cost_tracker(self):
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
         reset_cost_tracker()
         # Should not raise
@@ -179,6 +173,7 @@ class TestHeuristicFallback:
     def _make_router_for_fallback(self):
         """Create a minimal router for fallback testing."""
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
 
         os.environ["MOCK_LLM"] = "true"
@@ -190,6 +185,7 @@ class TestHeuristicFallback:
     def test_fallback_analyze(self):
         router = self._make_router_for_fallback()
         from src.audiobook_studio.schemas import BookAnalysisOutput
+
         result = router._heuristic_fallback("analyze", BookAnalysisOutput, segment_id="s1")
         assert isinstance(result, BookAnalysisOutput)
 
@@ -219,6 +215,7 @@ class TestApplyHardwareProfileRouting:
 
     def test_empty_stage_models_returns_original(self):
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
         os.environ["MOCK_LLM"] = "true"
         config = _make_config()
@@ -231,6 +228,7 @@ class TestApplyHardwareProfileRouting:
 
     def test_reorders_by_priority(self):
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
         os.environ["MOCK_LLM"] = "true"
         config = _make_config()
@@ -254,6 +252,7 @@ class TestApplyHardwareProfileRouting:
 
     def test_unknown_provider_filtered(self):
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
         os.environ["MOCK_LLM"] = "true"
         config = _make_config()
@@ -276,10 +275,11 @@ class TestApplyHardwareProfileRouting:
 
 
 class TestSelectProvider:
-    """Test _select_provider multi-layer filtering."""
+    """Test provider filtering via call() method (replaces removed _select_provider)."""
 
     def _make_router_for_select(self):
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
         os.environ["MOCK_LLM"] = "true"
         config = _make_config()
@@ -287,24 +287,40 @@ class TestSelectProvider:
             router = LLMRouter(mock_mode=True)
         return router
 
-    def test_all_providers_skipped_returns_none(self):
+    def test_all_providers_skipped_returns_fallback(self):
         router = self._make_router_for_select()
-        # Set circuit breaker to open
-        for name, cb in router.circuit_breakers.items():
+        # Set circuit breaker to open for all providers
+        for _name, cb in router.circuit_breakers.items():
             cb.record_failure()
             cb.record_failure()
             cb.record_failure()
-        result = router._select_provider(config.get_all_enabled() if hasattr(config := router.config, 'get_all_enabled') else [], 100)
-        assert result is None
-        from src.audiobook_studio.di import reset_app_container
-        reset_app_container()
+        # call() should fall through to heuristic fallback (mock mode)
+        from src.audiobook_studio.schemas import ParagraphAnnotation
 
-    def test_select_first_healthy_provider(self):
-        router = self._make_router_for_select()
-        providers = router.config.get_all_enabled()
-        result = router._select_provider(providers, 100)
+        result = router.call(
+            "annotate",
+            ParagraphAnnotation,
+            [{"role": "user", "content": "test paragraph"}],
+        )
+        # In mock mode, call() returns mock result even when providers fail
         assert result is not None
         from src.audiobook_studio.di import reset_app_container
+
+        reset_app_container()
+
+    def test_call_with_healthy_providers(self):
+        router = self._make_router_for_select()
+        from src.audiobook_studio.schemas import ParagraphAnnotation
+
+        result = router.call(
+            "annotate",
+            ParagraphAnnotation,
+            [{"role": "user", "content": "test paragraph"}],
+        )
+        assert result is not None
+        assert result.output is not None
+        from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
 
 
@@ -313,6 +329,7 @@ class TestCreateMockResult:
 
     def _make_router(self):
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
         os.environ["MOCK_LLM"] = "true"
         config = _make_config()
@@ -326,6 +343,7 @@ class TestCreateMockResult:
         assert result is not None
         assert result.model == "mock-model"
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
 
     def test_mock_annotation(self):
@@ -333,6 +351,7 @@ class TestCreateMockResult:
         result = router._create_mock_result(ParagraphAnnotation, "annotate")
         assert result is not None
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
 
     def test_mock_edit(self):
@@ -340,6 +359,7 @@ class TestCreateMockResult:
         result = router._create_mock_result(TtsEditOutput, "edit")
         assert result is not None
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
 
     def test_mock_judge(self):
@@ -347,6 +367,7 @@ class TestCreateMockResult:
         result = router._create_mock_result(QualityJudgment, "judge", segment_id="s1")
         assert result is not None
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
 
     def test_mock_extraction(self):
@@ -354,6 +375,7 @@ class TestCreateMockResult:
         result = router._create_mock_result(ExtractionResult, "extract")
         assert result is not None
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
 
     def test_mock_feedback(self):
@@ -361,16 +383,20 @@ class TestCreateMockResult:
         result = router._create_mock_result(FeedbackAnalysis, "feedback")
         assert result is not None
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
 
     def test_mock_unknown_model(self):
         router = self._make_router()
+
         # Unknown model class that can be instantiated
         class DummyModel:
             pass
-        result = router._create_mock_result(DummyModel, "unknown")
+
+        router._create_mock_result(DummyModel, "unknown")
         # May return None if it can't create an instance, that's fine
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
 
 
@@ -379,6 +405,7 @@ class TestGetFreeTierHealth:
 
     def _make_router(self):
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
         os.environ["MOCK_LLM"] = "true"
         config = _make_config()
@@ -393,6 +420,7 @@ class TestGetFreeTierHealth:
         assert "overall_health" in health
         assert health["overall_health"] in ("green", "yellow", "red")
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
 
     def test_free_tier_health_red(self):
@@ -412,7 +440,10 @@ class TestGetFreeTierHealth:
         ]
         # Break circuit breaker for free_provider
         from src.audiobook_studio.llm.circuit_breaker import CircuitBreaker
-        router.circuit_breakers["free_provider"] = CircuitBreaker("free_provider", failure_threshold=3, recovery_timeout_s=120)
+
+        router.circuit_breakers["free_provider"] = CircuitBreaker(
+            "free_provider", failure_threshold=3, recovery_timeout_s=120
+        )
         router.circuit_breakers["free_provider"].record_failure()
         router.circuit_breakers["free_provider"].record_failure()
         router.circuit_breakers["free_provider"].record_failure()
@@ -422,6 +453,7 @@ class TestGetFreeTierHealth:
         health = router.get_free_tier_health()
         assert health["overall_health"] in ("yellow", "red")
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
 
     def test_free_tier_health_yellow(self):
@@ -438,7 +470,7 @@ class TestGetFreeTierHealth:
             free_p,
         ]
         # Break circuit breaker for the original test_provider to reduce healthy count
-        for name, cb in router.circuit_breakers.items():
+        for _name, cb in router.circuit_breakers.items():
             cb.record_failure()
             cb.record_failure()
             cb.record_failure()
@@ -446,6 +478,7 @@ class TestGetFreeTierHealth:
         # free_provider success_rate=5/6=0.833, above 0.8 but below 0.95 => yellow
         assert health["overall_health"] in ("yellow", "green", "red")
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
 
 
@@ -454,6 +487,7 @@ class TestStageConfigs:
 
     def _make_router(self):
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
         os.environ["MOCK_LLM"] = "true"
         config = _make_config()
@@ -466,6 +500,7 @@ class TestStageConfigs:
         configs = router.stage_configs
         assert isinstance(configs, dict)
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
 
 
@@ -474,6 +509,7 @@ class TestGetQuotaAndCostStatus:
 
     def _make_router(self):
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
         os.environ["MOCK_LLM"] = "true"
         config = _make_config()
@@ -486,6 +522,7 @@ class TestGetQuotaAndCostStatus:
         status = router.get_quota_status()
         assert isinstance(status, dict)
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
 
     def test_get_quota_status_specific(self):
@@ -493,6 +530,7 @@ class TestGetQuotaAndCostStatus:
         status = router.get_quota_status("test_provider")
         assert isinstance(status, dict)
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
 
     def test_get_quota_healthy_providers(self):
@@ -500,6 +538,7 @@ class TestGetQuotaAndCostStatus:
         result = router.get_quota_healthy_providers()
         assert isinstance(result, list)
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
 
     def test_get_quota_health_score(self):
@@ -507,6 +546,7 @@ class TestGetQuotaAndCostStatus:
         score = router.get_quota_health_score("test_provider")
         assert isinstance(score, float)
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
 
     def test_get_cost_status(self):
@@ -514,6 +554,7 @@ class TestGetQuotaAndCostStatus:
         status = router.get_cost_status()
         assert isinstance(status, dict)
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
 
 
@@ -522,6 +563,7 @@ class TestLangfuseInit:
 
     def _make_router(self):
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
         os.environ["MOCK_LLM"] = "true"
         config = _make_config()
@@ -532,21 +574,33 @@ class TestLangfuseInit:
     def test_init_langfuse_exception_path(self):
         router = self._make_router()
         router._langfuse_initialized = False
-        with patch.dict(os.environ, {"LANGFUSE_PUBLIC_KEY": "pk", "LANGFUSE_SECRET_KEY": "sk"}, clear=False):
+        with patch.dict(
+            os.environ,
+            {"LANGFUSE_PUBLIC_KEY": "pk", "LANGFUSE_SECRET_KEY": "sk"},
+            clear=False,
+        ):
             # The method imports from ..monitoring.langfuse_client at runtime
-            with patch("src.audiobook_studio.monitoring.langfuse_client.init_langfuse", side_effect=Exception("fail")):
+            with patch(
+                "src.audiobook_studio.monitoring.langfuse_client.init_langfuse",
+                side_effect=Exception("fail"),
+            ):
                 router._init_langfuse()
         assert router._langfuse_initialized is False
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
 
     def test_is_langfuse_enabled_exception(self):
         router = self._make_router()
         router._langfuse_enabled_cached = False
-        with patch("src.audiobook_studio.monitoring.langfuse_client.is_enabled", side_effect=Exception("fail")):
+        with patch(
+            "src.audiobook_studio.monitoring.langfuse_client.is_enabled",
+            side_effect=Exception("fail"),
+        ):
             result = router._is_langfuse_enabled()
         assert result is False
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
 
     def test_is_langfuse_enabled_cached(self):
@@ -555,6 +609,7 @@ class TestLangfuseInit:
         result = router._is_langfuse_enabled()
         assert result is True
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
 
     def test_init_langfuse_already_initialized(self):
@@ -562,6 +617,7 @@ class TestLangfuseInit:
         router._langfuse_initialized = True
         router._init_langfuse()  # Should be a no-op
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
 
 
@@ -577,7 +633,10 @@ class TestLazyTraceFunction:
 
         mock_self = MagicMock()
         # Patch langfuse trace_function to raise
-        with patch("src.audiobook_studio.monitoring.langfuse_client.trace_function", side_effect=Exception("langfuse error")):
+        with patch(
+            "src.audiobook_studio.monitoring.langfuse_client.trace_function",
+            side_effect=Exception("langfuse error"),
+        ):
             result = my_func(mock_self)
         assert result == "result"
 
@@ -601,6 +660,7 @@ class TestCreateRouter:
 
     def test_create_router(self):
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
         os.environ["MOCK_LLM"] = "true"
         config = _make_config()

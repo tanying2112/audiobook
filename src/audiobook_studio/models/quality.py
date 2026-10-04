@@ -9,7 +9,7 @@ from sqlalchemy import Boolean, Float, ForeignKey, Integer, String
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from ..database import Base
+from ..orm_base import Base
 
 if TYPE_CHECKING:
     from .audio_segment import AudioSegment
@@ -23,18 +23,12 @@ class Quality(Base):
     __tablename__ = "qualities"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    project_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
-    )
-    chapter_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("chapters.id", ondelete="CASCADE"), nullable=True
-    )
+    project_id: Mapped[Optional[int]] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=True)
+    chapter_id: Mapped[Optional[int]] = mapped_column(ForeignKey("chapters.id", ondelete="CASCADE"), nullable=True)
     paragraph_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("paragraphs.id", ondelete="CASCADE"), nullable=True
+        ForeignKey("paragraphs.id", ondelete="CASCADE"), nullable=True, index=True
     )
-    tts_edit_id: Mapped[int] = mapped_column(
-        ForeignKey("tts_edits.id", ondelete="CASCADE"), nullable=False
-    )
+    tts_edit_id: Mapped[int] = mapped_column(ForeignKey("tts_edits.id", ondelete="CASCADE"), nullable=False)
 
     # 多维度评分 (0-1)
     speaker_clarity: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
@@ -47,8 +41,8 @@ class Quality(Base):
     comments: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     # 问题列表
-    issues: Mapped[Optional[list]] = mapped_column(JSON, default=list)
-    fix_suggestions: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    issues: Mapped[Optional[list[str]]] = mapped_column(JSON, default=list)
+    fix_suggestions: Mapped[Optional[list[str]]] = mapped_column(JSON, default=list)
     needs_regeneration: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Judge 信息
@@ -63,12 +57,8 @@ class Quality(Base):
     created_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
 
     # Relationships
-    paragraph: Mapped[Paragraph] = relationship(
-        "Paragraph", back_populates="quality_records"
-    )
-    tts_edit: Mapped[TTSEdit] = relationship(
-        "TTSEdit", back_populates="quality_records"
-    )
+    paragraph: Mapped[Paragraph] = relationship("Paragraph", back_populates="quality_records")
+    tts_edit: Mapped[TTSEdit] = relationship("TTSEdit", back_populates="quality_records")
     audio_segment: Mapped[Optional[AudioSegment]] = relationship(
         "AudioSegment", back_populates="quality", uselist=False
     )

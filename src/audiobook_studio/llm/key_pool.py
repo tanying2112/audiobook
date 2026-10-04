@@ -8,8 +8,8 @@ import logging
 import os
 import threading
 import time
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Any
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -62,11 +62,9 @@ class ApiKeyPool:
 
         primary_key = os.getenv(primary_key_env, "")
         if primary_key:
-            self.keys.append(
-                KeySlot(key=primary_key, env_var=primary_key_env)
-            )
+            self.keys.append(KeySlot(key=primary_key, env_var=primary_key_env))
 
-        for env_var in (pool_key_envs or []):
+        for env_var in pool_key_envs or []:
             key = os.getenv(env_var, "")
             if key:
                 self.keys.append(KeySlot(key=key, env_var=env_var))
@@ -84,10 +82,7 @@ class ApiKeyPool:
         with self._lock:
             available = [k for k in self.keys if k.is_available]
             if not available:
-                logger.warning(
-                    f"All keys for {self.provider_name} in cooldown, "
-                    f"using least-cooldown key"
-                )
+                logger.warning(f"All keys for {self.provider_name} in cooldown, " f"using least-cooldown key")
                 available = sorted(self.keys, key=lambda k: k.cooldown_until)
 
             if self.strategy == "round_robin":

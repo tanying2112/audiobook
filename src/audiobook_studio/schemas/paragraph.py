@@ -16,16 +16,37 @@ Schema v2 (极简重构):
 - 兼容 v1: 保留声学字段作为可选字段，供迁移期使用
 """
 
-from typing import Annotated, Literal, Optional
+from typing import Annotated, Literal, Optional, get_args
 
-from pydantic import BaseModel, Field, confloat, conint
-from typing_extensions import TypedDict
+from pydantic import BaseModel, Field
 
 from .book import BookMeta, CharacterVoiceBinding, EmotionSnapshot
 
 Confidence = Annotated[float, Field(ge=0.0, le=1.0)]
 EmotionIntensity = Annotated[float, Field(ge=0.0, le=1.0)]
 DifficultyLevel = Literal["A", "B", "C"]
+ContentRating = Literal["儿童", "大众", "青少年", "成人"]
+
+# 情感标签 14 枚举 —— 合成期 ParagraphAnnotation 的唯一权威值域。
+# 终审门等编辑入口必须用 EMOTION_TAGS 同值域校验（422），否则坏值会在
+# 客户确认后、合成期炸掉（build_routing_input 构造 Literal 直接抛错）。
+EmotionTag = Literal[
+    "neutral",
+    "happy",
+    "sad",
+    "angry",
+    "fearful",
+    "surprised",
+    "disgusted",
+    "tense",
+    "tender",
+    "contemplative",
+    "whisper",
+    "cold_laugh",
+    "sigh",
+    "sarcastic",
+]
+EMOTION_TAGS: tuple = get_args(EmotionTag)
 
 # v1 兼容字段（可选，用于迁移期）
 SpeechRate = Annotated[float, Field(ge=0.7, le=1.3)]
@@ -36,25 +57,18 @@ PauseMs = Annotated[int, Field(ge=0, le=2000)]
 class ParagraphAnnotationInput(BaseModel):
     """环节③输入：单段文本 + 注入的上帝视角上下文."""
 
-    paragraph_text: str = Field(
-        ..., min_length=10, max_length=2000, description="段落文本"
-    )
+    paragraph_text: str = Field(..., min_length=10, max_length=10000, description="段落文本")
     paragraph_index: int = Field(..., ge=0, description="段落索引")
     chapter_index: int = Field(..., ge=1, description="章节索引")
 
     # 注入的"上帝视角"上下文 (来自 BookAnalysisOutput)
     book_meta: BookMeta = Field(..., description="书籍元信息")
-    character_voice_map: list[CharacterVoiceBinding] = Field(
-        ..., min_length=1, description="角色声音绑定表"
-    )
+    character_voice_map: list[CharacterVoiceBinding] = Field(..., min_length=1, description="角色声音绑定表")
     emotion_snapshot: EmotionSnapshot = Field(..., description="当前章节情感快照")
-    story_line_summary: str = Field(
-        ..., min_length=100, max_length=500, description="故事主线摘要"
-    )
+    story_line_summary: str = Field(..., min_length=100, max_length=500, description="故事主线摘要")
     global_style_notes: str = Field(..., description="全局文风备注")
-    contract_version: int = Field(
-        default=2, description="契约版本号 v2: 极简语义标注"
-    )
+    rag_context: Optional[str] = Field(default=None, description="RAG 检索上下文，用于韵律/声音一致性")
+    contract_version: int = Field(default=2, description="契约版本号 v2: 极简语义标注")
 
 
 class ParagraphAnnotation(BaseModel):
@@ -74,31 +88,13 @@ class ParagraphAnnotation(BaseModel):
         description="说话人规范名 (必须命中 character_voice_map 或 _narrator_)",
     )
     is_dialogue: bool = Field(..., description="是否为对话")
-    emotion: Literal[
-        "neutral",
-        "happy",
-        "sad",
-        "angry",
-        "fearful",
-        "surprised",
-        "disgusted",
-        "tense",
-        "tender",
-        "contemplative",
-        "whisper",
-        "cold_laugh",
-        "sigh",
-        "sarcastic",
-    ] = Field(..., description="情感标签 (14 枚举)")
+    emotion: EmotionTag = Field(..., description="情感标签 (14 枚举)")
     emotion_intensity: EmotionIntensity = Field(..., description="情感强度 0-1")
     confidence: Confidence = Field(..., description="置信度 0-1")
-    difficulty: DifficultyLevel = Field(
-        default="B", description="段落难度等级 A/B/C，用于成本预估和质量阈值"
-    )
+    difficulty: DifficultyLevel = Field(default="B", description="段落难度等级 A/B/C，用于成本预估和质量阈值")
+    content_rating: ContentRating = Field(default="大众", description="文本分级：儿童/大众/青少年/成人")
     notes: str | None = Field(default=None, description="备注/不确定性说明")
-    contract_version: int = Field(
-        default=2, description="契约版本号 v2: 极简语义标注"
-    )
+    contract_version: int = Field(default=2, description="契约版本号 v2: 极简语义标注")
 
     # v1 兼容字段 (可选，迁移期保留)
     speech_rate: Optional[SpeechRate] = Field(default=None, description="语速 (7 档离散值) - v1 兼容")
@@ -107,6 +103,11 @@ class ParagraphAnnotation(BaseModel):
     sfx_tags: Optional[list[str]] = Field(default=None, description="音效标签列表 - v1 兼容")
     pause_before_ms: Optional[PauseMs] = Field(default=None, description="前停顿毫秒 - v1 兼容")
     pause_after_ms: Optional[PauseMs] = Field(default=None, description="后停顿毫秒 - v1 兼容")
+    # Phase 5: Extended fields for detail view
+    tts_edit_history: Optional[list] = Field(default=None, description="TTS 编辑历史")
+    quality_records: Optional[list] = Field(default=None, description="质量记录")
+    routing_decision: Optional[dict] = Field(default=None, description="路由决策")
+    annotations_full: Optional[dict] = Field(default=None, description="完整标注详情")
 
     model_config = {"from_attributes": True, "extra": "forbid"}
 
@@ -119,5 +120,6 @@ class Paragraph(BaseModel):
     index: int = Field(..., description="Paragraph index")
     text: str = Field(..., description="Paragraph text")
     speaker: str | None = Field(default=None, description="Speaker name")
+    content_rating: ContentRating = Field(default="大众", description="文本分级：儿童/大众/青少年/成人")
 
     model_config = {"from_attributes": True}

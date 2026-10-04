@@ -1,0 +1,17 @@
+apiVersion: v2
+name: audiobook-studio
+description: Production-grade AI audiobook generation pipeline - Helm chart for Kubernetes deployment
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - audiobook
+  - ai
+  - tts
+  - llm
+  - pipeline
+maintainers:
+  - name: Audiobook Studio Team
+    email: team@audiobook-studio.example.com
+sources:
+  - https://github.com/tanying2112/audiobook

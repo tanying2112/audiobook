@@ -9,18 +9,18 @@
 6. Jinja2 模板渲染
 """
 
-import json
-import pytest
 from pathlib import Path
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
-from src.audiobook_studio.schemas import FeedbackAnalysis
+import pytest
+
 from src.audiobook_studio.feedback.llm_analyzer import LLMFeedbackAnalyzer
-
+from src.audiobook_studio.schemas import FeedbackAnalysis
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Fixtures
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def mock_router():
@@ -80,6 +80,7 @@ def sample_feedback_simple():
 # ──────────────────────────────────────────────────────────────────────────────
 # 1. Mock 模式分析
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 class TestAnalyzeMock:
     """测试 analyze_mock 方法（不调用 LLM）."""
@@ -191,6 +192,7 @@ class TestAnalyzeMock:
 # 2. LLM 调用成功路径
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 class TestAnalyzeSuccess:
     """测试 analyze 方法 LLM 调用成功."""
 
@@ -242,9 +244,7 @@ class TestAnalyzeSuccess:
         assert result.severity == "medium"
         assert result.confidence == 0.85
 
-    def test_analyze_passes_messages_with_system_and_user(
-        self, analyzer, mock_router, sample_feedback_simple
-    ):
+    def test_analyze_passes_messages_with_system_and_user(self, analyzer, mock_router, sample_feedback_simple):
         """analyze 应构建 system + user 消息."""
         mock_result = MagicMock()
         mock_result.output = FeedbackAnalysis()
@@ -278,6 +278,7 @@ class TestAnalyzeSuccess:
 # 3. LLM 调用失败降级
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 class TestAnalyzeFailure:
     """测试 analyze 方法 LLM 调用失败."""
 
@@ -299,6 +300,7 @@ class TestAnalyzeFailure:
 # ──────────────────────────────────────────────────────────────────────────────
 # 4. Prompt 构建
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 class TestPromptBuilding:
     """测试 _build_prompt 方法."""
@@ -356,6 +358,7 @@ class TestPromptBuilding:
 # 5. FeedbackAnalysis Schema 验证
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 class TestFeedbackAnalysisSchema:
     """测试 FeedbackAnalysis schema."""
 
@@ -378,6 +381,7 @@ class TestFeedbackAnalysisSchema:
     def test_invalid_severity_raises(self):
         """无效 severity 应抛出 ValidationError."""
         from pydantic import ValidationError
+
         with pytest.raises(ValidationError):
             FeedbackAnalysis(severity="critical")
 
@@ -392,6 +396,7 @@ class TestFeedbackAnalysisSchema:
     def test_confidence_out_of_range_raises(self):
         """confidence 超出范围应抛出 ValidationError."""
         from pydantic import ValidationError
+
         with pytest.raises(ValidationError):
             FeedbackAnalysis(confidence=1.5)
         with pytest.raises(ValidationError):
@@ -399,9 +404,7 @@ class TestFeedbackAnalysisSchema:
 
     def test_custom_tags_allowed(self):
         """允许 LLM 自定义新标签."""
-        fa = FeedbackAnalysis(
-            pattern_tags=["custom_tag_from_llm", "another_new_pattern"]
-        )
+        fa = FeedbackAnalysis(pattern_tags=["custom_tag_from_llm", "another_new_pattern"])
         assert len(fa.pattern_tags) == 2
 
     def test_serialization(self):
@@ -425,6 +428,7 @@ class TestFeedbackAnalysisSchema:
 # ──────────────────────────────────────────────────────────────────────────────
 # 6. Processor 集成 — LLM 优先 + 关键词降级
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 class TestProcessorIntegration:
     """测试 processor.py 的 analyze_single_feedback 集成."""

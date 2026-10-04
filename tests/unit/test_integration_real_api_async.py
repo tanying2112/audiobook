@@ -2,13 +2,14 @@
 
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 
 def _make_integrator():
     from src.audiobook_studio.publish.audiobookshelf_integration import AudiobookshelfIntegrator
+
     cfg = MagicMock()
     cfg.api_url = "http://localhost:8080"
     cfg.api_key = "key"
@@ -25,11 +26,16 @@ def _upload_data():
 
 def _audio_file(tmpdir):
     from src.audiobook_studio.publish.audiobookshelf_integration import AudiobookFile
+
     fp = Path(tmpdir) / "book.m4b"
     fp.write_bytes(b"audio")
     return AudiobookFile(
-        file_path=fp, size_bytes=5, duration_seconds=60,
-        format="m4b", bitrate_kbps=64, checksum_md5="x",
+        file_path=fp,
+        size_bytes=5,
+        duration_seconds=60,
+        format="m4b",
+        bitrate_kbps=64,
+        checksum_md5="x",
     )
 
 
@@ -83,9 +89,14 @@ class TestIntegrationRealAPI:
     async def test_no_audio_file(self):
         integ = _make_integrator()
         from src.audiobook_studio.publish.audiobookshelf_integration import AudiobookFile
+
         af = AudiobookFile(
-            file_path=Path("/nonexistent.m4b"), size_bytes=0,
-            duration_seconds=60, format="m4b", bitrate_kbps=64, checksum_md5="x",
+            file_path=Path("/nonexistent.m4b"),
+            size_bytes=0,
+            duration_seconds=60,
+            format="m4b",
+            bitrate_kbps=64,
+            checksum_md5="x",
         )
         integ.client.get = AsyncMock(return_value=_resp(200, {"folders": [{"id": "f1"}]}))
         r = await integ._real_api_call(_upload_data(), af)
@@ -97,10 +108,12 @@ class TestIntegrationRealAPI:
         with tempfile.TemporaryDirectory() as td:
             af = _audio_file(td)
             search_r = _resp(200, [])  # empty search results
+
             async def mock_get(url, **kwargs):
                 if "search" in url:
                     return search_r
                 return _resp(200, {"folders": [{"id": "f1"}]})
+
             integ.client.get = mock_get
             integ.client.post = AsyncMock(return_value=_resp(201))
             with patch("asyncio.sleep", new_callable=AsyncMock):
@@ -147,10 +160,12 @@ class TestIntegrationRealAPI:
         with tempfile.TemporaryDirectory() as td:
             af = _audio_file(td)
             search_r = _resp(200, [{"id": "i1", "media": {"metadata": {"title": "t"}}}])
+
             async def mock_get(url, **kwargs):
                 if "search" in url:
                     return search_r
                 return _resp(200, {"folders": [{"id": "f1"}]})
+
             integ.client.get = mock_get
             integ.client.post = AsyncMock(return_value=_resp(201))
             integ.client.patch = AsyncMock(return_value=_resp(204))
@@ -165,10 +180,12 @@ class TestIntegrationRealAPI:
         with tempfile.TemporaryDirectory() as td:
             af = _audio_file(td)
             search_r = _resp(200, [{"id": "i1", "media": {"metadata": {"title": "t"}}}])
+
             async def mock_get(url, **kwargs):
                 if "search" in url:
                     return search_r
                 return _resp(200, {"folders": [{"id": "f1"}]})
+
             integ.client.get = mock_get
             integ.client.post = AsyncMock(return_value=_resp(201))
             integ.client.patch = AsyncMock(side_effect=ConnectionError("fail"))
@@ -181,10 +198,12 @@ class TestIntegrationRealAPI:
         integ = _make_integrator()
         with tempfile.TemporaryDirectory() as td:
             af = _audio_file(td)
+
             async def mock_get_exc(url, **kwargs):
                 if "search" in url:
                     raise ConnectionError("fail")
                 return _resp(200, {"folders": [{"id": "f1"}]})
+
             integ.client.get = mock_get_exc
             integ.client.post = AsyncMock(return_value=_resp(201))
             with patch("asyncio.sleep", new_callable=AsyncMock):
@@ -194,16 +213,19 @@ class TestIntegrationRealAPI:
     @pytest.mark.asyncio
     async def test_cover_upload(self):
         import base64
+
         integ = _make_integrator()
         with tempfile.TemporaryDirectory() as td:
             af = _audio_file(td)
             ud = _upload_data()
             ud["coverImage"] = base64.b64encode(b"img").decode()
             search_r = _resp(200, [{"id": "i1", "media": {"metadata": {"title": "t"}}}])
+
             async def mock_get(url, **kwargs):
                 if "search" in url:
                     return search_r
                 return _resp(200, {"folders": [{"id": "f1"}]})
+
             integ.client.get = mock_get
             integ.client.post = AsyncMock(return_value=_resp(201))
             integ.client.patch = AsyncMock(return_value=_resp(204))

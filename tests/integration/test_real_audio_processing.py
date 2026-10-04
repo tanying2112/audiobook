@@ -5,13 +5,11 @@ metrics work correctly on Python 3.14 without pydub installed.
 """
 
 import asyncio
-import os
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-import pytest
 import numpy as np
-
+import pytest
 
 # ===========================================================================
 # ffmpeg_probe utility tests (with mocked subprocess)
@@ -31,7 +29,10 @@ class TestFfmpegProbeFunctions:
         mock_result.stdout = mock_json
 
         async def run():
-            with patch("src.audiobook_studio.utils.ffmpeg_probe._run_ffprobe", return_value=mock_result):
+            with patch(
+                "src.audiobook_studio.utils.ffmpeg_probe._run_ffprobe",
+                return_value=mock_result,
+            ):
                 result = await get_duration(Path("test.wav"))
                 return result
 
@@ -48,7 +49,10 @@ class TestFfmpegProbeFunctions:
         mock_result.stdout = mock_json
 
         async def run():
-            with patch("src.audiobook_studio.utils.ffmpeg_probe._run_ffprobe", return_value=mock_result):
+            with patch(
+                "src.audiobook_studio.utils.ffmpeg_probe._run_ffprobe",
+                return_value=mock_result,
+            ):
                 return await get_duration(Path("test.wav"))
 
         result = asyncio.run(run())
@@ -63,7 +67,10 @@ class TestFfmpegProbeFunctions:
         mock_result.stderr = "No such file"
 
         async def run():
-            with patch("src.audiobook_studio.utils.ffmpeg_probe._run_ffprobe", return_value=mock_result):
+            with patch(
+                "src.audiobook_studio.utils.ffmpeg_probe._run_ffprobe",
+                return_value=mock_result,
+            ):
                 return await get_duration(Path("missing.wav"))
 
         with pytest.raises(RuntimeError, match="ffprobe failed"):
@@ -83,8 +90,12 @@ class TestFfmpegProbeFunctions:
 
         async def run():
             import json
+
             mock_result.stdout = json.dumps(mock_data)
-            with patch("src.audiobook_studio.utils.ffmpeg_probe._run_ffprobe", return_value=mock_result):
+            with patch(
+                "src.audiobook_studio.utils.ffmpeg_probe._run_ffprobe",
+                return_value=mock_result,
+            ):
                 return await get_audio_info(Path("test.wav"))
 
         result = asyncio.run(run())
@@ -98,13 +109,13 @@ class TestFfmpegProbeFunctions:
 
         mock_result = MagicMock()
         mock_result.returncode = 0
-        mock_result.stderr = (
-            "lavfi.astats.Overall.RMS_level=-15.23\n"
-            "lavfi.astats.Overall.Peak_level=-3.45\n"
-        )
+        mock_result.stderr = "lavfi.astats.Overall.RMS_level=-15.23\n" "lavfi.astats.Overall.Peak_level=-3.45\n"
 
         async def run():
-            with patch("src.audiobook_studio.utils.ffmpeg_probe._run_ffmpeg", return_value=mock_result):
+            with patch(
+                "src.audiobook_studio.utils.ffmpeg_probe._run_ffmpeg",
+                return_value=mock_result,
+            ):
                 return await get_rms_peak(Path("test.wav"))
 
         rms, peak = asyncio.run(run())
@@ -123,10 +134,7 @@ class TestFfmpegProbeFunctions:
         # Second call (volumedetect) returns actual values
         volumedetect_result = MagicMock()
         volumedetect_result.returncode = 0
-        volumedetect_result.stderr = (
-            "mean_volume: -20.5 dB\n"
-            "max_volume: -3.2 dB\n"
-        )
+        volumedetect_result.stderr = "mean_volume: -20.5 dB\n" "max_volume: -3.2 dB\n"
 
         call_count = [0]
 
@@ -137,7 +145,10 @@ class TestFfmpegProbeFunctions:
             return volumedetect_result
 
         async def run():
-            with patch("src.audiobook_studio.utils.ffmpeg_probe._run_ffmpeg", side_effect=mock_ffmpeg):
+            with patch(
+                "src.audiobook_studio.utils.ffmpeg_probe._run_ffmpeg",
+                side_effect=mock_ffmpeg,
+            ):
                 return await get_rms_peak(Path("test.wav"))
 
         rms, peak = asyncio.run(run())
@@ -153,7 +164,10 @@ class TestFfmpegProbeFunctions:
         mock_result.stdout = b""
 
         async def run():
-            with patch("src.audiobook_studio.utils.ffmpeg_probe._run_ffmpeg", return_value=mock_result):
+            with patch(
+                "src.audiobook_studio.utils.ffmpeg_probe._run_ffmpeg",
+                return_value=mock_result,
+            ):
                 return await read_pcm_samples(Path("silent.wav"))
 
         result = asyncio.run(run())
@@ -173,7 +187,10 @@ class TestFfmpegProbeFunctions:
         mock_result.stdout = raw_bytes
 
         async def run():
-            with patch("src.audiobook_studio.utils.ffmpeg_probe._run_ffmpeg", return_value=mock_result):
+            with patch(
+                "src.audiobook_studio.utils.ffmpeg_probe._run_ffmpeg",
+                return_value=mock_result,
+            ):
                 return await read_pcm_samples(Path("test.wav"))
 
         result = asyncio.run(run())
@@ -194,14 +211,17 @@ class TestQualityCheckSuiteDefensiveInit:
         from src.audiobook_studio.quality.metrics import QualityCheckSuite
 
         # Patch all optional imports to raise ImportError
-        with patch.dict("sys.modules", {
-            "onnxruntime": None,
-            "funasr": None,
-            "faster_whisper": None,
-            "speechbrain": None,
-            "speechbrain.inference": None,
-            "speechbrain.inference.speaker": None,
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "onnxruntime": None,
+                "funasr": None,
+                "faster_whisper": None,
+                "speechbrain": None,
+                "speechbrain.inference": None,
+                "speechbrain.inference.speaker": None,
+            },
+        ):
             suite = QualityCheckSuite(config={}, hardware_profile="cpu")
             # Should initialize without exception
             assert suite is not None
@@ -210,14 +230,17 @@ class TestQualityCheckSuiteDefensiveInit:
         """check_all should return a valid result even when no metric backends are available."""
         from src.audiobook_studio.quality.metrics import QualityCheckSuite
 
-        with patch.dict("sys.modules", {
-            "onnxruntime": None,
-            "funasr": None,
-            "faster_whisper": None,
-            "speechbrain": None,
-            "speechbrain.inference": None,
-            "speechbrain.inference.speaker": None,
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "onnxruntime": None,
+                "funasr": None,
+                "faster_whisper": None,
+                "speechbrain": None,
+                "speechbrain.inference": None,
+                "speechbrain.inference.speaker": None,
+            },
+        ):
             suite = QualityCheckSuite(config={}, hardware_profile="cpu")
             # Use a non-existent file to trigger the no-backend path
             result = suite.check_all(Path("/nonexistent/audio.wav"))
@@ -280,7 +303,7 @@ class TestNoPydubInCriticalPath:
 
     def test_ffmpeg_probe_does_not_import_pydub(self):
         """ffmpeg_probe module should not import pydub."""
-        import importlib
+
         import src.audiobook_studio.utils.ffmpeg_probe as mod
 
         # Check the module's source for pydub import
@@ -293,7 +316,9 @@ class TestNoPydubInCriticalPath:
         """quality_check.py should not import pydub."""
         # Use the module file path directly since the pipeline __init__
         # exports a function named `quality_check` that shadows the module.
-        source_path = Path(__file__).resolve().parent.parent.parent / "src" / "audiobook_studio" / "pipeline" / "quality_check.py"
+        source_path = (
+            Path(__file__).resolve().parent.parent.parent / "src" / "audiobook_studio" / "pipeline" / "quality_check.py"
+        )
         source_file = source_path.read_text()
         # Should not have 'import pydub' or 'from pydub'
         for i, line in enumerate(source_file.split("\n"), 1):

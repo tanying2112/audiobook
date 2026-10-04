@@ -1,13 +1,9 @@
 """Comprehensive tests for monitoring/alert.py."""
+
 import json
 import os
-import sys
-import tempfile
 from datetime import datetime, timedelta
-from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from src.audiobook_studio.monitoring.alert import (
     AlertConfig,
@@ -24,8 +20,8 @@ from src.audiobook_studio.monitoring.alert import (
     send_slack_alert,
 )
 
-
 # ── AlertLevel ──────────────────────────────────────────────────────────────
+
 
 class TestAlertLevel:
     def test_values(self):
@@ -35,6 +31,7 @@ class TestAlertLevel:
 
 
 # ── AlertConfig ──────────────────────────────────────────────────────────────
+
 
 class TestAlertConfig:
     def test_defaults(self):
@@ -50,6 +47,7 @@ class TestAlertConfig:
 
 # ── AlertRecord ──────────────────────────────────────────────────────────────
 
+
 class TestAlertRecord:
     def test_creation(self):
         r = AlertRecord(level=AlertLevel.WARNING, message="test", timestamp=1.0)
@@ -64,6 +62,7 @@ class TestAlertRecord:
 
 
 # ── AlertManager ─────────────────────────────────────────────────────────────
+
 
 class TestAlertManager:
     def test_init_default(self):
@@ -88,6 +87,7 @@ class TestAlertManager:
 
 # ── parse_args ───────────────────────────────────────────────────────────────
 
+
 class TestParseArgs:
     def test_defaults(self):
         with patch("sys.argv", ["alert.py"]):
@@ -106,7 +106,16 @@ class TestParseArgs:
         assert args.check_only is True
 
     def test_webhooks(self):
-        with patch("sys.argv", ["alert.py", "--dingtalk-webhook", "http://d", "--slack-webhook", "http://s"]):
+        with patch(
+            "sys.argv",
+            [
+                "alert.py",
+                "--dingtalk-webhook",
+                "http://d",
+                "--slack-webhook",
+                "http://s",
+            ],
+        ):
             args = parse_args()
         assert args.dingtalk_webhook == "http://d"
         assert args.slack_webhook == "http://s"
@@ -119,6 +128,7 @@ class TestParseArgs:
 
 # ── collect_logs ─────────────────────────────────────────────────────────────
 
+
 class TestCollectLogs:
     def test_empty_dir(self, tmp_path):
         records = collect_logs(tmp_path / "no_dir", 1)
@@ -127,7 +137,17 @@ class TestCollectLogs:
     def test_collect_recent(self, tmp_path):
         log_file = tmp_path / "test_perf.jsonl"
         now = datetime.now().isoformat()
-        log_file.write_text(json.dumps({"timestamp": now, "model": "gpt-4", "schema_compliance": True, "cost_usd": 0.01}) + "\n")
+        log_file.write_text(
+            json.dumps(
+                {
+                    "timestamp": now,
+                    "model": "gpt-4",
+                    "schema_compliance": True,
+                    "cost_usd": 0.01,
+                }
+            )
+            + "\n"
+        )
         records = collect_logs(tmp_path, 1)
         assert len(records) == 1
 
@@ -175,6 +195,7 @@ class TestCollectLogs:
 
 # ── collect_self_iteration_logs ──────────────────────────────────────────────
 
+
 class TestCollectSelfIterationLogs:
     def test_empty_dir(self, tmp_path):
         records = collect_self_iteration_logs(tmp_path / "no_dir", 1)
@@ -196,6 +217,7 @@ class TestCollectSelfIterationLogs:
 
 
 # ── compute_metrics ──────────────────────────────────────────────────────────
+
 
 class TestComputeMetrics:
     def test_empty(self):
@@ -235,7 +257,14 @@ class TestComputeMetrics:
         assert "fallback_rate" in types
 
     def test_heuristic_fallback(self):
-        records = [{"schema_compliance": True, "model": "heuristic_fallback", "cost_usd": 0.001} for _ in range(5)]
+        records = [
+            {
+                "schema_compliance": True,
+                "model": "heuristic_fallback",
+                "cost_usd": 0.001,
+            }
+            for _ in range(5)
+        ]
         m = compute_metrics(records)
         assert m["fallback_rate"] == 1.0
 
@@ -260,6 +289,7 @@ class TestComputeMetrics:
 
 
 # ── compute_self_iteration_metrics ───────────────────────────────────────────
+
 
 class TestComputeSelfIterationMetrics:
     def test_empty(self):
@@ -306,6 +336,7 @@ class TestComputeSelfIterationMetrics:
 
 # ── send_dingtalk_alert ──────────────────────────────────────────────────────
 
+
 class TestDingtalkAlert:
     def test_success(self):
         with patch("requests.post") as mock_post:
@@ -320,6 +351,7 @@ class TestDingtalkAlert:
 
 # ── send_slack_alert ─────────────────────────────────────────────────────────
 
+
 class TestSlackAlert:
     def test_success(self):
         with patch("requests.post") as mock_post:
@@ -333,6 +365,7 @@ class TestSlackAlert:
 
 
 # ── format_alert_message ─────────────────────────────────────────────────────
+
 
 class TestFormatAlert:
     def test_with_alerts(self):

@@ -3,6 +3,7 @@
 Type-safe configuration with environment variable support and validation.
 """
 
+import logging
 import os
 from enum import Enum
 from pathlib import Path
@@ -11,9 +12,12 @@ from typing import Any, Dict, List, Optional
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+logger = logging.getLogger(__name__)
+
 
 class ProviderType(str, Enum):
     """Supported LLM provider types."""
+
     GROQ = "groq"
     DEEPSEEK = "deepseek"
     OPENROUTER = "openrouter"
@@ -35,16 +39,20 @@ class ProviderType(str, Enum):
     CLOUDFLARE = "cloudflare"
     GITHUB = "github"
     DUCK2API = "duck2api"
+    VLLM = "vllm"
 
 
 class StageName(str, Enum):
     """Pipeline stage names."""
+
     EXTRACT = "extract"
     ANALYZE = "analyze"
     ANNOTATE = "annotate"
+    ANNOTATE_PARAGRAPH = "annotate_paragraph"
     EDIT = "edit"
     ROUTE = "route"
     JUDGE = "judge"
+    TRANSLATE = "translate"
 
 
 class ProviderConfig(BaseSettings):
@@ -57,10 +65,15 @@ class ProviderConfig(BaseSettings):
     api_key_pool_env: List[str] = Field(default_factory=list)
     key_rotation_strategy: str = "round_robin"
     base_url: Optional[str] = None
+    # Health-check path. Defaults to "/models" (OpenAI-compatible convention).
+    # Anthropic-protocol gateways (e.g. fcc) expose /health instead of /models,
+    # so set health_path=/health for those to avoid probing a 404 endpoint.
+    health_path: Optional[str] = None
     priority: int = 100
     max_tokens_per_minute: int = 10000
     max_requests_per_minute: int = 60
     max_daily_cost_usd: float = 10.0
+    timeout_seconds: Optional[int] = 60  # None or 0 = no timeout (for local Ollama)
     stages: List[StageName] = Field(default_factory=list)
     enabled: bool = True
     extra_params: Dict[str, Any] = Field(default_factory=dict)
@@ -108,6 +121,7 @@ class ProviderConfig(BaseSettings):
             ProviderType.CLOUDFLARE: "openai/",
             ProviderType.GITHUB: "openai/",
             ProviderType.DUCK2API: "openai/",
+            ProviderType.VLLM: "openai/",
         }
         prefix = prefix_map.get(self.provider, "")
         return f"{prefix}{self.model}"
@@ -150,7 +164,7 @@ class LLMProvidersConfig(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="LLM_",
         env_file=".env",
-        env_file_encoding="utf-8",
+        file_encoding="utf-8",
         extra="ignore",
     )
 
@@ -161,14 +175,37 @@ class LLMProvidersConfig(BaseSettings):
 
     @classmethod
     def load(cls, config_path: Optional[str] = None) -> "LLMProvidersConfig":
-        """Load configuration from YAML file."""
-        import yaml
+        """Load configuration from YAML file using UnifiedConfig.
 
-        if config_path is None:
-            config_path = Path(__file__).parent.parent / "config" / "llm_providers.yaml"
+        Path resolution priority (避免项目根 / 包内双 yaml 漂移):
+          1. 显式传入的 config_path
+          2. 当前工作目录 (CWD) 下的 config/llm_providers.yaml  ← 项目根运维版本优先
+          3. 本包同目录的下 config/llm_providers.yaml            ← pip install -e 后的 fallback
+        """
+        # Lazy import UnifiedConfig to avoid issues when loaded via importlib
+        data: Dict[str, Any] = {}
+        try:
+            from ..config.unified import get_unified_config
 
-        with open(config_path, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f)
+            unified = get_unified_config()
+            data = unified.load_yaml_config("llm_providers") or {}
+        except (ImportError, AttributeError, OSError):
+            pass  # Fall back to explicit path resolution below
+
+        # If UnifiedConfig couldn't find it, try the explicit path resolution
+        if not data:
+            import yaml
+
+            if config_path is None:
+                cwd_yaml = Path.cwd() / "config" / "llm_providers.yaml"
+                pkg_yaml = Path(__file__).parent.parent / "config" / "llm_providers.yaml"
+                config_path = cwd_yaml if cwd_yaml.exists() else pkg_yaml
+
+            if Path(config_path).exists():
+                with open(config_path, "r", encoding="utf-8") as f:
+                    data = yaml.safe_load(f)
+            else:
+                data = {}
 
         providers = []
         for p in data.get("providers", []):
@@ -181,9 +218,11 @@ class LLMProvidersConfig(BaseSettings):
                     api_key_pool_env=p.get("api_key_pool_env", []),
                     key_rotation_strategy=p.get("key_rotation_strategy", "round_robin"),
                     base_url=p.get("base_url"),
+                    health_path=p.get("health_path"),
                     priority=p.get("priority", 100),
                     max_tokens_per_minute=p.get("max_tokens_per_minute", 10000),
                     max_requests_per_minute=p.get("max_requests_per_minute", 60),
+                    timeout_seconds=p.get("timeout_seconds", 60),
                     stages=[StageName(s) for s in p.get("stages", [])],
                     enabled=p.get("enabled", True),
                     extra_params=p.get("extra_params", {}),
@@ -192,6 +231,25 @@ class LLMProvidersConfig(BaseSettings):
 
         # Sort by priority (lower number = higher priority)
         providers.sort(key=lambda p: p.priority)
+
+        # Merge plugin-registered LLM provider factories
+        try:
+            from ..plugins import get_plugin_manager
+
+            plugin_mgr = get_plugin_manager()
+            plugin_factories = plugin_mgr.get_llm_provider_factories()
+            for _provider_name, record in plugin_factories.items():
+                provider_config = record.factory()
+                if provider_config:
+                    # Convert to dict for Pydantic validation (avoids double-validation of ProviderConfig instances)
+                    if hasattr(provider_config, "model_dump"):
+                        providers.append(provider_config.model_dump())
+                    else:
+                        providers.append(provider_config)
+            # Re-sort after adding plugin providers
+            providers.sort(key=lambda p: p.get("priority", 100) if isinstance(p, dict) else getattr(p, "priority", 100))
+        except Exception as e:
+            logger.warning("Failed to load plugin LLM providers: %s", e)
 
         pc = data.get("prompt_compression", {})
         fallback = data.get("fallback", {})

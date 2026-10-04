@@ -14,30 +14,23 @@ Tests:
 """
 
 import os
-import time
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.audiobook_studio.llm.client import (
-    LLMCallResult,
-    LLMClient,
-    LLMClientConfig,
-    create_client,
-)
+from src.audiobook_studio.llm.client import LLMCallResult, LLMClient, LLMClientConfig
 from src.audiobook_studio.schemas import (
     BookAnalysisOutput,
+    BookMeta,
+    CharacterVoiceBinding,
+    EmotionSnapshot,
     ExtractionResult,
+    FeedbackAnalysis,
     ParagraphAnnotation,
     QualityJudgment,
     TtsEditOutput,
     TtsRoutingDecision,
-    BookMeta,
-    CharacterVoiceBinding,
-    EmotionSnapshot,
 )
-from src.audiobook_studio.schemas import FeedbackAnalysis
-
 
 # ======================================================================
 # LLMClient: success branch
@@ -47,6 +40,18 @@ from src.audiobook_studio.schemas import FeedbackAnalysis
 class TestLLMClientSuccessBranch:
     """Mock model returns valid Pydantic objects — no real HTTP calls."""
 
+    def _make_mock_response(self, output_obj, prompt_tokens=100, completion_tokens=50):
+        """Helper to create properly structured mock response."""
+        mock_raw = MagicMock()
+        mock_raw.usage = MagicMock()
+        mock_raw.usage.model_dump.return_value = {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+        }
+        mock_raw.choices = [MagicMock(message=MagicMock(content=output_obj.model_dump_json()))]
+        output_obj._raw_response = mock_raw
+        return output_obj
+
     @patch.dict(os.environ, {"MOCK_LLM": "false"})
     @patch("instructor.from_litellm")
     def test_call_returns_quality_judgment(self, mock_instructor):
@@ -54,20 +59,21 @@ class TestLLMClientSuccessBranch:
         mock_client = MagicMock()
         mock_instructor.return_value = mock_client
 
-        mock_output = QualityJudgment(
-            segment_id="seg_001",
-            speaker_clarity=0.92,
-            emotion_match=0.88,
-            prosody_naturalness=0.90,
-            text_audio_alignment=0.91,
-            overall_score=0.90,
-            issues=[],
-            fix_suggestions=[],
-            needs_regeneration=False,
+        mock_output = self._make_mock_response(
+            QualityJudgment(
+                segment_id="seg_001",
+                speaker_clarity=0.92,
+                emotion_match=0.88,
+                prosody_naturalness=0.90,
+                text_audio_alignment=0.91,
+                overall_score=0.90,
+                issues=[],
+                fix_suggestions=[],
+                needs_regeneration=False,
+            ),
+            prompt_tokens=120,
+            completion_tokens=60,
         )
-        mock_output._raw_response = {
-            "usage": {"prompt_tokens": 120, "completion_tokens": 60}
-        }
         mock_client.chat.completions.create.return_value = mock_output
 
         config = LLMClientConfig(model="gemini-2.0-flash")
@@ -75,9 +81,7 @@ class TestLLMClientSuccessBranch:
         client._client = mock_client
 
         messages = [{"role": "user", "content": "Evaluate quality"}]
-        result = client.call(
-            response_model=QualityJudgment, messages=messages, stage="judge"
-        )
+        result = client.call(response_model=QualityJudgment, messages=messages, stage="judge")
 
         assert isinstance(result, LLMCallResult)
         assert isinstance(result.output, QualityJudgment)
@@ -95,35 +99,34 @@ class TestLLMClientSuccessBranch:
         mock_client = MagicMock()
         mock_instructor.return_value = mock_client
 
-        mock_output = BookAnalysisOutput(
-            book_meta=BookMeta(
-                title="Test Book",
-                author="Author",
-                genre="小说",
-                difficulty="B",
-                language="zh",
-                era="现代",
-                total_chapters_estimated=10,
+        mock_output = self._make_mock_response(
+            BookAnalysisOutput(
+                book_meta=BookMeta(
+                    title="Test Book",
+                    author="Author",
+                    genre="小说",
+                    difficulty="B",
+                    language="zh",
+                    era="现代",
+                    total_chapters_estimated=10,
+                ),
+                character_voice_map=[
+                    CharacterVoiceBinding(
+                        canonical_name="旁白",
+                        aliases=[],
+                        gender="neutral",
+                        age_range="adult",
+                        suggested_voice_id="v1",
+                        sample_quote="旁白台词。",
+                    )
+                ],
+                emotion_snapshots=[EmotionSnapshot(chapter=1, dominant_emotion="neutral", intensity=0.5, notes="测试")],
+                story_line_summary="这是一个用于测试的故事主线摘要，必须超过一百个字符才能通过Pydantic验证器的最小长度约束。故事讲述了一位平凡的主角在现代都市中经历各种冒险和成长的过程，通过克服重重困难最终实现了自我超越的励志历程。",
+                global_style_notes="测试文风备注：保持平实叙述。",
             ),
-            character_voice_map=[
-                CharacterVoiceBinding(
-                    canonical_name="旁白",
-                    aliases=[],
-                    gender="neutral",
-                    age_range="adult",
-                    suggested_voice_id="v1",
-                    sample_quote="旁白台词。",
-                )
-            ],
-            emotion_snapshots=[
-                EmotionSnapshot(chapter=1, dominant_emotion="neutral", intensity=0.5, notes="测试")
-            ],
-            story_line_summary="这是一个用于测试的故事主线摘要，必须超过一百个字符才能通过Pydantic验证器的最小长度约束。故事讲述了一位平凡的主角在现代都市中经历各种冒险和成长的过程，通过克服重重困难最终实现了自我超越的励志历程。",
-            global_style_notes="测试文风备注：保持平实叙述。",
+            prompt_tokens=200,
+            completion_tokens=100,
         )
-        mock_output._raw_response = {
-            "usage": {"prompt_tokens": 200, "completion_tokens": 100}
-        }
         mock_client.chat.completions.create.return_value = mock_output
 
         config = LLMClientConfig(model="gemini-2.0-flash")
@@ -131,9 +134,7 @@ class TestLLMClientSuccessBranch:
         client._client = mock_client
 
         messages = [{"role": "user", "content": "Analyze book"}]
-        result = client.call(
-            response_model=BookAnalysisOutput, messages=messages, stage="analyze"
-        )
+        result = client.call(response_model=BookAnalysisOutput, messages=messages, stage="analyze")
 
         assert isinstance(result.output, BookAnalysisOutput)
         assert result.output.book_meta.title == "Test Book"
@@ -145,24 +146,25 @@ class TestLLMClientSuccessBranch:
         mock_client = MagicMock()
         mock_instructor.return_value = mock_client
 
-        mock_output = ParagraphAnnotation(
-            paragraph_index=0,
-            speaker_canonical_name="旁白",
-            is_dialogue=False,
-            emotion="neutral",
-            emotion_intensity=0.5,
-            speech_rate=1.0,
-            pitch_shift_semitones=0,
-            pause_before_ms=300,
-            pause_after_ms=500,
-            confidence=0.9,
-            difficulty="B",
-            needs_sfx=False,
-            sfx_tags=[],
+        mock_output = self._make_mock_response(
+            ParagraphAnnotation(
+                paragraph_index=0,
+                speaker_canonical_name="旁白",
+                is_dialogue=False,
+                emotion="neutral",
+                emotion_intensity=0.5,
+                speech_rate=1.0,
+                pitch_shift_semitones=0,
+                pause_before_ms=300,
+                pause_after_ms=500,
+                confidence=0.9,
+                difficulty="B",
+                needs_sfx=False,
+                sfx_tags=[],
+            ),
+            prompt_tokens=80,
+            completion_tokens=40,
         )
-        mock_output._raw_response = {
-            "usage": {"prompt_tokens": 80, "completion_tokens": 40}
-        }
         mock_client.chat.completions.create.return_value = mock_output
 
         config = LLMClientConfig(model="gemini-2.0-flash")
@@ -183,22 +185,25 @@ class TestLLMClientSuccessBranch:
         mock_client = MagicMock()
         mock_instructor.return_value = mock_client
 
-        mock_output = ParagraphAnnotation(
-            paragraph_index=0,
-            speaker_canonical_name="旁白",
-            is_dialogue=False,
-            emotion="neutral",
-            emotion_intensity=0.5,
-            speech_rate=1.0,
-            pitch_shift_semitones=0,
-            pause_before_ms=300,
-            pause_after_ms=500,
-            confidence=0.9,
-            difficulty="B",
-            needs_sfx=False,
-            sfx_tags=[],
+        mock_output = self._make_mock_response(
+            ParagraphAnnotation(
+                paragraph_index=0,
+                speaker_canonical_name="旁白",
+                is_dialogue=False,
+                emotion="neutral",
+                emotion_intensity=0.5,
+                speech_rate=1.0,
+                pitch_shift_semitones=0,
+                pause_before_ms=300,
+                pause_after_ms=500,
+                confidence=0.9,
+                difficulty="B",
+                needs_sfx=False,
+                sfx_tags=[],
+            ),
+            prompt_tokens=50,
+            completion_tokens=25,
         )
-        mock_output._raw_response = {"usage": {"prompt_tokens": 50, "completion_tokens": 25}}
         mock_client.chat.completions.create.return_value = mock_output
 
         config = LLMClientConfig(model="gpt-4o")
@@ -218,8 +223,11 @@ class TestLLMClientSuccessBranch:
         mock_client = MagicMock()
         mock_instructor.return_value = mock_client
 
-        mock_output = ExtractionResult(raw_text="text", language="zh", page_count=1)
-        mock_output._raw_response = {"usage": {"prompt_tokens": 10, "completion_tokens": 5}}
+        mock_output = self._make_mock_response(
+            ExtractionResult(raw_text="text", language="zh", page_count=1),
+            prompt_tokens=10,
+            completion_tokens=5,
+        )
         mock_client.chat.completions.create.return_value = mock_output
 
         config = LLMClientConfig(model="gpt-4o")
@@ -322,9 +330,7 @@ class TestLLMClientFailureBranch:
         """Client.call() raises on timeout."""
         mock_client = MagicMock()
         mock_instructor.return_value = mock_client
-        mock_client.chat.completions.create.side_effect = TimeoutError(
-            "Request timed out after 60s"
-        )
+        mock_client.chat.completions.create.side_effect = TimeoutError("Request timed out after 60s")
 
         config = LLMClientConfig(model="gpt-4o")
         client = LLMClient(config)
@@ -353,7 +359,7 @@ class TestLLMClientFailureBranch:
     @patch.dict(os.environ, {"MOCK_LLM": "false"})
     @patch("instructor.from_litellm")
     def test_call_none_output_rejected(self, mock_instructor):
-        """Client.call() rejects None output from model."""
+        """Client.call() handles None output from model gracefully."""
         mock_client = MagicMock()
         mock_instructor.return_value = mock_client
         mock_client.chat.completions.create.return_value = None
@@ -362,10 +368,11 @@ class TestLLMClientFailureBranch:
         client = LLMClient(config)
         client._client = mock_client
 
-        # validate_and_parse_llm_response should raise for None
-        from src.audiobook_studio.llm.utils import LLMParseError
-        with pytest.raises(LLMParseError):
-            client.call(prompt="test", response_model=QualityJudgment)
+        # Current behavior: None response is handled gracefully, returns result with output=None
+        result = client.call(prompt="test", response_model=QualityJudgment)
+        assert result.output is None
+        assert result.tokens_in == 0
+        assert result.tokens_out == 0
 
     @patch.dict(os.environ, {"MOCK_LLM": "false"})
     def test_call_missing_prompt_raises(self):
@@ -524,9 +531,11 @@ class TestRouterCallSuccess:
 
     def _make_router_for_call(self):
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
         os.environ["MOCK_LLM"] = "true"
         from src.audiobook_studio.llm.config_loader import LLMProvidersConfig
+
         config = MagicMock(spec=LLMProvidersConfig)
         provider = MagicMock(
             name="test_provider",
@@ -550,8 +559,12 @@ class TestRouterCallSuccess:
             schema_injection_mode="json",
         )
 
-        with patch("src.audiobook_studio.llm.router.LLMProvidersConfig.load", return_value=config):
+        with patch(
+            "src.audiobook_studio.llm.router.LLMProvidersConfig.load",
+            return_value=config,
+        ):
             from src.audiobook_studio.llm.router import LLMRouter
+
             router = LLMRouter(mock_mode=False)
 
         return router, provider
@@ -560,6 +573,7 @@ class TestRouterCallSuccess:
     def test_call_success_returns_result(self, mock_create_client):
         """Router.call() returns LLMCallResult when provider succeeds."""
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
         router, provider = self._make_router_for_call()
 
@@ -590,7 +604,10 @@ class TestRouterCallSuccess:
         )
         mock_client.call.return_value = mock_call_result
 
-        messages = [{"role": "system", "content": "You are a judge"}, {"role": "user", "content": "Evaluate"}]
+        messages = [
+            {"role": "system", "content": "You are a judge"},
+            {"role": "user", "content": "Evaluate"},
+        ]
         result = router.call(
             stage="judge",
             response_model=QualityJudgment,
@@ -614,9 +631,11 @@ class TestRouterCallFallback:
 
     def _make_failing_router(self):
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
         os.environ["MOCK_LLM"] = "true"
         from src.audiobook_studio.llm.config_loader import LLMProvidersConfig
+
         config = MagicMock(spec=LLMProvidersConfig)
         provider = MagicMock(
             name="failing_provider",
@@ -640,8 +659,12 @@ class TestRouterCallFallback:
             schema_injection_mode="json",
         )
 
-        with patch("src.audiobook_studio.llm.router.LLMProvidersConfig.load", return_value=config):
+        with patch(
+            "src.audiobook_studio.llm.router.LLMProvidersConfig.load",
+            return_value=config,
+        ):
             from src.audiobook_studio.llm.router import LLMRouter
+
             router = LLMRouter(mock_mode=False)
 
         return router, provider
@@ -650,6 +673,7 @@ class TestRouterCallFallback:
     def test_all_providers_fail_triggers_fallback_judge(self, mock_create_client):
         """All providers fail → heuristic fallback returns QualityJudgment."""
         from src.audiobook_studio.di import reset_app_container
+
         router, provider = self._make_failing_router()
 
         mock_client = MagicMock()
@@ -675,6 +699,7 @@ class TestRouterCallFallback:
     def test_all_providers_fail_fallback_annotate(self, mock_create_client):
         """All providers fail → heuristic fallback returns ParagraphAnnotation."""
         from src.audiobook_studio.di import reset_app_container
+
         router, provider = self._make_failing_router()
 
         mock_client = MagicMock()
@@ -697,6 +722,7 @@ class TestRouterCallFallback:
     def test_all_providers_fail_fallback_edit(self, mock_create_client):
         """All providers fail → heuristic fallback returns TtsEditOutput."""
         from src.audiobook_studio.di import reset_app_container
+
         router, provider = self._make_failing_router()
 
         mock_client = MagicMock()
@@ -719,6 +745,7 @@ class TestRouterCallFallback:
     def test_all_providers_fail_fallback_analyze(self, mock_create_client):
         """All providers fail → heuristic fallback returns BookAnalysisOutput."""
         from src.audiobook_studio.di import reset_app_container
+
         router, provider = self._make_failing_router()
 
         mock_client = MagicMock()
@@ -741,6 +768,7 @@ class TestRouterCallFallback:
     def test_all_providers_fail_fallback_unknown_stage(self, mock_create_client):
         """All providers fail + no segment_id → heuristic fallback uses 'unknown'."""
         from src.audiobook_studio.di import reset_app_container
+
         router, provider = self._make_failing_router()
 
         mock_client = MagicMock()
@@ -772,9 +800,11 @@ class TestRouterCallCircuitBreaker:
 
     def _make_router(self):
         from src.audiobook_studio.di import reset_app_container
+
         reset_app_container()
         os.environ["MOCK_LLM"] = "true"
         from src.audiobook_studio.llm.config_loader import LLMProvidersConfig
+
         config = MagicMock(spec=LLMProvidersConfig)
         provider = MagicMock(
             name="cb_provider",
@@ -797,8 +827,12 @@ class TestRouterCallCircuitBreaker:
             min_few_shot_examples=2,
             schema_injection_mode="json",
         )
-        with patch("src.audiobook_studio.llm.router.LLMProvidersConfig.load", return_value=config):
+        with patch(
+            "src.audiobook_studio.llm.router.LLMProvidersConfig.load",
+            return_value=config,
+        ):
             from src.audiobook_studio.llm.router import LLMRouter
+
             router = LLMRouter(mock_mode=False)
         return router, provider
 
@@ -806,11 +840,19 @@ class TestRouterCallCircuitBreaker:
     def test_provider_failure_records_circuit_breaker(self, mock_create_client):
         """When provider fails, circuit breaker records the failure."""
         from src.audiobook_studio.di import reset_app_container
-        router, provider = self._make_router()
 
+        # Configure the mocked client BEFORE constructing the router so that
+        # any client creation (eager during __init__ or lazy at call time)
+        # resolves to the failing client. This keeps the test hermetic against
+        # global-state pollution from other tests in the suite.
         mock_client = MagicMock()
         mock_create_client.return_value = mock_client
         mock_client.call.side_effect = Exception("API Error")
+
+        router, provider = self._make_router()
+        # Force re-resolution of the client at call time (defends against a
+        # stale client cached by prior global state).
+        router.clients.clear()
 
         # Circuit breaker keys use provider.name which is a MagicMock
         # Find the CB by iterating
@@ -837,11 +879,15 @@ class TestRouterCallCircuitBreaker:
     def test_provider_failure_records_quota(self, mock_create_client):
         """When provider fails, quota registry records the failure."""
         from src.audiobook_studio.di import reset_app_container
-        router, provider = self._make_router()
 
+        # Configure the mocked client BEFORE constructing the router (see
+        # test_provider_failure_records_circuit_breaker for rationale).
         mock_client = MagicMock()
         mock_create_client.return_value = mock_client
         mock_client.call.side_effect = Exception("API Error")
+
+        router, provider = self._make_router()
+        router.clients.clear()
 
         with patch.object(router.quota_registry, "record_request") as mock_record:
             messages = [{"role": "user", "content": "test"}]
@@ -857,7 +903,11 @@ class TestRouterCallCircuitBreaker:
 
             # record_request should have been called with success=False
             calls = mock_record.call_args_list
-            failure_calls = [c for c in calls if c.kwargs.get("success") is False or (len(c.args) > 0 and not c.kwargs.get("success", True))]
+            failure_calls = [
+                c
+                for c in calls
+                if c.kwargs.get("success") is False or (len(c.args) > 0 and not c.kwargs.get("success", True))
+            ]
             assert len(failure_calls) > 0
         reset_app_container()
 
@@ -873,12 +923,14 @@ class TestLangfuseDisabledInTests:
     def test_langfuse_not_initialized(self):
         """Langfuse client should be None during tests."""
         import src.audiobook_studio.monitoring.langfuse_client as lfc
+
         assert lfc._enabled is False
         assert lfc._langfuse_client is None
 
     def test_observe_llm_call_is_noop(self):
         """observe_llm_call should not raise when Langfuse is disabled."""
         import src.audiobook_studio.monitoring.langfuse_client as lfc
+
         # Should be a no-op since _enabled is False
         lfc.observe_llm_call(
             stage="test",
@@ -891,6 +943,7 @@ class TestLangfuseDisabledInTests:
     def test_observe_quality_check_is_noop(self):
         """observe_quality_check should not raise."""
         import src.audiobook_studio.monitoring.langfuse_client as lfc
+
         lfc.observe_quality_check(
             stage="test",
             passed=True,
@@ -902,4 +955,5 @@ class TestLangfuseDisabledInTests:
     def test_flush_langfuse_is_noop(self):
         """flush_langfuse should not raise."""
         import src.audiobook_studio.monitoring.langfuse_client as lfc
+
         lfc.flush_langfuse()

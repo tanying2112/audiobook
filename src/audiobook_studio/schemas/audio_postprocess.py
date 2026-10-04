@@ -24,12 +24,8 @@ class AudioPostProcessParams(BaseModel):
     动态计算生成，在 TTS 合成前注入路由决策。
     """
 
-    speech_rate: SpeechRate = Field(
-        default=1.0, description="语速 (7 档离散值: 0.7-1.3)"
-    )
-    pitch_shift_semitones: PitchShift = Field(
-        default=0, description="音高偏移 半音 -5 到 +5"
-    )
+    speech_rate: SpeechRate = Field(default=1.0, description="语速 (7 档离散值: 0.7-1.3)")
+    pitch_shift_semitones: PitchShift = Field(default=0, description="音高偏移 半音 -5 到 +5")
     needs_sfx: bool = Field(default=False, description="是否需要场景音效")
     sfx_tags: list[str] = Field(default_factory=list, description="音效标签列表")
     pause_before_ms: PauseMs = Field(default=0, description="前停顿毫秒")

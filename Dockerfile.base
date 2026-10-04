@@ -1,0 +1,13 @@
+# Base image with system dependencies pre-installed - use bookworm (Debian 12) for better mirrors
+FROM python:3.11-bookworm AS base
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ffmpeg \
+    libsndfile1 \
+    postgresql-client \
+    tini \
+    tesseract-ocr \
+    tesseract-ocr-chi-sim \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean

@@ -25,6 +25,7 @@ class TestComplianceMonitor:
     def teardown_method(self):
         """Clean up test fixtures."""
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_init_creates_storage_dir(self):
@@ -150,6 +151,7 @@ class TestComplianceMonitor:
 
         assert Path(report_path).exists()
         import json
+
         with open(report_path) as f:
             report = json.load(f)
 
@@ -173,6 +175,7 @@ class TestConvenienceFunctions:
     def setup_method(self):
         """Reset global monitor."""
         import src.audiobook_studio.monitoring.compliance as compliance_module
+
         compliance_module._global_monitor = None
 
     def test_get_compliance_monitor(self):

@@ -13,16 +13,14 @@ the existing processor.py for batch analysis.
 import json
 import logging
 import threading
-import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, Optional
 
 from sqlalchemy.orm import Session
 
-from ..models import FeedbackRecord as FeedbackRecordModel
 from ..storage import project_dir
-from .collector import list_unprocessed_feedback, mark_feedback_processed
+from .collector import list_unprocessed_feedback
 from .processor import AggregateAnalysis, analyze_batch
 
 logger = logging.getLogger(__name__)
@@ -33,12 +31,12 @@ class FeedbackAutoProcessor:
 
     def __init__(
         self,
-        db_session_factory,
+        db_session_factory: Callable[[], Session],
         project_id: int,
         min_feedback_count: int = 10,
         check_interval_seconds: int = 300,  # 5 minutes
         enable_auto_trigger: bool = True,
-    ):
+    ) -> None:
         """
         Initialize the auto processor.
 
@@ -104,15 +102,12 @@ class FeedbackAutoProcessor:
         # Count unprocessed feedback in database
         db = self.db_session_factory()
         try:
-            unprocessed = list_unprocessed_feedback(
-                db, project_id=self.project_id, limit=10000
-            )
+            unprocessed = list_unprocessed_feedback(db, project_id=self.project_id, limit=10000)
             count = len(unprocessed)
 
             if count >= self.min_feedback_count and count != self._last_analysis_count:
                 logger.info(
-                    f"Feedback threshold reached: {count} unprocessed records "
-                    f"(threshold={self.min_feedback_count})"
+                    f"Feedback threshold reached: {count} unprocessed records " f"(threshold={self.min_feedback_count})"
                 )
                 self._trigger_analysis(db)
                 self._last_analysis_count = count
@@ -174,9 +169,7 @@ class FeedbackAutoProcessor:
         """Get current status of the auto processor."""
         db = self.db_session_factory()
         try:
-            unprocessed = list_unprocessed_feedback(
-                db, project_id=self.project_id, limit=10000
-            )
+            unprocessed = list_unprocessed_feedback(db, project_id=self.project_id, limit=10000)
             return {
                 "project_id": self.project_id,
                 "running": self._worker_thread_alive(),
@@ -185,18 +178,14 @@ class FeedbackAutoProcessor:
                 "check_interval_seconds": self.check_interval_seconds,
                 "unprocessed_feedback_count": len(unprocessed),
                 "last_analysis_count": self._last_analysis_count,
-                "next_check_in_seconds": (
-                    self.check_interval_seconds
-                    if self._worker_thread_alive()
-                    else None
-                ),
+                "next_check_in_seconds": (self.check_interval_seconds if self._worker_thread_alive() else None),
             }
         finally:
             db.close()
 
 
 def create_auto_processor(
-    db_session_factory,
+    db_session_factory: Callable[[], Session],
     project_id: int,
     min_feedback_count: int = 10,
     check_interval_seconds: int = 300,
@@ -216,7 +205,7 @@ def create_auto_processor(
 
 
 def run_feedback_analysis_cli(
-    db_session_factory,
+    db_session_factory: Callable[[], Session],
     project_id: int,
     limit: int = 500,
 ) -> AggregateAnalysis:

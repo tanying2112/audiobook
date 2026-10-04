@@ -11,22 +11,21 @@ Provides real-time dashboard data by querying:
 import json
 import logging
 from collections import Counter
-from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
-from sqlalchemy.orm import Session
-from sqlalchemy import func
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import func
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..database import get_db
-from ..models.feedback_record import FeedbackRecord
+from ..api.dependencies import get_async_db
 from ..feedback.integration import SelfIterationLoop, create_self_iteration_loop
-from ..feedback.processor import analyze_batch, analyze_single_feedback, get_trend_report
-from ..feedback.promotion_gate import evaluate_promotion
-from ..feedback.critics.base import CriticEnsembleEvaluator, CriticType, CriticResult
-from ..feedback.release import CanaryRelease, CanaryConfig, VersionStore
+from ..feedback.promotion_gate import PromotionGate, evaluate_promotion
+from ..feedback.release import CanaryConfig, CanaryRelease, VersionStore
+from ..models.feedback_record import FeedbackRecord
+from ..models.paragraph import Paragraph
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +36,10 @@ router = APIRouter(prefix="/harness", tags=["harness"])
 # Response Schemas
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class SelfIterationStatus(BaseModel):
     """Self-iteration loop status."""
+
     running: bool = False
     iteration_count: int = 0
     last_iteration_time: Optional[str] = None
@@ -49,6 +50,7 @@ class SelfIterationStatus(BaseModel):
 
 class FeedbackFunnel(BaseModel):
     """Feedback funnel metrics."""
+
     total_feedback: int = 0
     analyzed_count: int = 0
     triggered_upgrade_count: int = 0
@@ -59,6 +61,7 @@ class FeedbackFunnel(BaseModel):
 
 class PatternTagFrequency(BaseModel):
     """Pattern tag frequency item."""
+
     tag: str
     count: int
     stage: str
@@ -67,6 +70,7 @@ class PatternTagFrequency(BaseModel):
 
 class PatternHeatmapResponse(BaseModel):
     """Pattern heatmap response."""
+
     patterns: List[PatternTagFrequency] = Field(default_factory=list)
     by_stage: Dict[str, List[str]] = {}
     top_patterns: List[str] = Field(default_factory=list)
@@ -74,6 +78,7 @@ class PatternHeatmapResponse(BaseModel):
 
 class PromptVersionTimelineItem(BaseModel):
     """Prompt version timeline item."""
+
     version: str
     stage: str
     created_at: str
@@ -84,11 +89,13 @@ class PromptVersionTimelineItem(BaseModel):
 
 class PromptVersionTimelineResponse(BaseModel):
     """Prompt version timeline response."""
+
     stages: Dict[str, List[PromptVersionTimelineItem]] = {}
 
 
 class PromotionGateResult(BaseModel):
     """Promotion gate evaluation result."""
+
     format_compliance_rate: float = 0.0
     golden_pass_rate: float = 0.0
     quality_score_ratio: float = 0.0
@@ -99,6 +106,7 @@ class PromotionGateResult(BaseModel):
 
 class CanaryStatus(BaseModel):
     """Canary release status."""
+
     canary_id: str
     version: str
     stage: str
@@ -113,12 +121,14 @@ class CanaryStatus(BaseModel):
 
 class CanaryDashboardResponse(BaseModel):
     """Canary dashboard response."""
+
     active_canaries: List[CanaryStatus] = Field(default_factory=list)
     total_active: int = 0
 
 
 class ABTestResult(BaseModel):
     """A/B test result."""
+
     test_id: str
     variant_a: str
     variant_b: str
@@ -134,12 +144,14 @@ class ABTestResult(BaseModel):
 
 class ABTestDashboardResponse(BaseModel):
     """A/B test results dashboard."""
+
     tests: List[ABTestResult] = Field(default_factory=list)
     total_tests: int = 0
 
 
 class CriticVerdict(BaseModel):
     """Single critic verdict."""
+
     critic_type: str  # semantic, structural, objective
     verdict: str  # accept, reject, needs_revision
     score: float = 0.0
@@ -148,6 +160,7 @@ class CriticVerdict(BaseModel):
 
 class CriticEnsembleResult(BaseModel):
     """Critic ensemble evaluation result."""
+
     verdicts: List[CriticVerdict] = Field(default_factory=list)
     weighted_verdict: str = "accept"
     weighted_score: float = 0.0
@@ -156,6 +169,7 @@ class CriticEnsembleResult(BaseModel):
 
 class HarnessDashboardResponse(BaseModel):
     """Complete HARNESS dashboard response."""
+
     iteration_status: SelfIterationStatus
     feedback_funnel: FeedbackFunnel
     pattern_heatmap: PatternHeatmapResponse
@@ -183,9 +197,10 @@ _version_store = VersionStore(Path("prompts"))
 
 def _get_db_session_factory():
     """Create a DB session factory for SelfIterationLoop."""
+    import os
+
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
-    import os
 
     database_url = os.getenv("DATABASE_URL", "sqlite:///./audiobook_studio.db")
     engine = create_engine(database_url, connect_args={"check_same_thread": False})
@@ -215,10 +230,11 @@ def get_iteration_loop(project_id: int) -> Optional[SelfIterationLoop]:
 # API Endpoints
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @router.get("/status", response_model=SelfIterationStatus)
 async def get_harness_status(
     project_id: Optional[int] = None,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     Get HARNESS self-iteration status overview.
@@ -227,9 +243,10 @@ async def get_harness_status(
     the FeedbackRecord table for unprocessed counts.
     """
     # Query unprocessed feedback count from DB
-    unprocessed_count = db.query(func.count(FeedbackRecord.id)).filter(
-        FeedbackRecord.processed == False
-    ).scalar() or 0
+    result = await db.execute(
+        func.count(FeedbackRecord.id).select().where(FeedbackRecord.processed == False)  # noqa: E712
+    )
+    unprocessed_count = result.scalar() or 0
 
     # If project_id given, try to get iteration loop status
     if project_id:
@@ -254,7 +271,7 @@ async def get_harness_status(
 @router.get("/feedback-funnel", response_model=FeedbackFunnel)
 async def get_feedback_funnel(
     project_id: Optional[int] = None,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     Get feedback funnel metrics.
@@ -262,13 +279,18 @@ async def get_feedback_funnel(
     Shows: total → analyzed → triggered upgrade → promotion passed → published
     Aggregated from FeedbackRecord table.
     """
-    query = db.query(FeedbackRecord)
-    if project_id:
-        query = query.filter(FeedbackRecord.project_id == project_id)
+    from sqlalchemy import select
 
-    total = query.count()
-    analyzed = query.filter(FeedbackRecord.processed == True).count()
-    promoted = query.filter(FeedbackRecord.promoted == True).count()
+    query = select(FeedbackRecord)
+    if project_id:
+        query = query.where(FeedbackRecord.project_id == project_id)
+
+    result = await db.execute(query)
+    records = result.scalars().all()
+
+    total = len(records)
+    analyzed = sum(1 for r in records if r.processed)
+    promoted = sum(1 for r in records if r.promoted)
 
     # Conversion rates
     conversion_rates = {}
@@ -290,20 +312,21 @@ async def get_feedback_funnel(
 @router.get("/pattern-heatmap", response_model=PatternHeatmapResponse)
 async def get_pattern_heatmap(
     project_id: Optional[int] = None,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     Get pattern tag frequency heatmap.
 
     Aggregates pattern_tags from processed FeedbackRecord entries.
     """
-    query = db.query(FeedbackRecord).filter(
-        FeedbackRecord.processed == True
-    )
-    if project_id:
-        query = query.filter(FeedbackRecord.project_id == project_id)
+    from sqlalchemy import select
 
-    records = query.all()
+    query = select(FeedbackRecord).where(FeedbackRecord.processed == True)  # noqa: E712
+    if project_id:
+        query = query.where(FeedbackRecord.project_id == project_id)
+
+    result = await db.execute(query)
+    records = result.scalars().all()
 
     # Aggregate pattern tags by stage
     tag_counter: Counter = Counter()
@@ -334,16 +357,15 @@ async def get_pattern_heatmap(
             if tag in sc and sc[tag] > max_stage_count:
                 most_common_stage = stage
                 max_stage_count = sc[tag]
-        patterns.append(PatternTagFrequency(
-            tag=tag,
-            count=count,
-            stage=most_common_stage,
-        ))
+        patterns.append(
+            PatternTagFrequency(
+                tag=tag,
+                count=count,
+                stage=most_common_stage,
+            )
+        )
 
-    by_stage = {
-        stage: [tag for tag, _ in sc.most_common(5)]
-        for stage, sc in stage_patterns.items()
-    }
+    by_stage = {stage: [tag for tag, _ in sc.most_common(5)] for stage, sc in stage_patterns.items()}
     top_patterns = [tag for tag, _ in tag_counter.most_common(5)]
 
     return PatternHeatmapResponse(
@@ -390,20 +412,19 @@ async def get_prompt_timeline(stage: Optional[str] = None):
             elif ver < current_ver:
                 # Check rollback log
                 history = _version_store.get_rollback_history(stage=s, limit=50)
-                was_rolled_back = any(
-                    h.get("to_version") == ver and h.get("action") == "rollback"
-                    for h in history
-                )
+                was_rolled_back = any(h.get("to_version") == ver and h.get("action") == "rollback" for h in history)
                 status = "rolled_back" if was_rolled_back else "superseded"
             else:
                 status = "draft"
 
-            items.append(PromptVersionTimelineItem(
-                version=f"v{ver}",
-                stage=s,
-                created_at=created_at,
-                status=status,
-            ))
+            items.append(
+                PromptVersionTimelineItem(
+                    version=f"v{ver}",
+                    stage=s,
+                    created_at=created_at,
+                    status=status,
+                )
+            )
 
         if items:
             timeline[s] = items
@@ -492,18 +513,20 @@ async def get_canaries():
                 elapsed = (datetime.now(timezone.utc) - started).total_seconds() / 3600
                 remaining_hours = max(0, _canary_config.max_duration_hours - elapsed)
 
-            active.append(CanaryStatus(
-                canary_id=canary_id,
-                version=info.get("version", ""),
-                stage=info.get("stage", ""),
-                traffic_pct=_canary_config.traffic_percentage,
-                samples_collected=0,
-                quality_ratio=0.0,
-                max_duration_hours=_canary_config.max_duration_hours,
-                remaining_hours=round(remaining_hours, 1),
-                auto_rollback_triggered=info.get("status") == "rolled_back",
-                status=info.get("status", "running"),
-            ))
+            active.append(
+                CanaryStatus(
+                    canary_id=canary_id,
+                    version=info.get("version", ""),
+                    stage=info.get("stage", ""),
+                    traffic_pct=_canary_config.traffic_percentage,
+                    samples_collected=0,
+                    quality_ratio=0.0,
+                    max_duration_hours=_canary_config.max_duration_hours,
+                    remaining_hours=round(remaining_hours, 1),
+                    auto_rollback_triggered=info.get("status") == "rolled_back",
+                    status=info.get("status", "running"),
+                )
+            )
 
     return CanaryDashboardResponse(
         active_canaries=active,
@@ -514,7 +537,7 @@ async def get_canaries():
 @router.get("/ab-tests", response_model=ABTestDashboardResponse)
 async def get_ab_tests(
     project_id: Optional[int] = None,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     Get A/B test results dashboard.
@@ -523,6 +546,7 @@ async def get_ab_tests(
     Since A/B tests run in-memory, we provide the latest results from
     the promotion gate evaluation.
     """
+
     # Build A/B test entries from prompt version comparison
     tests: List[ABTestResult] = []
 
@@ -549,18 +573,20 @@ async def get_ab_tests(
 
         improvement = ((new_score - old_score) / max(old_score, 0.01)) * 100
 
-        tests.append(ABTestResult(
-            test_id=f"ab_{stage_name}_v{prev_ver}_v{current_ver}",
-            variant_a=f"v{prev_ver}",
-            variant_b=f"v{current_ver}",
-            sample_count=0,  # No real samples yet
-            score_a=round(old_score, 3),
-            score_b=round(new_score, 3),
-            improvement_pct=round(improvement, 1),
-            p_value=1.0,  # No real statistical test without samples
-            statistically_significant=False,
-            winner="B" if improvement > 5 else ("A" if improvement < -5 else None),
-        ))
+        tests.append(
+            ABTestResult(
+                test_id=f"ab_{stage_name}_v{prev_ver}_v{current_ver}",
+                variant_a=f"v{prev_ver}",
+                variant_b=f"v{current_ver}",
+                sample_count=0,  # No real samples yet
+                score_a=round(old_score, 3),
+                score_b=round(new_score, 3),
+                improvement_pct=round(improvement, 1),
+                p_value=1.0,  # No real statistical test without samples
+                statistically_significant=False,
+                winner="B" if improvement > 5 else ("A" if improvement < -5 else None),
+            )
+        )
 
     return ABTestDashboardResponse(
         tests=tests,
@@ -571,7 +597,7 @@ async def get_ab_tests(
 @router.get("/critics/latest", response_model=CriticEnsembleResult)
 async def get_latest_critic_results(
     project_id: Optional[int] = None,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     Get latest Critics Ensemble evaluation results.
@@ -579,17 +605,16 @@ async def get_latest_critic_results(
     Returns ensemble of 3 critics (semantic/structural/objective) with weighted verdict.
     If no quality-checked paragraphs exist, returns default empty state.
     """
-    from ..models.paragraph import Paragraph
+    from sqlalchemy import select
 
     # Find the latest paragraph with quality scores
-    query = db.query(Paragraph).filter(
-        Paragraph.quality_overall_score.isnot(None)
-    ).order_by(Paragraph.id.desc())
+    query = select(Paragraph).where(Paragraph.quality_overall_score.is_not(None)).order_by(Paragraph.id.desc())
 
     if project_id:
-        query = query.filter(Paragraph.project_id == project_id)
+        query = query.where(Paragraph.project_id == project_id)
 
-    latest_para = query.first()
+    result = await db.execute(query)
+    latest_para = result.scalar_one_or_none()
 
     if not latest_para:
         return CriticEnsembleResult(
@@ -603,19 +628,19 @@ async def get_latest_critic_results(
     verdicts = [
         CriticVerdict(
             critic_type="semantic",
-            verdict="accept" if (latest_para.quality_emotion_match or 0) >= 0.7 else "needs_revision",
+            verdict=("accept" if (latest_para.quality_emotion_match or 0) >= 0.7 else "needs_revision"),
             score=latest_para.quality_emotion_match or 0.0,
             reasoning=f"Emotion match score: {latest_para.quality_emotion_match or 0:.2f}",
         ),
         CriticVerdict(
             critic_type="structural",
-            verdict="accept" if (latest_para.quality_prosody_naturalness or 0) >= 0.7 else "needs_revision",
+            verdict=("accept" if (latest_para.quality_prosody_naturalness or 0) >= 0.7 else "needs_revision"),
             score=latest_para.quality_prosody_naturalness or 0.0,
             reasoning=f"Prosody naturalness score: {latest_para.quality_prosody_naturalness or 0:.2f}",
         ),
         CriticVerdict(
             critic_type="objective",
-            verdict="accept" if (latest_para.quality_text_audio_alignment or 0) >= 0.7 else "needs_revision",
+            verdict=("accept" if (latest_para.quality_text_audio_alignment or 0) >= 0.7 else "needs_revision"),
             score=latest_para.quality_text_audio_alignment or 0.0,
             reasoning=f"Text-audio alignment: {latest_para.quality_text_audio_alignment or 0:.2f}",
         ),
@@ -623,9 +648,7 @@ async def get_latest_critic_results(
 
     # Weighted verdict
     weights = {"semantic": 0.3, "structural": 0.2, "objective": 0.5}
-    weighted_score = sum(
-        v.score * weights.get(v.critic_type, 0.33) for v in verdicts
-    )
+    weighted_score = sum(v.score * weights.get(v.critic_type, 0.33) for v in verdicts)
 
     if weighted_score >= 0.7:
         weighted_verdict = "accept"
@@ -684,22 +707,63 @@ async def trigger_iteration(
 @router.get("/dashboard")
 async def get_full_dashboard(
     project_id: Optional[int] = None,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     Get complete HARNESS dashboard (all metrics in one call).
 
     Aggregates real data from all subsystems.
     """
-    # Collect all dashboard components in parallel calls
-    iteration_status = await get_harness_status(project_id=project_id, db=db)
-    feedback_funnel = await get_feedback_funnel(project_id=project_id, db=db)
-    pattern_heatmap = await get_pattern_heatmap(project_id=project_id, db=db)
-    prompt_timeline = await get_prompt_timeline()
-    promotion_gate = await get_promotion_gate()
-    canary_dashboard = await get_canaries()
-    ab_tests = await get_ab_tests(project_id=project_id, db=db)
-    critics_latest = await get_latest_critic_results(project_id=project_id, db=db)
+    # Collect all dashboard components. Each subsystem is isolated so a failure in
+    # one (e.g. DB/Redis hiccup) degrades gracefully instead of taking down the
+    # whole console with a 5xx / connection-reset ("加载失败: 网络错误").
+    try:
+        iteration_status = await get_harness_status(project_id=project_id, db=db)
+    except Exception as e:
+        logger.error("harness dashboard: iteration_status failed: %s", e)
+        iteration_status = SelfIterationStatus()
+
+    try:
+        feedback_funnel = await get_feedback_funnel(project_id=project_id, db=db)
+    except Exception as e:
+        logger.error("harness dashboard: feedback_funnel failed: %s", e)
+        feedback_funnel = FeedbackFunnel()
+
+    try:
+        pattern_heatmap = await get_pattern_heatmap(project_id=project_id, db=db)
+    except Exception as e:
+        logger.error("harness dashboard: pattern_heatmap failed: %s", e)
+        pattern_heatmap = PatternHeatmapResponse()
+
+    try:
+        prompt_timeline = await get_prompt_timeline()
+    except Exception as e:
+        logger.error("harness dashboard: prompt_timeline failed: %s", e)
+        prompt_timeline = PromptVersionTimelineResponse()
+
+    try:
+        promotion_gate = await get_promotion_gate()
+    except Exception as e:
+        logger.error("harness dashboard: promotion_gate failed: %s", e)
+        promotion_gate = PromotionGateResult()
+
+    try:
+        canary_dashboard = await get_canaries()
+    except Exception as e:
+        logger.error("harness dashboard: canaries failed: %s", e)
+        canary_dashboard = CanaryDashboardResponse()
+
+    try:
+        ab_tests = await get_ab_tests(project_id=project_id, db=db)
+    except Exception as e:
+        logger.error("harness dashboard: ab_tests failed: %s", e)
+        ab_tests = ABTestDashboardResponse()
+
+    try:
+        critics_latest = await get_latest_critic_results(project_id=project_id, db=db)
+    except Exception as e:
+        logger.error("harness dashboard: critics_latest failed: %s", e)
+        critics_latest = CriticEnsembleResult()
 
     return HarnessDashboardResponse(
         iteration_status=iteration_status,

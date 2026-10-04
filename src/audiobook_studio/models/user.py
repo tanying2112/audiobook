@@ -1,14 +1,28 @@
 """User and RBAC models for Audiobook Studio."""
 
-from datetime import datetime
-from typing import Optional, List, TYPE_CHECKING
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Table, Enum as SQLEnum
-from sqlalchemy.orm import relationship, Mapped, mapped_column
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING, List, Optional
 
-from ..database import Base
+from sqlalchemy import JSON, Boolean, Column, DateTime
+from sqlalchemy import Enum as SQLEnum
+from sqlalchemy import ForeignKey, Integer, String, Table, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from ..orm_base import Base
+
+
+def utc_now() -> datetime:
+    """Return current UTC time as timezone-naive datetime for DB compatibility.
+
+    Database columns use TIMESTAMP WITHOUT TIME ZONE, so we must store
+    timezone-naive UTC datetimes.
+    """
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
 
 if TYPE_CHECKING:
     from .book import Project
+    from .publish import PublishHistory, PublishJob
 
 # Association table for user roles
 user_roles = Table(
@@ -29,8 +43,9 @@ role_permissions = Table(
 
 class User(Base):
     """User model for authentication."""
+
     __tablename__ = "users"
-    
+
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     username: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
@@ -38,16 +53,31 @@ class User(Base):
     full_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
     last_login: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    
+    password_migrated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    # Email verification
+    is_email_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    email_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    email_verification_token: Mapped[Optional[str]] = mapped_column(String(512), nullable=True, index=True)
+    email_verification_token_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
     # Relationships
     roles: Mapped[List["Role"]] = relationship("Role", secondary=user_roles, back_populates="users")
     project_permissions: Mapped[List["ProjectPermission"]] = relationship(
-        "ProjectPermission", foreign_keys="ProjectPermission.user_id", back_populates="user"
+        "ProjectPermission",
+        foreign_keys="ProjectPermission.user_id",
+        back_populates="user",
     )
-    
+    publish_jobs: Mapped[List["PublishJob"]] = relationship(
+        "PublishJob", back_populates="user", cascade="all, delete-orphan"
+    )
+    publish_history: Mapped[List["PublishHistory"]] = relationship(
+        "PublishHistory", back_populates="user", cascade="all, delete-orphan"
+    )
+
     def has_permission(self, permission: str) -> bool:
         """Check if user has a specific permission."""
         if self.is_superuser:
@@ -56,16 +86,16 @@ class User(Base):
             if permission in [p.name for p in role.permissions]:
                 return True
         return False
-    
+
     def has_role(self, role_name: str) -> bool:
         """Check if user has a specific role."""
         if self.is_superuser:
             return True
         return any(r.name == role_name for r in self.roles)
-    
-    def get_permissions(self) -> set:
+
+    def get_permissions(self) -> set[str]:
         """Get all permissions for this user."""
-        perms = set()
+        perms: set[str] = set()
         if self.is_superuser:
             perms.add("*")
         for role in self.roles:
@@ -76,50 +106,76 @@ class User(Base):
 
 class Role(Base):
     """Role model for RBAC."""
+
     __tablename__ = "roles"
-    
+
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
     # Relationships
     users: Mapped[List["User"]] = relationship("User", secondary=user_roles, back_populates="roles")
-    permissions: Mapped[List["Permission"]] = relationship("Permission", secondary=role_permissions, back_populates="roles")
+    permissions: Mapped[List["Permission"]] = relationship(
+        "Permission", secondary=role_permissions, back_populates="roles"
+    )
 
 
 class Permission(Base):
     """Permission model for RBAC."""
+
     __tablename__ = "permissions"
-    
+
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
     # Relationships
     roles: Mapped[List["Role"]] = relationship("Role", secondary=role_permissions, back_populates="permissions")
 
 
 class ProjectPermission(Base):
     """Project-level permissions for fine-grained access control."""
+
     __tablename__ = "project_permissions"
-    
+
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     project_id: Mapped[int] = mapped_column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
-    role: Mapped[str] = mapped_column(SQLEnum(
-        "admin",
-        "project_owner",
-        "editor",
-        "viewer",
-        "contributor",
-        name="role_names"
-    ), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    role: Mapped[str] = mapped_column(
+        SQLEnum(
+            "admin",
+            "project_owner",
+            "editor",
+            "viewer",
+            "contributor",
+            name="role_names",
+        ),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     granted_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
-    
+
     # Relationships
     user: Mapped["User"] = relationship("User", foreign_keys=[user_id], back_populates="project_permissions")
     project: Mapped["Project"] = relationship("Project", back_populates="permissions")
     grantor: Mapped[Optional["User"]] = relationship("User", foreign_keys=[granted_by])
+
+
+class AuditLog(Base):
+    """Audit log for security-relevant events."""
+
+    __tablename__ = "audit_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    event_type: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    username: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    ip_address: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
+    user_agent: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    details: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+
+    # Relationships
+    user: Mapped[Optional["User"]] = relationship("User", foreign_keys=[user_id])

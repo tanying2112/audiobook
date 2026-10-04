@@ -1,31 +1,16 @@
 """Unit tests for LLM Router, Client, and Judge with compliance rate statistics."""
 
 import os
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import patch
 
 import pytest
 
 # Set MOCK_LLM environment variable before importing
 os.environ["MOCK_LLM"] = "true"
 
-from src.audiobook_studio.llm.client import (
-    MODEL_PRICING,
-    LLMCallResult,
-    LLMClient,
-    LLMClientConfig,
-    create_client,
-)
-from src.audiobook_studio.llm.judge import (
-    JudgeConfig,
-    JudgmentType,
-    LLMJudge,
-    create_judge,
-)
+from src.audiobook_studio.llm.client import LLMCallResult, create_client
+from src.audiobook_studio.llm.judge import create_judge
 from src.audiobook_studio.llm.router import (
-    CostTracker,
-    LLMRouter,
-    ModelConfig,
-    StageRoutingConfig,
     create_router,
     get_cost_tracker,
     reset_cost_tracker,
@@ -198,7 +183,7 @@ class TestLLMJudge:
         assert isinstance(result.fix_suggestions, list)
 
     def test_cost_tracking_per_stage(self):
-        router = create_router()
+        router = create_router(mock_mode=True)
         messages = [{"role": "user", "content": "test"}]
 
         # Call different stages (use only valid stages)
@@ -239,17 +224,21 @@ class TestEnvironmentVariables:
     def test_mock_llm_env_var_false(self):
         """Test MOCK_LLM=false creates real client."""
         with patch.dict(os.environ, {"MOCK_LLM": "false"}):
-            client = create_client("gemini-2.0-flash")
-            assert client.config.mock_mode is False
-            # Real mode has an instructor client
+            with patch("src.audiobook_studio.llm.client.LLMClient._init_client") as mock_init:
+                client = create_client("gemini-2.0-flash")
+                assert client.config.mock_mode is False
+                # Real mode would have an instructor client
+                mock_init.assert_called_once()
 
     def test_mock_llm_default_false(self):
         """Test default without MOCK_LLM set uses non-mock mode."""
         with patch.dict(os.environ, {}, clear=True):
             # Remove MOCK_LLM from parent environment first
             os.environ.pop("MOCK_LLM", None)
-            client = create_client("gemini-2.0-flash")
-            assert client.config.mock_mode is False
+            with patch("src.audiobook_studio.llm.client.LLMClient._init_client") as mock_init:
+                client = create_client("gemini-2.0-flash")
+                assert client.config.mock_mode is False
+                mock_init.assert_called_once()
 
 
 if __name__ == "__main__":

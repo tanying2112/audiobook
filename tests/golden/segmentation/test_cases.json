@@ -1,0 +1,72 @@
+[
+  {
+    "name": "basic_chinese",
+    "language": "zh",
+    "input": "这是第一段叙述文字。它描述了故事的开始。\n\n这是第二段叙述。故事继续发展。\n\n这是第三段。结局来了。",
+    "expected_segments": 3,
+    "expected_avg_length": 30
+  },
+  {
+    "name": "dialogue_heavy",
+    "language": "zh",
+    "input": "\"你好！\"主角说道。\n\n\"这是对话。\"另一个人回答。\n\n旁白描述场景。",
+    "expected_segments": 3,
+    "expected_avg_length": 20
+  },
+  {
+    "name": "mixed_chinese_english",
+    "language": "zh",
+    "input": "这是中文段落。It contains English.\n\nAnother English paragraph. 这是中文。\n\nPure 中文段落。",
+    "expected_segments": 3,
+    "expected_avg_length": 25
+  },
+  {
+    "name": "long_paragraph_split",
+    "language": "zh",
+    "input": "这是一个非常长的段落。它包含很多句子。它包含很多句子。它包含很多句子。它包含很多句子。它包含很多句子。它包含很多句子。它包含很多句子。它包含很多句子。它包含很多句子。它包含很多句子。它包含很多句子。它包含很多句子。它包含很多句子。它包含很多句子。它包含很多句子。它包含很多句子。它包含很多句子。它包含很多句子。它包含很多句子。它包含很多句子。\n\n这是第二段。",
+    "expected_segments": 2,
+    "expected_avg_length": 200
+  },
+  {
+    "name": "basic_english",
+    "language": "en",
+    "input": "This is the first paragraph. It describes the beginning of the story.\n\nThis is the second paragraph. The story continues to develop.\n\nThis is the third paragraph. The ending arrives.",
+    "expected_segments": 3,
+    "expected_avg_length": 35
+  },
+  {
+    "name": "english_dialogue",
+    "language": "en",
+    "input": "\"Hello!\" the protagonist said.\n\n\"This is dialogue.\" another person replied.\n\nNarrator describes the scene.",
+    "expected_segments": 3,
+    "expected_avg_length": 25
+  },
+  {
+    "name": "poetry_format",
+    "language": "zh",
+    "input": "春眠不觉晓，\n处处闻啼鸟。\n\n夜来风雨声，\n花落知多少。\n\n这是散文段落。",
+    "expected_segments": 3,
+    "expected_avg_length": 20
+  },
+  {
+    "name": "single_paragraph",
+    "language": "zh",
+    "input": "这是单个段落，没有换行分隔。",
+    "expected_segments": 1,
+    "expected_avg_length": 20
+  },
+  {
+    "name": "multiple_newlines",
+    "language": "zh",
+    "input": "段落一。\n\n\n\n段落二。\n\n\n段落三。",
+    "expected_segments": 3,
+    "expected_avg_length": 10
+  },
+  {
+    "name": "chapter_format",
+    "language": "zh",
+    "input": "=== 第一章 ===\n\n这是第一章的内容。\n\n=== 第二章 ===\n\n这是第二章的内容。",
+    "expected_segments": 2,
+    "expected_avg_length": 20
+  }
+]

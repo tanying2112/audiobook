@@ -1,4 +1,4 @@
-"""SQLAlchemy 2.0 ORM models for Audiobook Studio (HARNESS 规范对齐版).
+"""SQLAlchemy 2.0 ORM ORM models for Audiobook Studio (HARNESS 规范对齐版).
 
 核心实体 (Project -> Chapter -> Paragraph -> AudioSegment):
 - Project: 书籍项目 (上帝视角完整档案)
@@ -16,6 +16,12 @@
 - Role: RBAC 角色模型
 - Permission: RBAC 权限模型
 - ProjectPermission: 项目级权限模型
+- TeamMember: 团队成员模型
+- Comment: 评论模型
+- Task: 任务模型
+- ApprovalRequest: 审批请求模型
+- ApprovalResponse: 审批响应模型
+- ChangeRecord: 变更记录模型
 """
 
 from .agent import AgentKnowledge, TaskRecord
@@ -23,14 +29,33 @@ from .audio_segment import AudioSegment
 from .book import Project
 from .chapter import Chapter
 from .character import Character
+
+# ---------------------------------------------------------------------------
+# 协作模块: collaboration.py 现已并入主干(已被 git 跟踪), 恢复导入以注册所有
+# 协作表(含新增的 CollaborationRecord 聚合表)到 Base.metadata。
+# 恢复条件已满足(见原 TECH-DEBT 注释: collaboration.py 合并进主干后恢复)。
+# ---------------------------------------------------------------------------
+from .collaboration import (
+    ApprovalRequest,
+    ApprovalResponse,
+    ChangeRecord,
+    CollaborationRecord,
+    Comment,
+    Task,
+    TeamMember,
+)
 from .emotion_snapshot import EmotionSnapshot
 from .feedback_record import FeedbackRecord
+from .legacy import LegacyBook, LegacyParagraph, LegacyQuality, LegacyRouting, LegacyTTSEdit
 from .paragraph import Paragraph
 from .processing_run import ProcessingRun
+from .project_segment import ProjectSegment
+from .publish import PublishHistory, PublishJob
+from .publish_job import PublishJobState
 from .quality import Quality
 from .routing import Routing
 from .tts_edit import TTSEdit
-from .user import User, Role, Permission, ProjectPermission
+from .user import Permission, ProjectPermission, Role, User
 
 __all__ = [
     "Project",
@@ -50,4 +75,20 @@ __all__ = [
     "Role",
     "Permission",
     "ProjectPermission",
+    "ProjectSegment",
+    "PublishHistory",
+    "PublishJob",
+    "PublishJobState",
+    "LegacyBook",
+    "LegacyParagraph",
+    "LegacyTTSEdit",
+    "LegacyRouting",
+    "LegacyQuality",
+    "TeamMember",
+    "Comment",
+    "Task",
+    "ApprovalRequest",
+    "ApprovalResponse",
+    "ChangeRecord",
+    "CollaborationRecord",
 ]

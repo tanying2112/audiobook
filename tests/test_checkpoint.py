@@ -1,13 +1,13 @@
 """Unit tests for CheckpointManager."""
 
 import json
-import logging
 import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
-from src.audiobook_studio.pipeline.checkpoint import CheckpointManager, STAGE_ORDER
+
+from src.audiobook_studio.pipeline.checkpoint import STAGE_ORDER, CheckpointManager
 
 
 class TestCheckpointManager:
@@ -18,7 +18,10 @@ class TestCheckpointManager:
         self.temp_dir = tempfile.mkdtemp()
         # Patch reports_dir to use our temp directory
         self.mock_reports_dir = Mock(return_value=Path(self.temp_dir))
-        self.patch_reports = patch("src.audiobook_studio.pipeline.checkpoint.reports_dir", self.mock_reports_dir)
+        self.patch_reports = patch(
+            "src.audiobook_studio.pipeline.checkpoint.reports_dir",
+            self.mock_reports_dir,
+        )
         self.patch_reports.start()
         self.manager = CheckpointManager(project_id=1)
 
@@ -26,6 +29,7 @@ class TestCheckpointManager:
         """Cleanup."""
         self.patch_reports.stop()
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_init_new_project(self):
@@ -33,7 +37,7 @@ class TestCheckpointManager:
         assert self.manager.project_id == 1
         assert self.manager._data["project_id"] == 1
         assert self.manager._data["chapters"] == {}
-        assert self.manager._data["version"] == 2
+        assert self.manager._data["version"] == 3  # ADR-005 upgraded schema to v3
 
     def test_init_existing_checkpoint(self):
         """Test initialization loads existing checkpoint."""
@@ -197,7 +201,10 @@ class TestCheckpointManagerPersistence:
         """Setup test fixtures with temporary directory."""
         self.temp_dir = tempfile.mkdtemp()
         self.mock_reports_dir = Mock(return_value=Path(self.temp_dir))
-        self.patch_reports = patch("src.audiobook_studio.pipeline.checkpoint.reports_dir", self.mock_reports_dir)
+        self.patch_reports = patch(
+            "src.audiobook_studio.pipeline.checkpoint.reports_dir",
+            self.mock_reports_dir,
+        )
         self.patch_reports.start()
         self.manager = CheckpointManager(project_id=1)
 
@@ -205,6 +212,7 @@ class TestCheckpointManagerPersistence:
         """Cleanup."""
         self.patch_reports.stop()
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_persists_to_disk(self):
@@ -242,7 +250,10 @@ class TestCheckpointManagerEdgeCases:
         """Setup test fixtures with temporary directory."""
         self.temp_dir = tempfile.mkdtemp()
         self.mock_reports_dir = Mock(return_value=Path(self.temp_dir))
-        self.patch_reports = patch("src.audiobook_studio.pipeline.checkpoint.reports_dir", self.mock_reports_dir)
+        self.patch_reports = patch(
+            "src.audiobook_studio.pipeline.checkpoint.reports_dir",
+            self.mock_reports_dir,
+        )
         self.patch_reports.start()
         self.manager = CheckpointManager(project_id=1)
 
@@ -250,6 +261,7 @@ class TestCheckpointManagerEdgeCases:
         """Cleanup."""
         self.patch_reports.stop()
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_multiple_chapters_isolated(self):

@@ -1,31 +1,30 @@
 """Tests for ffmpeg_probe media analysis utilities."""
 
 import asyncio
-import subprocess
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from src.audiobook_studio.utils.ffmpeg_probe import (
-    _run_ffprobe,
     _run_ffmpeg,
-    get_duration,
+    _run_ffprobe,
     detect_silence,
-    get_rms_peak,
-    get_audio_info,
-    read_pcm_samples,
-    get_duration_sync,
     detect_silence_sync,
-    get_rms_peak_sync,
+    get_audio_info,
     get_audio_info_sync,
+    get_duration,
+    get_duration_sync,
+    get_rms_peak,
+    get_rms_peak_sync,
+    read_pcm_samples,
     read_pcm_samples_sync,
 )
 
 
 def run_async(coro):
     """Helper to run async coroutine in tests."""
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 class TestAsyncRunners:
@@ -180,8 +179,7 @@ class TestGetRmsPeak:
         """Test RMS/Peak extraction via astats."""
         mock_run.return_value = MagicMock(
             returncode=0,
-            stderr="frame:0 lavfi.astats.Overall.RMS_level=-20.5\n"
-                   "frame:0 lavfi.astats.Overall.Peak_level=-1.5\n",
+            stderr="frame:0 lavfi.astats.Overall.RMS_level=-20.5\n" "frame:0 lavfi.astats.Overall.Peak_level=-1.5\n",
         )
         rms, peak = await get_rms_peak(Path("test.mp3"))
         assert rms == -20.5
@@ -255,8 +253,8 @@ class TestReadPcmSamples:
     async def test_read_pcm_success(self, mock_run):
         """Test PCM sample extraction."""
         import struct
-        import numpy as np
-        # Create fake float32 data: 4 samples (16 bytes)
+
+        # Create fake float32 data: 4 samples (16 bytes)  # noqa: E303
         fake_bytes = struct.pack("4f", 0.1, -0.2, 0.3, -0.4)
         mock_run.return_value = MagicMock(returncode=0, stdout=fake_bytes)
 
@@ -318,8 +316,7 @@ class TestSyncWrappers:
         """Test sync get_rms_peak."""
         mock_run.return_value = MagicMock(
             returncode=0,
-            stderr="frame:0 lavfi.astats.Overall.RMS_level=-15.0\n"
-                   "frame:0 lavfi.astats.Overall.Peak_level=-1.0\n",
+            stderr="frame:0 lavfi.astats.Overall.RMS_level=-15.0\n" "frame:0 lavfi.astats.Overall.Peak_level=-1.0\n",
         )
         rms, peak = get_rms_peak_sync(Path("test.mp3"))
         assert rms == -15.0

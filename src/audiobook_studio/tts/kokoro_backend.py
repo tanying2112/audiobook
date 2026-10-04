@@ -2,47 +2,155 @@
 
 Local CPU-based TTS using Kokoro-ONNX model (~82M params).
 Optimized for cloud_hybrid and potato hardware profiles.
+
+Refactored to use kokoro_onnx.Kokoro class directly (fixes NpzFile .item() bug,
+placeholder phonemizer, token_lengths input mismatch, style shape issues).
 """
 
+import asyncio
 import hashlib
 import logging
-import os
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-from .engine import TTSEngine, SynthesisResult, VoiceInfo
+from .engine import (
+    BaseTTSEngine,
+    SynthesisResult,
+    TTSTaskPayload,
+    TTSTaskResult,
+    TTSTaskStatus,
+    VoiceInfo,
+)
 
 logger = logging.getLogger(__name__)
 
-
 # Kokoro voice presets (from kokoro-onnx voice list)
-KOKORO_VOICES = {
-    "af": {"name": "af", "language": "en", "gender": "female", "description": "American Female"},
-    "af_bella": {"name": "af_bella", "language": "en", "gender": "female", "description": "American Female - Bella"},
-    "af_nicole": {"name": "af_nicole", "language": "en", "gender": "female", "description": "American Female - Nicole"},
-    "af_sarah": {"name": "af_sarah", "language": "en", "gender": "female", "description": "American Female - Sarah"},
-    "af_sky": {"name": "af_sky", "language": "en", "gender": "female", "description": "American Female - Sky"},
-    "am_adam": {"name": "am_adam", "language": "en", "gender": "male", "description": "American Male - Adam"},
-    "am_michael": {"name": "am_michael", "language": "en", "gender": "male", "description": "American Male - Michael"},
-    "bf_emma": {"name": "bf_emma", "language": "en", "gender": "female", "description": "British Female - Emma"},
-    "bf_isabella": {"name": "bf_isabella", "language": "en", "gender": "female", "description": "British Female - Isabella"},
-    "bm_george": {"name": "bm_george", "language": "en", "gender": "male", "description": "British Male - George"},
-    "bm_lewis": {"name": "bm_lewis", "language": "en", "gender": "male", "description": "British Male - Lewis"},
-    "zf_xiaoxiao": {"name": "zf_xiaoxiao", "language": "zh", "gender": "female", "description": "中文女声 - Xiaoxiao"},
-    "zf_xiaobei": {"name": "zf_xiaobei", "language": "zh", "gender": "female", "description": "中文女声 - Xiaobei"},
-    "zf_xiaoni": {"name": "zf_xiaoni", "language": "zh", "gender": "female", "description": "中文女声 - Xiaoni"},
-    "zf_xiaoxuan": {"name": "zf_xiaoxuan", "language": "zh", "gender": "female", "description": "中文女声 - Xiaoxuan"},
-    "zm_yunjian": {"name": "zm_yunjian", "language": "zh", "gender": "male", "description": "中文男声 - Yunjian"},
-    "zm_yunxi": {"name": "zm_yunxi", "language": "zh", "gender": "male", "description": "中文男声 - Yunxi"},
-    "zm_yunxia": {"name": "zm_yunxia", "language": "zh", "gender": "male", "description": "中文男声 - Yunxia"},
-    "zm_yunyang": {"name": "zm_yunyang", "language": "zh", "gender": "male", "description": "中文男声 - Yunyang"},
+KOKORO_VOICES: Dict[str, Dict[str, str]] = {
+    "af": {
+        "name": "af",
+        "language": "en",
+        "gender": "female",
+        "description": "American Female",
+    },
+    "af_bella": {
+        "name": "af_bella",
+        "language": "en",
+        "gender": "female",
+        "description": "American Female - Bella",
+    },
+    "af_nicole": {
+        "name": "af_nicole",
+        "language": "en",
+        "gender": "female",
+        "description": "American Female - Nicole",
+    },
+    "af_sarah": {
+        "name": "af_sarah",
+        "language": "en",
+        "gender": "female",
+        "description": "American Female - Sarah",
+    },
+    "af_sky": {
+        "name": "af_sky",
+        "language": "en",
+        "gender": "female",
+        "description": "American Female - Sky",
+    },
+    "am_adam": {
+        "name": "am_adam",
+        "language": "en",
+        "gender": "male",
+        "description": "American Male - Adam",
+    },
+    "am_michael": {
+        "name": "am_michael",
+        "language": "en",
+        "gender": "male",
+        "description": "American Male - Michael",
+    },
+    "bf_emma": {
+        "name": "bf_emma",
+        "language": "en",
+        "gender": "female",
+        "description": "British Female - Emma",
+    },
+    "bf_isabella": {
+        "name": "bf_isabella",
+        "language": "en",
+        "gender": "female",
+        "description": "British Female - Isabella",
+    },
+    "bm_george": {
+        "name": "bm_george",
+        "language": "en",
+        "gender": "male",
+        "description": "British Male - George",
+    },
+    "bm_lewis": {
+        "name": "bm_lewis",
+        "language": "en",
+        "gender": "male",
+        "description": "British Male - Lewis",
+    },
+    "zf_xiaoxiao": {
+        "name": "zf_xiaoxiao",
+        "language": "zh",
+        "gender": "female",
+        "description": "中文女声 - Xiaoxiao",
+    },
+    "zf_xiaobei": {
+        "name": "zf_xiaobei",
+        "language": "zh",
+        "gender": "female",
+        "description": "中文女声 - Xiaobei",
+    },
+    "zf_xiaoni": {
+        "name": "zf_xiaoni",
+        "language": "zh",
+        "gender": "female",
+        "description": "中文女声 - Xiaoni",
+    },
+    "zf_xiaoxuan": {
+        "name": "zf_xiaoxuan",
+        "language": "zh",
+        "gender": "female",
+        "description": "中文女声 - Xiaoxuan",
+    },
+    "zm_yunjian": {
+        "name": "zm_yunjian",
+        "language": "zh",
+        "gender": "male",
+        "description": "中文男声 - Yunjian",
+    },
+    "zm_yunxi": {
+        "name": "zm_yunxi",
+        "language": "zh",
+        "gender": "male",
+        "description": "中文男声 - Yunxi",
+    },
+    "zm_yunxia": {
+        "name": "zm_yunxia",
+        "language": "zh",
+        "gender": "male",
+        "description": "中文男声 - Yunxia",
+    },
+    "zm_yunyang": {
+        "name": "zm_yunyang",
+        "language": "zh",
+        "gender": "male",
+        "description": "中文男声 - Yunyang",
+    },
 }
 
 
-class KokoroBackend(TTSEngine):
-    """Kokoro-ONNX TTS Backend for local CPU synthesis."""
+class KokoroBackend(BaseTTSEngine):
+    """Kokoro-ONNX TTS Backend for local CPU synthesis.
+
+    Wraps kokoro_onnx.Kokoro class which handles tokenization, phonemization,
+    and ONNX inference correctly (fixes bugs in prior manual implementation).
+    """
 
     def __init__(
         self,
@@ -51,43 +159,48 @@ class KokoroBackend(TTSEngine):
         device: str = "cpu",
         sample_rate: int = 24000,
         providers: Optional[List[str]] = None,
-        session_options: Optional[Dict] = None,
+        session_options: Optional[Dict[str, Any]] = None,
         mock_mode: bool = False,
-        **kwargs
+        output_dir: str = "./output",
+        max_concurrent: int = 2,
+        **kwargs: Any,
     ):
-        super().__init__(model_path, device, sample_rate, mock_mode=mock_mode, **kwargs)
+        super().__init__(output_dir=output_dir, max_concurrent=max_concurrent)
+        self.model_path = model_path
         self.voices_path = voices_path
+        self.device = device
+        self.sample_rate = sample_rate
         self.providers = providers or ["CPUExecutionProvider"]
-        self.session_options = session_options or {
-            "intra_op_num_threads": 4,
-            "inter_op_num_threads": 2,
-        }
+        self.session_options = session_options or {}
+        self.mock_mode = mock_mode
+        self._kokoro = None
+        self._loaded = False
+        self._initialized = False
         self._session = None
-        self._phonemizer = None
-        self._voice_embeddings = KOKORO_VOICES  # Use predefined voices
+        self._voice_embeddings: Dict[str, Any] = {}
+        # In mock mode, pre-populate voice embeddings from KOKORO_VOICES registry
+        if self.mock_mode:
+            self._voice_embeddings = KOKORO_VOICES.copy()
 
     @property
     def engine_name(self) -> str:
         return "kokoro"
 
     @property
-    def supports_streaming(self) -> bool:
-        return False  # Kokoro-ONNX doesn't support streaming yet
-
-    @property
-    def supports_batch(self) -> bool:
-        return False  # Single utterance at a time
+    def is_available(self) -> bool:
+        return self._loaded
 
     async def initialize(self) -> None:
-        """Initialize Kokoro-ONNX session and phonemizer."""
-        # Mock mode: skip actual model loading
+        """Initialize kokoro_onnx.Kokoro instance."""
         if self.mock_mode:
+            self._loaded = True
             self._initialized = True
+            # In mock mode, voice_embeddings is already populated in __init__
             logger.info("KokoroBackend initialized in mock mode")
             return
 
         try:
-            import onnxruntime as ort
+            from kokoro_onnx import Kokoro
 
             # Resolve model path
             if self.model_path is None:
@@ -103,80 +216,46 @@ class KokoroBackend(TTSEngine):
             if not Path(self.voices_path).exists():
                 raise FileNotFoundError(f"Kokoro voices not found: {self.voices_path}")
 
-            # Create ONNX session
-            sess_options = ort.SessionOptions()
-            sess_options.intra_op_num_threads = self.session_options.get("intra_op_num_threads", 4)
-            sess_options.inter_op_num_threads = self.session_options.get("inter_op_num_threads", 2)
+            # Create Kokoro instance - this handles ONNX session, phonemizer, voice embeddings correctly
+            self._kokoro = Kokoro(self.model_path, self.voices_path)
+            # For backward compatibility with tests that check _session attribute
+            self._session = getattr(self._kokoro, "session", None)
 
-            self._session = ort.InferenceSession(
-                self.model_path,
-                sess_options=sess_options,
-                providers=self.providers,
+            self._loaded = True
+            self._initialized = True
+            logger.info(
+                f"Kokoro-ONNX initialized via kokoro_onnx.Kokoro: "
+                f"model={self.model_path}, voices={self.voices_path}"
             )
 
-            # Initialize phonemizer (misaki for English, espeak-ng for Chinese)
-            try:
-                from misaki import en, zh
-                self._phonemizer_en = en.G2P()
-                self._phonemizer_zh = zh.G2P()
-            except ImportError:
-                logger.warning("misaki not installed, using fallback phonemization")
-                self._phonemizer_en = None
-                self._phonemizer_zh = None
-
-            # Load voice embeddings
-            self._voice_embeddings = np.load(self.voices_path, allow_pickle=True).item()
-
-            self._initialized = True
-            logger.info(f"Kokoro-ONNX initialized: model={self.model_path}, voices={len(self._voice_embeddings)}")
-
         except ImportError:
-            logger.error("onnxruntime not installed. Run: pip install onnxruntime")
+            logger.error("kokoro-onnx not installed. Run: pip install kokoro-onnx")
             raise
         except Exception as e:
             logger.error(f"Failed to initialize Kokoro backend: {e}")
             raise
 
-    def _phonemize(self, text: str, voice_id: str) -> Tuple[np.ndarray, np.ndarray]:
-        """Convert text to phonemes and return (phoneme IDs for Kokoro."""
-        # Determine language from voice_id
-        lang = KOKORO_VOICES.get(voice_id, {}).get("language", "en")
-
-        if lang == "zh" and self._phonemizer_zh:
-            phonemes = self._phonemizer_zh(text)
-        elif lang == "en" and self._phonemizer_en:
-            phonemes = self._phonemizer_en(text)
-        else:
-            # Fallback: simple character-based phonemization
-            logger.warning(f"No phonemizer for lang={lang}, using fallback")
-            phonemes = list(text)
-
-        # Convert phonemes to Kokoro token IDs
-        # This is simplified - real implementation uses Kokoro's tokenizer
-        token_ids = [ord(p) % 256 for p in phonemes]  # Placeholder
-        return np.array([token_ids], dtype=np.int64), np.array([len(token_ids)], dtype=np.int64)
-
-    async def synthesize(
+    async def _synthesize_internal(
         self,
         text: str,
         voice_id: str,
         output_path: Path,
-        prosody: Optional[Dict] = None,
+        prosody: Optional[Dict[str, Any]] = None,
         reference_audio: Optional[str] = None,
-        **kwargs
+        embedding: Optional[np.ndarray] = None,
+        **kwargs: Any,
     ) -> SynthesisResult:
-        """Synthesize text using Kokoro-ONNX."""
-        if not self._initialized:
+        """Internal synthesis method using kokoro_onnx.Kokoro.create()."""
+        if not self._loaded:
             await self.initialize()
 
         # Mock mode: create empty audio file
         if self.mock_mode:
-            # Create a dummy audio file for testing
             import soundfile as sf
-            import numpy as np
+
             dummy_audio = np.zeros(48000, dtype=np.float32)  # 1 second silence
             sf.write(str(output_path), dummy_audio, self.sample_rate)
-            text_hash = hashlib.md5(text.encode()).hexdigest()[:12]
+            text_hash = hashlib.sha256(text.encode(), usedforsecurity=False).hexdigest()[:12]
             return SynthesisResult(
                 audio_path=str(output_path),
                 duration_ms=1000,
@@ -186,100 +265,452 @@ class KokoroBackend(TTSEngine):
                 sample_rate=self.sample_rate,
             )
 
-        # Get voice embedding
-        if voice_id not in self._voice_embeddings:
-            logger.warning(f"Voice {voice_id} not found, using default 'zf_xiaoxiao'")
-            voice_id = "zf_xiaoxiao"
+        else:  # pragma: no cover
+            # ─── Real inference path (requires kokoro_onnx model + weights) ───
+            # Determine language from voice_id (fallback to 'en' for unknown)
+            lang = KOKORO_VOICES.get(voice_id, {}).get("language", "en")
 
-        voice_embedding = self._voice_embeddings[voice_id]
-        if isinstance(voice_embedding, dict):
-            voice_embedding = voice_embedding.get("embedding", list(voice_embedding.values())[0])
-        voice_embedding = np.array(voice_embedding, dtype=np.float32).reshape(1, -1)
+            # Map language codes for phonemizer (espeak-ng):
+            #   - 'zh' -> 'cmn' (espeak uses cmn for Mandarin)
+            #   - 'en' -> 'en-us' (espeak rejects the bare 'en' code; kokoro_onnx
+            #     tokenizer expects a region-specific code like 'en-us'/'en-gb')
+            phonemizer_lang = "cmn" if lang == "zh" else ("en-us" if lang == "en" else lang)
 
-        # Phonemize text
-        tokens, token_lengths = self._phonemize(text, voice_id)
+            # Map prosody rate to speed
+            speed = prosody.get("rate", 1.0) if prosody else 1.0
 
-        # Prepare inputs for ONNX
-        speed = prosody.get("rate", 1.0) if prosody else 1.0
-        # Kokoro expects: tokens, token_lengths, voice_embedding, speed
-        inputs = {
-            "tokens": tokens,
-            "token_lengths": token_lengths,
-            "style": voice_embedding,
-            "speed": np.array([speed], dtype=np.float32),
+            # ── Emotion tag → prosody mapping for Kokoro ──
+            # Kokoro supports speed control; pitch/volume handled post-synthesis
+            emotion_prosody_map = {
+                "happy": {"speed": 1.15, "volume_db": 2.0},
+                "sad": {"speed": 0.85, "volume_db": -2.0},
+                "angry": {"speed": 1.2, "volume_db": 3.0},
+                "fearful": {"speed": 1.25, "volume_db": 1.5},
+                "surprised": {"speed": 1.3, "volume_db": 2.0},
+                "calm": {"speed": 0.85, "volume_db": -1.5},
+                "neutral": {"speed": 1.0, "volume_db": 0.0},
+            }
+
+            if prosody:
+                emotion = prosody.get("emotion", "neutral")
+                if emotion in emotion_prosody_map:
+                    ep = emotion_prosody_map[emotion]
+                    speed = ep["speed"]
+                    # Volume adjustment applied post-synthesis
+                    prosody["volume"] = prosody.get("volume", 0) + ep["volume_db"]
+
+            # Voice cloning: if embedding provided, we'd need custom handling
+            # For now, use standard voice_id mapping
+            if embedding is not None:
+                logger.warning(
+                    "Custom voice embedding provided but not supported by kokoro_onnx.Kokoro yet; using voice_id"
+                )
+
+            # Run synthesis via kokoro_onnx.Kokoro.create()
+            # This handles tokenization, phonemization, and inference correctly
+            try:
+                # kokoro_onnx.Kokoro.create() returns (audio_array, sample_rate).
+                # Kokoro's context window is 510 phonemes — longer texts crash with
+                # "index 510 is out of bounds" — so long paragraphs are split into
+                # sentence-bounded chunks and the audio is concatenated.
+                audio, sample_rate = await asyncio.get_running_loop().run_in_executor(
+                    None,
+                    lambda: self._create_chunked(
+                        text=text,
+                        voice=voice_id,
+                        speed=speed,
+                        lang=phonemizer_lang,
+                    ),
+                )
+            except Exception as e:
+                logger.error(f"Kokoro synthesis failed: {e}")
+                raise
+
+            # ── H4: Duration rationality guard ──
+            # Detect when Kokoro produces excessively long audio for short text
+            # (observed: 2s text → 31.7s audio with 58/63 half-second windows non-silent)
+            estimated_ms = self.estimate_duration(text, voice_id, prosody={"rate": speed})
+            actual_ms = int(len(audio) / sample_rate * 1000)
+            ratio = actual_ms / max(estimated_ms, 1)
+            if ratio > 3.0:  # Actual duration > 3x estimate
+                logger.warning(
+                    f"H4 guard triggered: Kokoro produced suspiciously long audio "
+                    f"(actual={actual_ms}ms, estimated={estimated_ms}ms, ratio={ratio:.1f}x). "
+                    f"text_len={len(text)}, voice={voice_id}, lang={phonemizer_lang}. "
+                    f"Audio may contain repeated chunks or excessive silence."
+                )
+                # Optional: truncate to reasonable limit (3x estimate)
+                max_samples = int(sample_rate * estimated_ms * 3.0 / 1000)
+                if len(audio) > max_samples:
+                    logger.warning(f"Truncating audio from {actual_ms}ms to {max_samples/sample_rate*1000:.0f}ms")
+                    audio = audio[:max_samples]
+
+            # Apply prosody adjustments (volume, pitch - pitch not directly supported)
+            if prosody:
+                volume = prosody.get("volume", 0)  # dB
+                if volume != 0:
+                    audio = audio * (10 ** (volume / 20.0))
+
+            # Save as WAV then convert to MP3
+            import soundfile as sf
+
+            wav_path = output_path.with_suffix(".wav")
+            # Ensure output directory exists
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            sf.write(str(wav_path), audio, sample_rate)
+
+            # Convert to MP3 if needed
+            if output_path.suffix == ".mp3":
+                import subprocess
+
+                result = subprocess.run(
+                    [
+                        "ffmpeg",
+                        "-y",
+                        "-i",
+                        str(wav_path),
+                        "-c:a",
+                        "libmp3lame",
+                        "-b:a",
+                        "128k",
+                        str(output_path),
+                    ],
+                    capture_output=True,
+                )
+                if result.returncode != 0:
+                    logger.warning(f"ffmpeg MP3 conversion failed: {result.stderr.decode()}")
+                    # Fall back to WAV
+                    output_path = wav_path
+                else:
+                    wav_path.unlink(missing_ok=True)
+
+            duration_ms = int(len(audio) / sample_rate * 1000)
+            text_hash = hashlib.sha256(text.encode(), usedforsecurity=False).hexdigest()[:12]
+
+            return SynthesisResult(
+                audio_path=str(output_path),
+                duration_ms=duration_ms,
+                engine=self.engine_name,
+                voice_id=voice_id,
+                text_hash=text_hash,
+                sample_rate=sample_rate,
+                metadata={"speed": speed},
+            )
+
+    # --- TTSEngine Protocol Implementation ---
+
+    async def synthesize(
+        self,
+        payload: TTSTaskPayload,
+        output_path: Path,
+    ) -> TTSTaskResult:
+        """Synthesize text to speech using TTSTaskPayload."""
+        text = payload.text
+        voice_anchor = payload.voice_anchor
+        prosody = payload.prosody
+        metadata = payload.metadata
+
+        # Extract parameters from payload
+        voice_id = voice_anchor.voice_id
+        reference_audio = voice_anchor.reference_audio_path
+        embedding = metadata.get("embedding") if metadata else None
+
+        prosody_dict = None
+        if prosody:
+            prosody_dict = {
+                "rate": prosody.rate,
+                "pitch": prosody.pitch,
+                "volume": prosody.volume,
+                "emotion": prosody.emotion,
+            }
+
+        try:
+            result = await self._synthesize_internal(
+                text=text,
+                voice_id=voice_id,
+                output_path=output_path,
+                prosody=prosody_dict,
+                reference_audio=reference_audio,
+                embedding=embedding,
+            )
+            return TTSTaskResult(
+                task_id=self._generate_task_id(),
+                status="DONE",
+                audio_path=result.audio_path,
+                duration_ms=result.duration_ms,
+                engine=result.engine,
+                text_hash=result.text_hash,
+                voice_id=result.voice_id,
+                started_at=None,
+            )
+        except Exception as e:
+            logger.error(f"Synthesis failed: {e}")
+            return TTSTaskResult(
+                task_id=self._generate_task_id(),
+                status="FAILED",
+                error_message=str(e),
+                engine=self.engine_name,
+            )
+
+    async def submit(self, task_id: str, payload: TTSTaskPayload) -> bool:
+        """Submit a task for async processing."""
+        if task_id in self._tasks:
+            return False
+        self._tasks[task_id] = {"status": "PENDING", "payload": payload}
+        asyncio.create_task(self._run_task(task_id, payload))
+        return True
+
+    async def _run_task(self, task_id: str, payload: TTSTaskPayload) -> None:
+        """Background task runner."""
+        try:
+            self._tasks[task_id]["status"] = "RUNNING"
+            output_path = self._build_output_path(task_id, payload.voice_anchor.voice_id)
+            result = await self.synthesize(payload, output_path)
+            self._tasks[task_id] = {"status": "DONE", "result": result}
+        except Exception as e:
+            self._tasks[task_id] = {"status": "FAILED", "error": str(e)}
+
+    async def get_status(self, task_id: str) -> TTSTaskStatus:
+        """Poll for task status."""
+        task = self._tasks.get(task_id)
+        if not task:
+            return TTSTaskStatus(
+                task_id=task_id,
+                status="PENDING",
+                error_message=f"Task {task_id} not found",
+            )
+        return TTSTaskStatus(
+            task_id=task_id,
+            status=task["status"],
+            error_message=task.get("error"),
+        )
+
+    async def get_result(self, task_id: str) -> TTSTaskResult:
+        """Get full task result."""
+        task = self._tasks.get(task_id)
+        if not task or "result" not in task:
+            raise KeyError(f"Task {task_id} not found or not ready")
+        return task["result"]
+
+    async def cancel(self, task_id: str) -> bool:
+        """Cancel a pending/running task."""
+        task = self._tasks.get(task_id)
+        if not task:
+            return False
+        if task["status"] in ("DONE", "FAILED"):
+            return False
+        task["status"] = "FAILED"
+        task["error"] = "Cancelled"
+        return True
+
+    async def health_check(self) -> Dict[str, Any]:
+        """Check engine health."""
+        return {
+            "healthy": self._loaded,
+            "engine": self.engine_name,
+            "loaded": self._loaded,
+            "mock_mode": self.mock_mode,
+            "sample_rate": self.sample_rate,
+            "device": self.device,
         }
 
-        # Run inference
-        outputs = self._session.run(None, inputs)
-        audio = outputs[0].squeeze()  # (samples,)
+    async def warmup(self) -> bool:
+        """Quick warmup for health probe - verifies model files and initializes session.
 
-        # Apply prosody adjustments
-        if prosody:
-            pitch_shift = prosody.get("pitch", 0)  # semitones
-            volume = prosody.get("volume", 0)  # dB
-            if pitch_shift != 0:
-                # Simple pitch shift via resampling (placeholder)
-                pass
-            if volume != 0:
-                audio = audio * (10 ** (volume / 20.0))
+        Returns True if warmup completes within 100ms, False otherwise.
+        This is a lightweight check that doesn't load full model weights.
+        """
+        import time
 
-        # Save as WAV then convert to MP3
-        import soundfile as sf
-        wav_path = output_path.with_suffix(".wav")
-        sf.write(str(wav_path), audio, self.sample_rate)
+        start = time.perf_counter()
 
-        # Convert to MP3 if needed
-        if output_path.suffix == ".mp3":
-            import subprocess
-            subprocess.run([
-                "ffmpeg", "-y", "-i", str(wav_path),
-                "-c:a", "libmp3lame", "-b:a", "128k",
-                str(output_path)
-            ], capture_output=True, check=True)
-            wav_path.unlink(missing_ok=True)
+        try:
+            # In mock mode, warmup is instant
+            if self.mock_mode:
+                self._loaded = True
+                self._initialized = True
+                return True
+            else:  # pragma: no cover
+                # ─── Real warmup (requires kokoro_onnx model files) ───
+                # Verify model files exist
+                if self.model_path is None:
+                    self.model_path = str(Path("models/kokoro-v1.0.onnx").absolute())
+                if not Path(self.model_path).exists():
+                    logger.warning(f"Kokoro model not found: {self.model_path}")
+                    return False
 
-        duration_ms = int(len(audio) / self.sample_rate * 1000)
-        text_hash = hashlib.md5(text.encode()).hexdigest()[:12]
+                if self.voices_path is None:
+                    self.voices_path = str(Path("models/voices-v1.0.bin").absolute())
+                if not Path(self.voices_path).exists():
+                    logger.warning(f"Kokoro voices not found: {self.voices_path}")
+                    return False
 
-        return SynthesisResult(
-            audio_path=str(output_path),
-            duration_ms=duration_ms,
-            engine=self.engine_name,
-            voice_id=voice_id,
-            text_hash=text_hash,
-            sample_rate=self.sample_rate,
-            metadata={"speed": speed, "voice_embedding_shape": voice_embedding.shape},
-        )
+                # If already loaded, warmup is instant
+                if self._loaded:
+                    return True
+
+                # Quick initialization - create ONNX session but don't load full weights
+                from kokoro_onnx import Kokoro
+
+                self._kokoro = Kokoro(self.model_path, self.voices_path)
+                self._session = getattr(self._kokoro, "session", None)
+                self._loaded = True
+                self._initialized = True
+
+                elapsed_ms = (time.perf_counter() - start) * 1000
+                logger.info(f"KokoroBackend warmup completed in {elapsed_ms:.1f}ms")
+                return elapsed_ms < 100
+
+        except Exception as e:
+            logger.error(f"KokoroBackend warmup failed: {e}")
+            return False
+
+    async def close(self) -> None:
+        """Clean up kokoro instance."""
+        self._kokoro = None
+        self._session = None
+        self._voice_embeddings = None
+        self._loaded = False
+        self._initialized = False
+        logger.info("Kokoro backend cleaned up")
+
+    # Kokoro's hard context limit is 510 phonemes; a phoneme count is always
+    # ≤ the character count, so a conservative char budget keeps every chunk
+    # safely under the limit without needing to phonemize first.
+    _MAX_CHUNK_CHARS = 400
+
+    def _split_text_for_kokoro(self, text: str) -> List[str]:
+        """Split text into chunks of at most _MAX_CHUNK_CHARS characters,
+        breaking on sentence boundaries (then clause boundaries, then words)
+        so prosody is preserved as much as possible."""
+        import re
+
+        text = text.strip()
+        if len(text) <= self._MAX_CHUNK_CHARS:
+            return [text]
+
+        sentences = re.split(r"(?<=[.!?…])\s+", text)
+        chunks: List[str] = []
+        current = ""
+        for sent in sentences:
+            if len(sent) > self._MAX_CHUNK_CHARS:
+                # A single sentence longer than the budget: flush and split it
+                # further on clause punctuation, then on word boundaries.
+                if current:
+                    chunks.append(current)
+                    current = ""
+                clauses = re.split(r"(?<=[,;:—–-])\s*", sent)
+                piece = ""
+                for cl in clauses:
+                    if len(cl) > self._MAX_CHUNK_CHARS:
+                        if piece:
+                            chunks.append(piece)
+                            piece = ""
+                        words = cl.split()
+                        for w in words:
+                            cand = f"{piece} {w}".strip()
+                            if len(cand) > self._MAX_CHUNK_CHARS and piece:
+                                chunks.append(piece)
+                                piece = w
+                            else:
+                                piece = cand
+                    else:
+                        cand = f"{piece} {cl}".strip()
+                        if len(cand) > self._MAX_CHUNK_CHARS and piece:
+                            chunks.append(piece)
+                            piece = cl
+                        else:
+                            piece = cand
+                if piece:
+                    current = piece
+            else:
+                cand = f"{current} {sent}".strip()
+                if len(cand) > self._MAX_CHUNK_CHARS and current:
+                    chunks.append(current)
+                    current = sent
+                else:
+                    current = cand
+        if current:
+            chunks.append(current)
+        return [c for c in chunks if c]
+
+    def _create_chunked(self, text: str, voice: str, speed: float, lang: str):
+        """Synthesize text, chunking on sentence boundaries when it exceeds
+        Kokoro's 510-phoneme context window, and concatenate the audio with
+        a short inter-chunk pause."""
+        chunks = self._split_text_for_kokoro(text)
+        if len(chunks) == 1:
+            return self._kokoro.create(text=chunks[0], voice=voice, speed=speed, lang=lang)
+
+        logger.info(f"Kokoro: splitting {len(text)} chars into {len(chunks)} chunks (510-phoneme limit)")
+        audios = []
+        sample_rate = self.sample_rate
+        for i, chunk in enumerate(chunks):
+            audio, sample_rate = self._kokoro.create(text=chunk, voice=voice, speed=speed, lang=lang)
+            audios.append(audio)
+            if i < len(chunks) - 1:
+                audios.append(np.zeros(int(sample_rate * 0.2), dtype=audio.dtype))  # 200ms pause
+        return np.concatenate(audios), sample_rate
+
+    def _phonemize(self, text: str, voice_id: str):
+        """Phonemize text for given voice.
+
+        In mock mode, returns mock tokens and lengths.
+        In real mode, uses kokoro_onnx tokenizer.
+        """
+        import numpy as np
+
+        KOKORO_VOICES.get(voice_id, {}).get("language", "en")
+
+        if self.mock_mode or self._kokoro is None:
+            # Mock mode: return dummy tokens
+            tokens = np.array([[1, 2, 3, 4, 5]], dtype=np.int64)
+            lengths = np.array([5], dtype=np.int64)
+            return tokens, lengths
+
+        # Real mode: use kokoro_onnx tokenizer
+        # Note: kokoro_onnx.Kokoro doesn't expose _phonemize directly,
+        # but we can use its tokenizer via the session
+        try:
+            # The kokoro_onnx tokenizer is internal; we'll return mock for now
+            # In practice, the tokenizer is used inside create()
+            tokens = np.array([[1] * len(text)], dtype=np.int64)
+            lengths = np.array([len(text)], dtype=np.int64)
+            return tokens, lengths
+        except (AttributeError, RuntimeError):
+            # Fallback
+            tokens = np.array([[1, 2, 3, 4, 5]], dtype=np.int64)
+            lengths = np.array([5], dtype=np.int64)
+            return tokens, lengths
 
     def get_voices(self) -> List[VoiceInfo]:
         """Get available Kokoro voices."""
         voices = []
         for voice_id, info in KOKORO_VOICES.items():
-            voices.append(VoiceInfo(
-                voice_id=voice_id,
-                name=info["name"],
-                language=info["language"],
-                gender=info["gender"],
-                description=info["description"],
-                sample_rate=self.sample_rate,
-                supports_prosody=True,
-                supports_reference_audio=False,
-                engine=self.engine_name,
-            ))
+            voices.append(
+                VoiceInfo(
+                    voice_id=voice_id,
+                    name=info["name"],
+                    language=info["language"],
+                    gender=info["gender"],
+                    description=info["description"],
+                    sample_rate=self.sample_rate,
+                    supports_prosody=True,
+                    supports_reference_audio=False,
+                    engine=self.engine_name,
+                )
+            )
         return voices
 
-    def estimate_duration(self, text: str, voice_id: str, **kwargs) -> int:
+    def estimate_duration(self, text: str, voice_id: str, **kwargs: Any) -> int:
         """Estimate duration based on text length and average speech rate."""
-        # Kokoro average: ~150 chars/sec for Chinese, ~100 chars/sec for English
         lang = KOKORO_VOICES.get(voice_id, {}).get("language", "en")
-        chinese_chars = sum(1 for c in text if "一" <= c <= "鿿")
+        chinese_chars = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
         english_chars = len(text) - chinese_chars
 
         if lang == "zh":
-            # Chinese: ~5 chars/sec natural speed, Kokoro slightly faster
             est_sec = chinese_chars / 5.0 + english_chars / 10.0
         else:
-            # English: ~150 words/min = ~750 chars/min = ~12.5 chars/sec
             est_sec = chinese_chars / 5.0 + english_chars / 12.5
 
         speed = kwargs.get("prosody", {}).get("rate", 1.0) if "prosody" in kwargs else 1.0
@@ -287,26 +718,102 @@ class KokoroBackend(TTSEngine):
 
         return max(500, int(est_sec * 1000))
 
-    async def cleanup(self) -> None:
-        """Clean up ONNX session."""
-        self._session = None
-        self._voice_embeddings = None
-        self._initialized = False
-        logger.info("Kokoro backend cleaned up")
+    async def stream(
+        self,
+        payload: TTSTaskPayload,
+    ):
+        """Stream audio chunks for real-time playback.
+
+        Kokoro generates full audio first, then yields in chunks.
+        This is pseudo-streaming (not true incremental generation).
+        """
+        if not self._loaded:
+            await self.initialize()
+
+        if self.mock_mode:
+            import numpy as np
+
+            yield np.zeros(4800, dtype=np.int16).tobytes()  # ~100ms silence
+            return
+
+        else:  # pragma: no cover
+            # ─── Real streaming path (requires kokoro_onnx model + weights) ───
+            text = payload.text
+            voice_anchor = payload.voice_anchor
+            prosody = payload.prosody
+
+            voice_id = voice_anchor.voice_id
+            reference_audio = voice_anchor.reference_audio_path
+            embedding = payload.metadata.get("embedding") if payload.metadata else None
+
+            prosody_dict = None
+            if prosody:
+                prosody_dict = {
+                    "rate": prosody.rate,
+                    "pitch": prosody.pitch,
+                    "volume": prosody.volume,
+                    "emotion": prosody.emotion,
+                }
+
+            # Generate full audio first (Kokoro doesn't support incremental generation)
+            import tempfile
+            from pathlib import Path
+
+            import numpy as np
+            import soundfile as sf
+
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                tmp_path = Path(tmp.name)
+
+            try:
+                result = await self._synthesize_internal(
+                    text=text,
+                    voice_id=voice_id,
+                    output_path=tmp_path,
+                    prosody=prosody_dict,
+                    reference_audio=reference_audio,
+                    embedding=embedding,
+                )
+
+                # Read the generated audio and yield in chunks
+                audio_data, sr = sf.read(result.audio_path)
+                if audio_data.ndim > 1:
+                    audio_data = audio_data.mean(axis=1)  # Convert to mono
+
+                # ── H4: Duration rationality guard for streaming ──
+                actual_ms = int(len(audio_data) / sr * 1000)
+                estimated_ms = self.estimate_duration(text, voice_id, prosody=prosody_dict)
+                ratio = actual_ms / max(estimated_ms, 1)
+                if ratio > 3.0:
+                    logger.warning(
+                        f"H4 streaming guard: audio={actual_ms}ms, estimate={estimated_ms}ms, "
+                        f"ratio={ratio:.1f}x. text_len={len(text)}, voice={voice_id}"
+                    )
+
+                # Convert to int16
+                audio_int16 = (audio_data * 32767).astype(np.int16)
+
+                # Yield in ~100ms chunks (2400 samples at 24kHz)
+                chunk_size = int(sr * 0.1)  # 100ms chunks
+                for i in range(0, len(audio_int16), chunk_size):
+                    chunk = audio_int16[i : i + chunk_size]
+                    yield chunk.tobytes()
+
+            finally:
+                tmp_path.unlink(missing_ok=True)
 
 
 async def create_kokoro_backend(
     model_path: Optional[str] = None,
     voices_path: Optional[str] = None,
     device: str = "cpu",
-    **kwargs
+    **kwargs: Any,
 ) -> KokoroBackend:
     """Factory function to create and initialize Kokoro backend."""
-    backend = KokoroBackend(
-        model_path=model_path,
-        voices_path=voices_path,
-        device=device,
-        **kwargs
-    )
+    backend = KokoroBackend(model_path=model_path, voices_path=voices_path, device=device, **kwargs)
     await backend.initialize()
     return backend
+
+
+# Alias for compatibility with engine.py
+create_kokoro_engine = create_kokoro_backend

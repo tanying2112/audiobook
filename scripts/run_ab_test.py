@@ -18,13 +18,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.audiobook_studio.feedback.ab_test import (
-    run_ab_test,
-    build_ab_samples,
-    blind_evaluate,
     ABTestReport,
     _score_output,
+    blind_evaluate,
+    build_ab_samples,
+    run_ab_test,
 )
-from src.audiobook_studio.feedback.promotion_gate import _load_golden_dataset
+from src.audiobook_studio.feedback.promotion_gate import _load_golden_examples as _load_golden_dataset
 
 logging.basicConfig(
     level=logging.INFO,
@@ -35,12 +35,27 @@ logger = logging.getLogger(__name__)
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run A/B test for prompt versions")
-    parser.add_argument("--stage", type=str, required=True, help="Pipeline stage name (e.g., edit_for_tts, quality_judge, annotate_paragraph)")
+    parser.add_argument(
+        "--stage",
+        type=str,
+        required=True,
+        help="Pipeline stage name (e.g., edit_for_tts, quality_judge, annotate_paragraph)",
+    )
     parser.add_argument("--version-a", type=int, help="Control version number (e.g., 1)")
-    parser.add_argument("--version-b", type=int, help="Treatment version number (e.g., 2)")
-    parser.add_argument("--samples", type=int, default=10, help="Number of samples to test (default: 10)")
+    parser.add_argument("--version-b", type=int, help="Treatment version number (e.g. 2)")
+    parser.add_argument(
+        "--samples",
+        type=int,
+        default=10,
+        help="Number of samples to test (default: 10)",
+    )
     parser.add_argument("--golden-dir", type=str, help="Path to golden dataset directory")
-    parser.add_argument("--significance", type=float, default=0.05, help="Significance level (default: 0.05)")
+    parser.add_argument(
+        "--significance",
+        type=float,
+        default=0.05,
+        help="Significance level (default: 0.05)",
+    )
     parser.add_argument("--output", type=str, help="Output report JSON file path")
     parser.add_argument("--human-ratings", type=str, help="Path to human ratings JSON file")
     return parser.parse_args()
@@ -65,9 +80,15 @@ def create_synthetic_samples(stage: str, version_a: int, version_b: int, num_sam
             stage=stage,
             input_data={"text": f"Test paragraph {i+1}"},
             # Version A: shorter, less detailed output
-            output_a={"edited_text": f"Version A output {i+1}", "confidence": 0.7 if stage == "edit_for_tts" else 0.7},
+            output_a={
+                "edited_text": f"Version A output {i+1}",
+                "confidence": 0.7 if stage == "edit_for_tts" else 0.7,
+            },
             # Version B: longer, more detailed output (simulating improvement)
-            output_b={"edited_text": f"Version B improved output {i+1} with more detail and better quality", "confidence": 0.85 if stage == "edit_for_tts" else 0.85},
+            output_b={
+                "edited_text": f"Version B improved output {i+1} with more detail and better quality",
+                "confidence": 0.85 if stage == "edit_for_tts" else 0.85,
+            },
             version_a=version_a,
             version_b=version_b,
         )
@@ -95,7 +116,7 @@ def main():
         else:
             # Limit samples
             if len(golden_examples) > args.samples:
-                golden_examples = golden_examples[:args.samples]
+                golden_examples = golden_examples[: args.samples]
             samples = build_ab_samples(args.stage, golden_examples, version_a, version_b)
     else:
         logger.info(f"No golden dataset provided, using {args.samples} synthetic samples")

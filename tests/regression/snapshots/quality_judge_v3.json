@@ -1,0 +1,43 @@
+{
+  "golden_dataset": {
+    "name": "黄金数据集通过率",
+    "passed": false,
+    "score": 0.0,
+    "threshold": 0.95,
+    "details": "Prompt v3 not found for stage 'quality_judge'"
+  },
+  "quality_improvement": {
+    "name": "质量 ≥ 旧版 102%",
+    "passed": false,
+    "score": 0.0,
+    "threshold": 1.02,
+    "details": "无法加载 prompt: old=v2 new=v3"
+  },
+  "promotion": {
+    "stage": "quality_judge",
+    "old_version": 2,
+    "new_version": 3,
+    "passed": false,
+    "summary": "Prompt v3 not found for stage 'quality_judge'",
+    "gates": [],
+    "pass_rate": 0.0
+  },
+  "outputs": [
+    {
+      "error": "Prompt version 3 not found for stage quality_check"
+    },
+    {
+      "error": "2 validation errors for QualityJudgment\nissues.0\n  Input should be 'wrong_speaker', 'emotion_mismatch', 'silent_segment', 'stuttering', 'truncation', 'sensitive_content', 'wrong_speed' or 'wrong_pitch' [type=literal_error, input_value='low_clarity', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/literal_error\nfix_suggestions.0\n  Input should be a valid dictionary or instance of FixSuggestion [type=model_type, input_value='improve speaker clarity', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.13/v/model_type"
+    },
+    {
+      "error": "Prompt version 3 not found for stage quality_check"
+    }
+  ],
+  "format_compliance": {
+    "name": "格式合规率",
+    "passed": false,
+    "score": 0.33333333333333337,
+    "threshold": 0.99,
+    "details": "发现问题 (2): 存在连续超过 3 个空行; 文件末尾多余空行"
+  }
+}

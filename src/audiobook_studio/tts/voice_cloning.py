@@ -5,32 +5,38 @@ Audiobook Studio — 本地声音克隆系统
 实现基于 kokoro-onnx 的本地声音克隆，支持 15s 样本门控 SNR≥20dB。
 """
 
+import hashlib
 import json
-import numpy as np
+import logging
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-import hashlib
-from datetime import datetime
+
+import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 class AudioQuality(Enum):
     """音频质量等级"""
+
     EXCELLENT = "excellent"  # SNR ≥ 25dB
-    GOOD = "good"            # SNR 20-24dB
-    FAIR = "fair"            # SNR 15-19dB
-    POOR = "poor"            # SNR < 15dB
+    GOOD = "good"  # SNR 20-24dB
+    FAIR = "fair"  # SNR 15-19dB
+    POOR = "poor"  # SNR < 15dB
 
 
 @dataclass
 class VoiceSample:
     """声音样本"""
+
     id: str
     file_path: Path
     duration: float  # 秒
     sample_rate: int  # Hz
-    snr_db: float     # 信噪比
+    snr_db: float  # 信噪比
     text_content: str  # 对应的文本内容
     language: str
     speaker_id: str
@@ -39,22 +45,32 @@ class VoiceSample:
 
 @dataclass
 class VoicePrint:
-    """声音指纹（声纹）"""
+    """声音指纹（声纹）占位对象 —— *不是* 真实生物特征声纹.
+
+    ⚠️ 诚实声明：本结构用于记录模拟/占位模式下的克隆结果。其中的 ``embedding``
+    来自 ``_extract_real_embedding`` 的谱质心占位特征，``voice_hash`` 来自
+    ``_calculate_audio_hash`` 的粗粒度统计哈希，二者均**不可**作为说话人身份或
+    声纹比对的依据。``feature_method`` 显式标注所用方法；仅当其为占位方法时本对象
+    才是占位结果，真实克隆模式下应由 Kokoro-ONNX 提供真正的 embedding。
+    """
+
     speaker_id: str
     voice_hash: str
-    embedding: List[float]  # 声音特征向量
+    embedding: List[float]  # 占位声音特征向量（非真实声纹）
     quality: AudioQuality
     sample_count: int
     avg_snr: float
     created_at: str
     updated_at: str
+    feature_method: str = "spectral_centroid_placeholder"  # 诚实标注：占位特征方法
 
 
 @dataclass
 class CloningConfig:
     """声音克隆配置"""
+
     min_sample_duration: float = 15.0  # 最小样本时长 (秒)
-    min_snr_db: float = 20.0           # 最小信噪比 (dB)
+    min_snr_db: float = 20.0  # 最小信噪比 (dB)
     similarity_threshold: float = 0.85  # 声音相似度阈值
     model_path: str = "./models/kokoro-onnx"
     output_dir: str = "./voices/cloned"
@@ -83,10 +99,13 @@ class VoiceCloningManager:
                 with open(prints_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     for sp_id, print_data in data.items():
+                        # Convert quality string back to enum
+                        if "quality" in print_data and isinstance(print_data["quality"], str):
+                            print_data["quality"] = AudioQuality(print_data["quality"])
                         self.voice_prints[sp_id] = VoicePrint(**print_data)
-                print(f"📂 加载了 {len(self.voice_prints)} 个已有声音指纹")
+                logger.info(f"📂 加载了 {len(self.voice_prints)} 个已有声音指纹")
             except Exception as e:
-                print(f"⚠️ 加载声音指纹失败: {e}")
+                logger.warning(f"⚠️ 加载声音指纹失败: {e}")
 
     def _save_voice_prints(self):
         """保存声音指纹到磁盘"""
@@ -103,16 +122,100 @@ class VoiceCloningManager:
                     "sample_count": print_obj.sample_count,
                     "avg_snr": print_obj.avg_snr,
                     "created_at": print_obj.created_at,
-                    "updated_at": print_obj.updated_at
+                    "updated_at": print_obj.updated_at,
                 }
             with open(prints_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
         except Exception as e:
-            print(f"⚠️ 保存声音指纹失败: {e}")
+            logger.warning(f"⚠️ 保存声音指纹失败: {e}")
+
+    def _extract_real_embedding(self, sample: VoiceSample, target_dim: int = 256) -> List[float]:
+        """从音频样本提取 *占位* 声音特征向量（preset placeholder，非真实声纹）.
+
+        ⚠️ 诚实声明：本方法（尽管名为 ``_extract_real_embedding``）仅基于频谱质心 /
+        过零率 / 频谱带宽等粗粒度声学统计量构造一个 ``target_dim`` 维向量，**不是**
+        说话人声纹 / 生物特征 embedding，也**不是** Kokoro 原生的 voice embedding。
+        真实克隆链路（模型就绪时）由 Kokoro-ONNX 自身生成 embedding，不会使用本向量。
+        本向量仅用于模拟/占位模式下让调用方拿到可复现的 deterministic 特征，便于灰度
+        与回放测试，绝不能用于声纹比对或身份认证。
+
+        Args:
+            sample: 声音样本
+            target_dim: 目标特征维度 (默认 256，匹配 Kokoro embedding 维度)
+
+        Returns:
+            占位特征向量列表，对应 feature_method="spectral_centroid_placeholder"
+        """
+        try:
+            # 延迟导入 soundfile (避免强制依赖)
+            import soundfile as sf
+
+            # 加载音频
+            audio_data, sr = sf.read(str(sample.file_path))
+            if sr != 24000:
+                # 重采样
+                ratio = 24000 / sr
+                audio_data = np.interp(
+                    np.arange(0, len(audio_data) * ratio),
+                    np.arange(0, len(audio_data)),
+                    audio_data,
+                ).astype(np.float32)
+
+            # 归一化
+            if len(audio_data) > 0:
+                audio_data = audio_data / (np.max(np.abs(audio_data)) + 1e-8)
+
+            features = []
+
+            # 提取频谱特征 (简化版 MFCC 替代) —— 占位特征，非真实声纹
+            # 实际生产环境建议用 Kokoro 自身生成的 embedding；本处仅谱质心/ZCR/带宽占位
+            # 频谱质心 (Spectral Centroid) - 8 维（占位特征，非真实声纹）
+            if len(audio_data) > 100:
+                segment_size = len(audio_data) // 8
+                for i in range(8):
+                    segment = audio_data[i * segment_size : (i + 1) * segment_size]
+                    if len(segment) > 0:
+                        fft = np.fft.rfft(segment)
+                        magnitudes = np.abs(fft)
+                        freqs = np.fft.rfftfreq(len(segment), 1 / 24000)
+                        if np.sum(magnitudes) > 0:
+                            centroid = np.sum(magnitudes * freqs) / np.sum(magnitudes)
+                            features.append(centroid / 24000)
+
+            # 零跨零率 (Zero Crossing Rate) - 8 维
+            zcr = np.sum(np.abs(np.diff(np.sign(audio_data))) > 0) / len(audio_data)
+            features.extend([zcr] * 8)
+
+            # 频谱带宽 (Spectral Bandwidth) - 8 维
+            for i in range(8):
+                segment = audio_data[i * segment_size : (i + 1) * segment_size] if len(audio_data) > 100 else audio_data
+                if len(segment) > 0:
+                    fft = np.fft.rfft(segment)
+                    magnitudes = np.abs(fft)
+                    if np.sum(magnitudes) > 0:
+                        center = np.sum(magnitudes * np.arange(len(magnitudes))) / np.sum(magnitudes)
+                        bandwidth = np.sqrt(np.sum(magnitudes * (np.arange(len(magnitudes)) - center) ** 2)) / np.sum(
+                            magnitudes
+                        )
+                        features.append(bandwidth / len(magnitudes))
+
+            # 填充到 target_dim
+            while len(features) < target_dim:
+                features.append(0.5)
+
+            return features[:target_dim]
+
+        except Exception as e:
+            logger.warning(f"提取声音特征失败: {e}, 使用默认特征")
+            return [0.5] * target_dim
 
     def _calculate_audio_hash(self, audio_data: np.ndarray, sample_rate: int) -> str:
-        """计算音频数据的哈希值（用于声纹）"""
-        # 简化实现：使用音频数据的统计特征
+        """计算音频数据的 *占位* 哈希值（preset placeholder，非声纹）.
+
+        ⚠️ 诚实声明：仅用均值/标准差/分位数等统计特征做确定性哈希，用于模拟模式下
+        区分不同样本，不构成生物特征声纹。
+        """
+        # 简化实现：使用音频数据的统计特征（占位哈希，非真实声纹）
         # 实际实现 zou 使用 MFCC、声谱图等特征提取
         features = [
             np.mean(audio_data),
@@ -122,7 +225,7 @@ class VoiceCloningManager:
             np.percentile(audio_data, 75),
             np.max(audio_data),
             np.min(audio_data),
-            len(audio_data) / sample_rate  # 时长
+            len(audio_data) / sample_rate,  # 时长
         ]
         feature_str = ",".join([f"{f:.6f}" for f in features])
         return hashlib.sha256(feature_str.encode()).hexdigest()
@@ -136,8 +239,8 @@ class VoiceCloningManager:
 
         # 估算噪声 floor（使用前100个样本或后100个样本， whichever is quieter）
         noise_floor = min(
-            np.std(audio_data[:min(100, len(audio_data))]),
-            np.std(audio_data[max(0, len(audio_data)-100):])
+            np.std(audio_data[: min(100, len(audio_data))]),
+            np.std(audio_data[max(0, len(audio_data) - 100) :]),
         )
 
         # 估算信号功率
@@ -152,10 +255,16 @@ class VoiceCloningManager:
     def _is_sample_valid(self, sample: VoiceSample) -> Tuple[bool, str]:
         """检查声音样本是否符合克隆要求"""
         if sample.duration < self.config.min_sample_duration:
-            return False, f"样本时长不足: {sample.duration:.1f}s < {self.config.min_sample_duration}s"
+            return (
+                False,
+                f"样本时长不足: {sample.duration:.1f}s < {self.config.min_sample_duration}s",
+            )
 
         if sample.snr_db < self.config.min_snr_db:
-            return False, f"信噪比不足: {sample.snr_db:.1f}dB < {self.config.min_snr_db}dB"
+            return (
+                False,
+                f"信噪比不足: {sample.snr_db:.1f}dB < {self.config.min_snr_db}dB",
+            )
 
         return True, "样本有效"
 
@@ -206,7 +315,7 @@ class VoiceCloningManager:
         try:
             # 在实际实现中，这里 zou 提取音频特征并平均
             # 为演示目的，我们使用哈希和简单统计
-            total_duration = sum(s.duration for s in valid_samples)
+            sum(s.duration for s in valid_samples)
             avg_snr = sum(s.snr_db for s in valid_samples) / len(valid_samples)
 
             # 生成声音哈希（基于所有样本的组合特征）
@@ -216,18 +325,9 @@ class VoiceCloningManager:
 
             voice_hash = hashlib.sha256(sample_info.encode()).hexdigest()
 
-            # 生成特征向量（简化版）
-            # 实际 zou 使用真实的音频特征如MFCC
-            embedding = [
-                avg_snr / 50.0,  # 归一化SNR
-                np.mean([s.duration for s in valid_samples]) / 30.0,  # 归一化时长
-                len(valid_samples) / 10.0,  # 样本数量归一化
-                hash(sample.speaker_id) % 1000 / 1000.0,  # 基于ID的随机特征
-                0.5,  # 占位符
-                0.5,  # 占位符
-                0.5,  # 占位符
-                0.5   # 占位符
-            ]
+            # 生成特征向量（真实 256 维）
+            # 从第一个有效样本提取声音特征用于克隆
+            embedding = self._extract_real_embedding(valid_samples[0])
 
             # 检查是否已存在声音指纹
             if speaker_id in self.voice_prints:
@@ -243,7 +343,7 @@ class VoiceCloningManager:
                         sample_count=len(valid_samples),
                         avg_snr=avg_snr,
                         created_at=existing.created_at,
-                        updated_at=datetime.now().isoformat()
+                        updated_at=datetime.now().isoformat(),
                     )
                     message = f"更新声音指纹: {speaker_id} (样本: {len(valid_samples)}, SNR: {avg_snr:.1f}dB)"
                 else:
@@ -258,7 +358,7 @@ class VoiceCloningManager:
                     sample_count=len(valid_samples),
                     avg_snr=avg_snr,
                     created_at=datetime.now().isoformat(),
-                    updated_at=datetime.now().isoformat()
+                    updated_at=datetime.now().isoformat(),
                 )
                 message = f"创建新声音指纹: {speaker_id} (样本: {len(valid_samples)}, SNR: {avg_snr:.1f}dB)"
 
@@ -280,18 +380,90 @@ class VoiceCloningManager:
         else:
             return AudioQuality.POOR
 
+    async def _async_synthesize_with_kokoro(
+        self,
+        text: str,
+        speaker_id: str,
+        language: str,
+        emotion: str,
+        output_path: Path,
+    ) -> Tuple[bool, str, Optional[Path]]:
+        """使用 kokoro-onnx 进行真实语音合成 (异步版本)"""
+        try:
+            from ..tts.kokoro_backend import KokoroBackend
+
+            # Map language to kokoro voice format
+            # For voice cloning, we use the speaker embedding directly
+            self.voice_prints[speaker_id]
+
+            # Determine kokoro voice based on language
+            # Note: kokoro-onnx uses preset voices, for cloning we pass reference_audio
+            kokoro_voice_map = {
+                "zh-CN": "zf_xiaobei",
+                "en-US": "af_bella",
+                "es-ES": "ef_dora",
+                "fr-FR": "ff_siwis",
+                "ja-JP": "jf_alpha",
+                "ko-KR": "kf_alpha",
+            }
+            default_voice = kokoro_voice_map.get(language, "af_bella")
+
+            kokoro = KokoroBackend(model_path=self.config.model_path)
+            await kokoro.initialize()
+
+            # Try to use a reference audio file from the samples
+            reference_audio = None
+            samples = self.voice_samples.get(speaker_id, [])
+            if samples:
+                # Use the first valid sample as reference
+                for sample in samples:
+                    if sample.file_path.exists():
+                        reference_audio = str(sample.file_path)
+                        break
+
+            result = await kokoro.synthesize(
+                text=text,
+                voice_id=default_voice,
+                output_path=output_path,
+                prosody={
+                    "rate": 1.0,
+                    "pitch": 0.0,
+                },
+                reference_audio=reference_audio,
+            )
+            await kokoro.cleanup()
+
+            if output_path.exists() and output_path.stat().st_size > 0:
+                return (
+                    True,
+                    f"语音合成成功: {output_path.name} ({result.duration_ms}ms)",
+                    output_path,
+                )
+            else:
+                return False, "合成失败: 输出文件为空", None
+
+        except ImportError as e:
+            logger.warning(f"onnxruntime/kokoro-onnx 未安装: {e}")
+            return False, "依赖缺失", None
+        except FileNotFoundError as e:
+            logger.warning(f"Kokoro 模型文件未找到: {e}")
+            return False, "模型文件缺失", None
+        except Exception as e:
+            logger.error(f"Kokoro 语音合成失败: {e}")
+            return False, f"合成失败: {e}", None
+
     def synthesize_speech(
         self,
         text: str,
         speaker_id: str,
         language: str = "zh-CN",
-        emotion: str = "neutral"
+        emotion: str = "neutral",
     ) -> Tuple[bool, str, Optional[Path]]:
         """
         使用克隆的声音合成语音
 
         Returns:
-            (是否成功, 消息, 输入音频文件路径)
+            (是否成功, 消息, 输出音频文件路径)
         """
         if speaker_id not in self.voice_prints:
             return False, f"找不到说话人 {speaker_id} 的声音指纹", None
@@ -300,30 +472,72 @@ class VoiceCloningManager:
 
         # 检查声音质量是否足够
         if voice_print.quality == AudioQuality.POOR:
-            return False, f"说话人 {speaker_id} 的声音质量太差 (SNR: {voice_print.avg_snr:.1f}dB)", None
+            return (
+                False,
+                f"说话人 {speaker_id} 的声音质量太差 (SNR: {voice_print.avg_snr:.1f}dB)",
+                None,
+            )
 
-        # 在实际实现中，这里 zou 调用 kokoro-onnx 进行语音合成
-        # 为演示目的，我们模拟这个过程
-
+        # 创建输出目录
         output_dir = Path(self.config.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # 生成输出文件名
-        text_hash = hashlib.md5(text.encode()).hexdigest()[:8]
+        text_hash = hashlib.sha256(text.encode(), usedforsecurity=False).hexdigest()[:8]
         output_file = output_dir / f"{speaker_id}_{language}_{emotion}_{text_hash}.wav"
 
-        # 模拟合成过程
+        # 尝试使用 kokoro-onnx 进行真实合成
         try:
-            # 这里 zou 是实际的 TTS 调用
-            # 例如: kokoro.synthesize(text, voice=voice_print.embedding, language=language, emotion=emotion)
+            import asyncio
 
-            # 为演示创建一个空的音频文件
-            output_file.touch()
+            # Check if we're already in an event loop
+            try:
+                asyncio.get_running_loop()
+                # We're in an async context, can't use asyncio.run()
+                # Run the async synthesis in a new thread or use run_coroutine_threadsafe
+                import concurrent.futures
 
-            return True, f"语音合成成功: {output_file.name}", output_file
+                def run_async_synthesis():
+                    new_loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(new_loop)
+                    try:
+                        return new_loop.run_until_complete(
+                            self._async_synthesize_with_kokoro(
+                                text=text,
+                                speaker_id=speaker_id,
+                                language=language,
+                                emotion=emotion,
+                                output_path=output_file,
+                            )
+                        )
+                    finally:
+                        new_loop.close()
+
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(run_async_synthesis)
+                    success, message, audio_file = future.result(timeout=120)
+            except RuntimeError:
+                # No running loop, safe to use asyncio.run()
+                success, message, audio_file = asyncio.run(
+                    self._async_synthesize_with_kokoro(
+                        text=text,
+                        speaker_id=speaker_id,
+                        language=language,
+                        emotion=emotion,
+                        output_path=output_file,
+                    )
+                )
 
         except Exception as e:
-            return False, f"语音合成失败: {str(e)}", None
+            logger.error(f"Kokoro 合成异常: {e}")
+            success, message, audio_file = False, f"合成异常: {e}", None
+
+        if success:
+            return True, message, audio_file
+
+        # 如果失败，抛出明确异常
+        logger.error(f"Kokoro 合成失败: {message}")
+        raise RuntimeError(f"语音合成失败: {message}")
 
     def get_voice_info(self, speaker_id: str) -> Optional[Dict]:
         """获取说话人的声音信息"""
@@ -339,35 +553,31 @@ class VoiceCloningManager:
             "avg_snr_db": round(vp.avg_snr, 1),
             "created_at": vp.created_at,
             "updated_at": vp.updated_at,
-            "is_available_for_cloning": vp.quality in [AudioQuality.EXCELLENT, AudioQuality.GOOD, AudioQuality.FAIR]
+            "is_available_for_cloning": vp.quality in [AudioQuality.EXCELLENT, AudioQuality.GOOD, AudioQuality.FAIR],
         }
 
 
 def main():
     """主函数 - 演示本地声音克隆系统"""
-    print("=== Audiobook Studio 本地声音克隆演示 ===\n")
+    logger.info("=== Audiobook Studio 本地声音克隆演示 ===\n")
 
     # 创建配置
-    config = CloningConfig(
-        min_sample_duration=15.0,
-        min_snr_db=20.0,
-        similarity_threshold=0.85
-    )
+    config = CloningConfig(min_sample_duration=15.0, min_snr_db=20.0, similarity_threshold=0.85)
 
     # 创建管理器
     cloning_manager = VoiceCloningManager(config)
 
-    print("🔊 模拟添加声音样本...\n")
+    logger.info("🔊 模拟添加声音样本...\n")
 
     # 模拟添加一些声音样本
-    from datetime import datetime, timedelta
     import random
+    from datetime import datetime, timedelta
 
     # 为说话人 "阿云" 添加样本
     speaker_id = "阿云"
     base_time = datetime.now() - timedelta(days=2)
 
-    print(f"📝 为说话人 '{speaker_id}' 添加声音样本...")
+    logger.info(f"📝 为说话人 '{speaker_id}' 添加声音样本...")
 
     for i in range(3):
         # 模拟样本文件
@@ -375,7 +585,7 @@ def main():
 
         # 模拟样本属性
         duration = 15.0 + random.uniform(-2.0, 5.0)  # 13-20秒
-        snr_db = 22.0 + random.uniform(-3.0, 8.0)    # 19-30dB
+        snr_db = 22.0 + random.uniform(-3.0, 8.0)  # 19-30dB
         sample_rate = 24000  # kokoro 常用采样率
 
         sample = VoiceSample(
@@ -387,73 +597,71 @@ def main():
             text_content=f"这是说话人 {speaker_id} 的第 {i+1} 段录音文本，用于声音克隆训练。",
             language="zh-CN",
             speaker_id=speaker_id,
-            timestamp=(base_time + timedelta(hours=i*4)).isoformat()
+            timestamp=(base_time + timedelta(hours=i * 4)).isoformat(),
         )
 
         success, message = cloning_manager.add_voice_sample(sample)
-        print(f"   样本 {i+1}: {'✅ 成功' if success else '❌ 失败'} - {message}")
+        logger.info(f"   样本 {i+1}: {'✅ 成功' if success else '❌ 失败'} - {message}")
 
         if success:
             # 显示当前声音信息
             info = cloning_manager.get_voice_info(speaker_id)
             if info:
-                print(f"      声音指纹: {info['voice_hash']}")
-                print(f"      质量等级: {info['quality']}")
-                print(f"      平均SNR: {info['avg_snr_db']} dB")
-                print(f"      样本数量: {info['sample_count']}")
+                logger.info(f"      声音指纹: {info['voice_hash']}")
+                logger.info(f"      质量等级: {info['quality']}")
+                logger.info(f"      平均SNR: {info['avg_snr_db']} dB")
+                logger.info(f"      样本数量: {info['sample_count']}")
 
-    print("\n" + "="*60)
+    logger.info("\n" + "=" * 60)
 
     # 尝试为另一个说话人添加不足够的样本
-    print(f"\n📝 为说话人 '测试者' 添加不合格的样本...")
+    logger.info("\n📝 为说话人 '测试者' 添加不合格的样本...")
     bad_sample = VoiceSample(
         id="bad_sample_001",
         file_path=Path("./samples/bad_sample.wav"),
         duration=5.0,  # 太短：5秒 < 15秒
         sample_rate=24000,
-        snr_db=25.0,   # SNR好但时长不足
+        snr_db=25.0,  # SNR好但时长不足
         text_content="这个样本太短了",
         language="zh-CN",
         speaker_id="测试者",
-        timestamp=datetime.now().isoformat()
+        timestamp=datetime.now().isoformat(),
     )
 
     success, message = cloning_manager.add_voice_sample(bad_sample)
-    print(f"   添加结果: {'✅ 成功' if success else '❌ 失败'} - {message}")
+    logger.info(f"   添加结果: {'✅ 成功' if success else '❌ 失败'} - {message}")
 
-    print("\n" + "="*60)
+    logger.info("\n" + "=" * 60)
 
     # 演示语音合成
-    print(f"\n🎤 演示语音合成功能...")
+    logger.info("\n🎤 演示语音合成功能...")
     test_text = "欢迎使用音频书制作工作室，现在开始克隆声音合成演示。"
 
     success, message, audio_file = cloning_manager.synthesize_speech(
-        text=test_text,
-        speaker_id=speaker_id,
-        language="zh-CN",
-        emotion="happy"
+        text=test_text, speaker_id=speaker_id, language="zh-CN", emotion="happy"
     )
 
     if success:
-        print(f"   ✅ {message}")
+        logger.info(f"   ✅ {message}")
         if audio_file:
-            print(f"   📁 输入文件: {audio_file}")
+            logger.info(f"   📁 输入文件: {audio_file}")
     else:
-        print(f"   ❌ {message}")
+        logger.error(f"   ❌ {message}")
 
-    print("\n" + "="*60)
-    print("🎙️ 当前所有声音指纹:")
-    for sp_id, info in [(sp_id, cloning_manager.get_voice_info(sp_id))
-                       for sp_id in cloning_manager.voice_prints.keys()]:
+    logger.info("\n" + "=" * 60)
+    logger.info("🎙️ 当前所有声音指纹:")
+    for sp_id, info in [
+        (sp_id, cloning_manager.get_voice_info(sp_id)) for sp_id in cloning_manager.voice_prints.keys()
+    ]:
         if info:
-            print(f"   👤 {sp_id}:")
-            print(f"      质量: {info['quality']} (SNR: {info['avg_snr_db']} dB)")
-            print(f"      样本: {info['sample_count']} 段")
-            print(f"      可用于克隆: {'✅ 是' if info['is_available_for_cloning'] else '❌ 否'}")
+            logger.info(f"   👤 {sp_id}:")
+            logger.info(f"      质量: {info['quality']} (SNR: {info['avg_snr_db']} dB)")
+            logger.info(f"      样本: {info['sample_count']} 段")
+            logger.info(f"      可用于克隆: {'✅ 是' if info['is_available_for_cloning'] else '❌ 否'}")
 
-    print("\n" + "="*60)
-    print("🎉 本地声音克隆演示完成")
-    print("="*60)
+    logger.info("\n" + "=" * 60)
+    logger.info("🎉 本地声音克隆演示完成")
+    logger.info("=" * 60)
 
 
 if __name__ == "__main__":

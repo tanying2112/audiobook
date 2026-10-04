@@ -8,16 +8,9 @@ Tests match the ACTUAL API from src/audiobook_studio/schemas/tts_routing.py:
 import pytest
 from pydantic import ValidationError
 
-from src.audiobook_studio.schemas.tts_routing import (
-    TtsRoutingInput,
-    TtsRoutingDecision,
-)
+from src.audiobook_studio.schemas.book import BookMeta, CharacterVoiceBinding, EmotionSnapshot
 from src.audiobook_studio.schemas.paragraph import ParagraphAnnotation
-from src.audiobook_studio.schemas.book import (
-    CharacterVoiceBinding,
-    BookMeta,
-    EmotionSnapshot,
-)
+from src.audiobook_studio.schemas.tts_routing import TtsRoutingDecision, TtsRoutingInput
 
 
 def create_valid_paragraph_annotation(**overrides):
@@ -335,7 +328,10 @@ class TestTtsRoutingDecision:
 
     def test_engine_choice_validation(self):
         """Test engine_choice must be one of allowed values."""
-        with pytest.raises(ValidationError, match="Input should be 'kokoro', 'edge', 'azure', 'gcp' or 'human_clone'"):
+        with pytest.raises(
+            ValidationError,
+            match="Input should be 'kokoro', 'edge', 'azure', 'gcp', 'human_clone', 'cosyvoice_stream', 'seed_tts_stream', 'melotts_stream', 'xtts_v2', 'openvoice_v2', 'cosyvoice_clone' or 'voxcpm2'",
+        ):
             TtsRoutingDecision(
                 segment_id="test_ch1_p0",
                 engine_choice="invalid_engine",
@@ -346,7 +342,10 @@ class TestTtsRoutingDecision:
 
     def test_fallback_engine_validation(self):
         """Test fallback_engine must be one of allowed values."""
-        with pytest.raises(ValidationError, match="Input should be 'kokoro', 'edge', 'azure', 'gcp' or 'human_clone'"):
+        with pytest.raises(
+            ValidationError,
+            match="Input should be 'kokoro', 'edge', 'azure', 'gcp', 'human_clone', 'cosyvoice_stream', 'seed_tts_stream', 'melotts_stream', 'xtts_v2', 'openvoice_v2', 'cosyvoice_clone' or 'voxcpm2'",
+        ):
             TtsRoutingDecision(
                 segment_id="test_ch1_p0",
                 engine_choice="kokoro",
@@ -563,7 +562,7 @@ class TestTtsRoutingSchemasIntegration:
         )
 
         # Should still allow decision but with warning
-        decision = TtsRoutingDecision(
+        TtsRoutingDecision(
             segment_id=f"{inp.book_id}_ch{inp.chapter_index}_p{inp.paragraph_index}",
             engine_choice="kokoro",
             voice_id="kokoro_narrator",
@@ -648,10 +647,7 @@ class TestTtsRoutingSchemasIntegration:
         )
 
         # Find the character in voice map
-        speaker_binding = next(
-            (b for b in character_voice_map if b.canonical_name == "角色A"),
-            None
-        )
+        speaker_binding = next((b for b in character_voice_map if b.canonical_name == "角色A"), None)
         assert speaker_binding is not None
 
         decision = TtsRoutingDecision(

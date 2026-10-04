@@ -7,21 +7,24 @@ Provides:
 - Sync validation for CI/CD
 """
 
-import inspect
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Type
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type
 
 from pydantic import BaseModel
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import DeclarativeBase
+
+if TYPE_CHECKING:
+    pass
 
 logger = logging.getLogger(__name__)
 
 
 class DriftType(str, Enum):
     """Types of schema drift."""
+
     FIELD_ADDED = "field_added"
     FIELD_REMOVED = "field_removed"
     TYPE_CHANGED = "type_changed"
@@ -114,16 +117,16 @@ class SchemaValidator:
         mapper = sa_inspect(model)
 
         for attr in mapper.attrs:
-            if hasattr(attr, 'columns'):
+            if hasattr(attr, "columns"):
                 for col in attr.columns:
                     col_type = type(col.type).__name__
                     columns[col.name] = {
                         "type": col_type,
-                        "python_type": col.type.python_type.__name__ if hasattr(col.type, 'python_type') else "Any",
+                        "python_type": (col.type.python_type.__name__ if hasattr(col.type, "python_type") else "Any"),
                         "nullable": col.nullable,
                         "primary_key": col.primary_key,
                         "default": col.default,
-                        "length": getattr(col.type, 'length', None),
+                        "length": getattr(col.type, "length", None),
                     }
 
         return columns
@@ -139,29 +142,32 @@ class SchemaValidator:
             fields[field_name] = {
                 "type": self._type_to_string(field_type),
                 "nullable": self._is_optional(field_type),
-                "default": field_info.default if field_info.default is not ... else None,
+                "default": (field_info.default if field_info.default is not ... else None),
             }
 
         return fields
 
     def _type_to_string(self, type_hint: Any) -> str:
         """Convert Python type hint to string representation."""
-        if hasattr(type_hint, '__origin__'):
+        if hasattr(type_hint, "__origin__"):
             origin = type_hint.__origin__
             if origin is list:
                 args = type_hint.__args__
                 return f"List[{self._type_to_string(args[0])}]" if args else "List"
             elif origin is dict:
                 return "dict"
-            elif origin is Optional:
-                args = type_hint.__args__
-                return self._type_to_string(args[0]) if args else "Any"
+        # Optional[X] / Union[X, None] — unwrap to the non-None member.
+        # (origin is "Optional" never matches at runtime; Optional is typing.Union.)
+        if self._is_optional(type_hint):
+            args = type_hint.__args__
+            return self._type_to_string(args[0] if args else Any)
         return self.PYDANTIC_TYPE_MAP.get(type_hint, str(type_hint))
 
     def _is_optional(self, type_hint: Any) -> bool:
         """Check if type hint is Optional."""
-        if hasattr(type_hint, '__origin__'):
+        if hasattr(type_hint, "__origin__"):
             from typing import Union
+
             if type_hint.__origin__ is Union:
                 args = type_hint.__args__
                 return type(None) in args
@@ -185,24 +191,28 @@ class SchemaValidator:
         # Check for fields in ORM but not in Schema
         for field_name in orm_field_names - schema_field_names:
             # Skip internal SQLAlchemy fields
-            if field_name.startswith('_'):
+            if field_name.startswith("_"):
                 continue
-            drifts.append(FieldDiff(
-                drift_type=DriftType.FIELD_REMOVED,
-                field_name=field_name,
-                orm_type=orm_cols[field_name]["type"],
-                message=f"Field '{field_name}' exists in ORM {model_name} but not in Schema {schema_name}",
-            ))
+            drifts.append(
+                FieldDiff(
+                    drift_type=DriftType.FIELD_REMOVED,
+                    field_name=field_name,
+                    orm_type=orm_cols[field_name]["type"],
+                    message=f"Field '{field_name}' exists in ORM {model_name} but not in Schema {schema_name}",
+                )
+            )
             migration_hints.append(f"Add field '{field_name}' to {schema_name} schema")
 
         # Check for fields in Schema but not in ORM
         for field_name in schema_field_names - orm_field_names:
-            drifts.append(FieldDiff(
-                drift_type=DriftType.FIELD_ADDED,
-                field_name=field_name,
-                schema_type=schema_fields[field_name]["type"],
-                message=f"Field '{field_name}' exists in Schema {schema_name} but not in ORM {model_name}",
-            ))
+            drifts.append(
+                FieldDiff(
+                    drift_type=DriftType.FIELD_ADDED,
+                    field_name=field_name,
+                    schema_type=schema_fields[field_name]["type"],
+                    message=f"Field '{field_name}' exists in Schema {schema_name} but not in ORM {model_name}",
+                )
+            )
             migration_hints.append(f"Add column '{field_name}' to {model_name} table (Alembic migration required)")
 
         # Check for type mismatches in common fields
@@ -219,8 +229,6 @@ class SchemaValidator:
             # Normalize types for comparison
             # If ORM field is nullable, treat it as Optional for comparison
             # If Schema field is Optional and ORM is nullable, they match if base types match
-            orm_type_normalized = f"Optional[{orm_type}]" if orm_nullable else orm_type
-            schema_type_normalized = schema_type  # Already includes Optional in type string
 
             # Direct type comparison
             types_match = orm_type == schema_type
@@ -241,24 +249,30 @@ class SchemaValidator:
                     types_match = True  # accepted refinement
 
             if not types_match:
-                drifts.append(FieldDiff(
-                    drift_type=DriftType.TYPE_CHANGED,
-                    field_name=field_name,
-                    orm_type=orm_type,
-                    schema_type=schema_type,
-                    message=f"Type mismatch for '{field_name}': ORM={orm_type}, Schema={schema_type}",
-                ))
-                migration_hints.append(f"Update type for '{field_name}' in {'ORM' if schema_type == orm_type else 'Schema'}")
+                drifts.append(
+                    FieldDiff(
+                        drift_type=DriftType.TYPE_CHANGED,
+                        field_name=field_name,
+                        orm_type=orm_type,
+                        schema_type=schema_type,
+                        message=f"Type mismatch for '{field_name}': ORM={orm_type}, Schema={schema_type}",
+                    )
+                )
+                migration_hints.append(
+                    f"Update type for '{field_name}' in {'ORM' if schema_type == orm_type else 'Schema'}"
+                )
 
             # Compare nullability
             if orm_nullable != schema_nullable:
-                drifts.append(FieldDiff(
-                    drift_type=DriftType.NULLABILITY_CHANGED,
-                    field_name=field_name,
-                    orm_nullable=orm_nullable,
-                    schema_nullable=schema_nullable,
-                    message=f"Nullability mismatch for '{field_name}': ORM={orm_nullable}, Schema={schema_nullable}",
-                ))
+                drifts.append(
+                    FieldDiff(
+                        drift_type=DriftType.NULLABILITY_CHANGED,
+                        field_name=field_name,
+                        orm_nullable=orm_nullable,
+                        schema_nullable=schema_nullable,
+                        message=f"Nullability mismatch for '{field_name}': ORM={orm_nullable}, Schema={schema_nullable}",
+                    )
+                )
                 warnings.append(f"Check if '{field_name}' should be nullable in both ORM and Schema")
 
         is_synced = len(drifts) == 0
@@ -334,9 +348,9 @@ def sync_schema_validator():
 
     validator = SchemaValidator()
 
-    # Import models and schemas for validation
-    from ..models import Project, Chapter, Paragraph  # type: ignore[attr-defined]
-    from ..schemas import Project as ProjectSchema  # type: ignore[attr-defined]
+    # Import models and schemas for validation (runtime imports)
+    from ..models import Project
+    from ..schemas import Project as ProjectSchema
 
     pairs = [
         (Project, ProjectSchema),
@@ -348,18 +362,18 @@ def sync_schema_validator():
     total_drifts = sum(len(r.drifts) for r in reports)
     synced_count = sum(1 for r in reports if r.is_synced)
 
-    print(f"\n=== Schema Synchronization Report ===")
-    print(f"Total pairs checked: {len(reports)}")
-    print(f"In sync: {synced_count}")
-    print(f"Drift detected: {len(reports) - synced_count}")
-    print(f"Total drifts: {total_drifts}")
+    logger.info("\n=== Schema Synchronization Report ===")
+    logger.info(f"Total pairs checked: {len(reports)}")
+    logger.info(f"In sync: {synced_count}")
+    logger.info(f"Drift detected: {len(reports) - synced_count}")
+    logger.info(f"Total drifts: {total_drifts}")
 
     if total_drifts > 0:
-        print("\n=== Migration Hints ===")
-        print(validator.generate_migration_script_hint())
+        logger.info("\n=== Migration Hints ===")
+        logger.info(validator.generate_migration_script_hint())
         sys.exit(1)
 
-    print("\n✓ All schemas are synchronized with ORM models")
+    logger.info("\n✓ All schemas are synchronized with ORM models")
     sys.exit(0)
 
 

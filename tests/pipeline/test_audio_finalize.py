@@ -1,8 +1,9 @@
 """Unit tests for AudioFinalize module."""
 
-import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from src.audiobook_studio.pipeline.audio_finalize import AudioFinalizer
 from src.audiobook_studio.schemas.audio_finalize import AudioFinalizeParams, AudioFinalizeResult
@@ -63,13 +64,13 @@ class TestAudioFinalizeParams:
         assert params.loudnorm_target_lra == 20.0
 
         # Should fail validation - out of bounds
-        with pytest.raises(Exception):  # Pydantic ValidationError
+        with pytest.raises(Exception):  # Pydantic ValidationError  # noqa: B017
             AudioFinalizeParams(loudnorm_target_i=-5.0)  # > -10
 
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             AudioFinalizeParams(loudnorm_target_i=-35.0)  # < -30
 
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             AudioFinalizeParams(fade_in_ms=6000)  # > 5000
 
 
@@ -93,12 +94,15 @@ class TestAudioFinalizer:
         finalizer = AudioFinalizer(sfx_library_path=custom_path, mock_mode=True)
         assert finalizer.sfx_library_path == custom_path
 
-    @pytest.mark.parametrize("sfx_tags,expected_count", [
-        (["ambient_cheerful"], 1),
-        (["ambient_tense", "ambient_soft"], 2),
-        ([], 0),
-        (None, 0),
-    ])
+    @pytest.mark.parametrize(
+        "sfx_tags,expected_count",
+        [
+            (["ambient_cheerful"], 1),
+            (["ambient_tense", "ambient_soft"], 2),
+            ([], 0),
+            (None, 0),
+        ],
+    )
     def test_resolve_sfx_files(self, sfx_tags, expected_count):
         """Test SFX tag resolution."""
         finalizer = AudioFinalizer(mock_mode=True)
@@ -173,7 +177,7 @@ class TestAudioFinalizer:
 
         assert result.sfx_applied is False
 
-    @patch('subprocess.run')
+    @patch("subprocess.run")
     def test_finalize_real_success(self, mock_run, tmp_path):
         """Test successful finalize in real mode."""
         mock_run.return_value = MagicMock(returncode=0, stderr="", stdout="-20.0")
@@ -192,8 +196,8 @@ class TestAudioFinalizer:
         )
 
         # Mock _measure_loudness and _get_duration
-        with patch.object(finalizer, '_measure_loudness', return_value=(-20.0, 7.0, -2.0, -40.0)):
-            with patch.object(finalizer, '_get_duration', return_value=5000):
+        with patch.object(finalizer, "_measure_loudness", return_value=(-20.0, 7.0, -2.0, -40.0)):
+            with patch.object(finalizer, "_get_duration", return_value=5000):
                 result = finalizer.finalize(input_path, output_path, params, None)
 
         assert result.input_path == str(input_path)
@@ -203,7 +207,7 @@ class TestAudioFinalizer:
         assert result.fade_applied is True
         assert len(result.errors) == 0
 
-    @patch('subprocess.run')
+    @patch("subprocess.run")
     def test_finalize_real_ffmpeg_not_found(self, mock_run, tmp_path):
         """Test finalize with ffmpeg not found."""
         mock_run.side_effect = FileNotFoundError("ffmpeg not found")
@@ -215,8 +219,8 @@ class TestAudioFinalizer:
         finalizer = AudioFinalizer(mock_mode=False)
         params = AudioFinalizeParams()
 
-        with patch.object(finalizer, '_measure_loudness', return_value=(-20.0, 7.0, -2.0, -40.0)):
-            with patch.object(finalizer, '_get_duration', return_value=5000):
+        with patch.object(finalizer, "_measure_loudness", return_value=(-20.0, 7.0, -2.0, -40.0)):
+            with patch.object(finalizer, "_get_duration", return_value=5000):
                 result = finalizer.finalize(input_path, output_path, params, None)
 
         assert len(result.errors) > 0 or len(result.warnings) > 0

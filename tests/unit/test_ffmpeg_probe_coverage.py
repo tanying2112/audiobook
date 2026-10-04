@@ -10,17 +10,17 @@ Covers:
 import asyncio
 import struct
 from pathlib import Path
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
 import pytest
 
 from src.audiobook_studio.utils.ffmpeg_probe import (
-    _run_ffprobe,
     _run_ffmpeg,
+    _run_ffprobe,
+    detect_silence,
     get_duration,
     get_rms_peak,
-    detect_silence,
     read_pcm_samples,
 )
 
@@ -30,31 +30,49 @@ class TestTimeoutErrorPaths:
 
     @pytest.mark.asyncio
     @patch("asyncio.create_subprocess_exec")
-    @patch("asyncio.wait_for", side_effect=asyncio.TimeoutError)
-    async def test_run_ffprobe_timeout(self, mock_wait, mock_exec):
+    async def test_run_ffprobe_timeout(self, mock_exec):
         """Test _run_ffprobe kills process on TimeoutError."""
+
+        async def _fake_wait_for(coro, *, timeout=None):
+            if asyncio.iscoroutine(coro):
+                try:
+                    await coro
+                except Exception:
+                    pass
+            raise asyncio.TimeoutError()
+
         mock_proc = MagicMock()
         mock_proc.communicate = AsyncMock()
         mock_proc.wait = AsyncMock()
         mock_exec.return_value = mock_proc
 
-        with pytest.raises(asyncio.TimeoutError):
-            await _run_ffprobe(["-v", "quiet"], timeout=1)
+        with patch("asyncio.wait_for", _fake_wait_for):
+            with pytest.raises(asyncio.TimeoutError):
+                await _run_ffprobe(["-v", "quiet"], timeout=1)
 
         mock_proc.kill.assert_called_once()
 
     @pytest.mark.asyncio
     @patch("asyncio.create_subprocess_exec")
-    @patch("asyncio.wait_for", side_effect=asyncio.TimeoutError)
-    async def test_run_ffmpeg_timeout(self, mock_wait, mock_exec):
+    async def test_run_ffmpeg_timeout(self, mock_exec):
         """Test _run_ffmpeg kills process on TimeoutError."""
+
+        async def _fake_wait_for(coro, *, timeout=None):
+            if asyncio.iscoroutine(coro):
+                try:
+                    await coro
+                except Exception:
+                    pass
+            raise asyncio.TimeoutError()
+
         mock_proc = MagicMock()
         mock_proc.communicate = AsyncMock()
         mock_proc.wait = AsyncMock()
         mock_exec.return_value = mock_proc
 
-        with pytest.raises(asyncio.TimeoutError):
-            await _run_ffmpeg(["-i", "test.mp3"], timeout=1)
+        with patch("asyncio.wait_for", _fake_wait_for):
+            with pytest.raises(asyncio.TimeoutError):
+                await _run_ffmpeg(["-i", "test.mp3"], timeout=1)
 
         mock_proc.kill.assert_called_once()
 
@@ -72,7 +90,7 @@ class TestGetRmsPeakValueErrors:
             MagicMock(
                 returncode=0,
                 stderr="frame:0 lavfi.astats.Overall.RMS_level=not_a_number\n"
-                       "frame:0 lavfi.astats.Overall.Peak_level=-1.5\n",
+                "frame:0 lavfi.astats.Overall.Peak_level=-1.5\n",
             ),
             MagicMock(
                 returncode=0,
@@ -97,7 +115,7 @@ class TestGetRmsPeakValueErrors:
             MagicMock(
                 returncode=0,
                 stderr="frame:0 lavfi.astats.Overall.RMS_level=bad_rms\n"
-                       "frame:0 lavfi.astats.Overall.Peak_level=bad_peak\n",
+                "frame:0 lavfi.astats.Overall.Peak_level=bad_peak\n",
             ),
             MagicMock(
                 returncode=0,
@@ -204,19 +222,19 @@ class TestReadPcmEdgeCases:
 
     @pytest.mark.asyncio
     @patch("src.audiobook_studio.utils.ffmpeg_probe._run_ffmpeg")
-    async def test_read_pcm_string_stdout_valid_length(self, mock_run):
-        """Test read_pcm_samples when stdout is a string of correct length (12 chars = 12 bytes = 3 floats)."""
-        # "hello world " is 12 chars -> 12 bytes -> 3 float32
-        mock_run.return_value = MagicMock(returncode=0, stdout="hello world ")
+    async def test_read_pcm_bytes_stdout_valid_length(self, mock_run):
+        """Test read_pcm_samples when stdout is bytes of correct length (12 bytes = 3 floats)."""
+        # 12 bytes = 3 float32
+        mock_run.return_value = MagicMock(returncode=0, stdout=b"hello world ")
         samples = await read_pcm_samples(Path("test.mp3"))
         assert len(samples) == 3
         assert samples.dtype == np.float32
 
     @pytest.mark.asyncio
     @patch("src.audiobook_studio.utils.ffmpeg_probe._run_ffmpeg")
-    async def test_read_pcm_string_stdout_invalid_length(self, mock_run):
-        """Test read_pcm_samples with string of invalid length raises ValueError."""
-        mock_run.return_value = MagicMock(returncode=0, stdout="abc")
+    async def test_read_pcm_bytes_stdout_invalid_length(self, mock_run):
+        """Test read_pcm_samples with bytes of invalid length raises ValueError."""
+        mock_run.return_value = MagicMock(returncode=0, stdout=b"abc")
         with pytest.raises(ValueError, match="buffer size must be a multiple of element size"):
             await read_pcm_samples(Path("test.mp3"))
 
@@ -241,10 +259,7 @@ class TestDetectSilenceEdgeCases:
         """Test multiple silence regions detected."""
         mock_run.return_value = MagicMock(
             returncode=0,
-            stderr=(
-                "silence_start: 1.000\nsilence_end: 3.000\n"
-                "silence_start: 5.000\nsilence_end: 8.000\n"
-            ),
+            stderr=("silence_start: 1.000\nsilence_end: 3.000\n" "silence_start: 5.000\nsilence_end: 8.000\n"),
         )
         result = await detect_silence(Path("test.mp3"), min_duration_ms=500)
         assert len(result) == 2

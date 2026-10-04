@@ -5,13 +5,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Any, List, Optional
 
-from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from ..database import Base
+from ..orm_base import Base
 
 if TYPE_CHECKING:
     from .audio_segment import AudioSegment
@@ -30,17 +30,17 @@ class Paragraph(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     project_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
     )
     chapter_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("chapters.id", ondelete="CASCADE"), nullable=True
+        ForeignKey("chapters.id", ondelete="CASCADE"), nullable=True, index=True
     )
     # Simple CRUD API backwards compat
     book_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     speaker: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     # 基础字段
-    index: Mapped[int] = mapped_column(nullable=False)
+    index: Mapped[int] = mapped_column(nullable=False, index=True)
     chapter_index: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     text: Mapped[str] = mapped_column(Text, nullable=False)
 
@@ -52,7 +52,7 @@ class Paragraph(Base):
     speech_rate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     pitch_shift_semitones: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     needs_sfx: Mapped[bool] = mapped_column(Boolean, default=False)
-    sfx_tags: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    sfx_tags: Mapped[Optional[list[str]]] = mapped_column(JSON, default=list)
     pause_before_ms: Mapped[int] = mapped_column(Integer, default=0)
     pause_after_ms: Mapped[int] = mapped_column(Integer, default=0)
     confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
@@ -60,8 +60,8 @@ class Paragraph(Base):
 
     # 环节④编辑后文本
     edited_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    edit_changes_made: Mapped[Optional[list]] = mapped_column(JSON, default=list)
-    edit_forbidden_removed: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    edit_changes_made: Mapped[Optional[list[str]]] = mapped_column(JSON, default=list)
+    edit_forbidden_removed: Mapped[Optional[list[str]]] = mapped_column(JSON, default=list)
     edit_confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     edit_rationale: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     edit_difficulty: Mapped[Optional[str]] = mapped_column(String(1), nullable=True)
@@ -70,28 +70,26 @@ class Paragraph(Base):
     # 环节⑤路由决策
     routing_engine: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     routing_voice_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    routing_prosody_overrides: Mapped[Optional[dict]] = mapped_column(
-        JSON, nullable=True
-    )
+    routing_prosody_overrides: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     routing_fallback: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     routing_reasoning: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     routing_estimated_cost: Mapped[float] = mapped_column(Float, default=0.0)
     routing_estimated_duration: Mapped[int] = mapped_column(Integer, default=0)
 
+    # 人工终审覆盖 (Manual Review Gate)：客户在合成前逐段强制指定
+    # voice/engine，NULL=不覆盖（路由按角色绑定+能力选择自动决策）。
+    # 合成时优先级：manual_* > 角色绑定 > 自动选择。
+    manual_voice_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    manual_engine: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
     # 环节⑥质检
-    quality_speaker_clarity: Mapped[Optional[float]] = mapped_column(
-        Float, nullable=True
-    )
+    quality_speaker_clarity: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     quality_emotion_match: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    quality_prosody_naturalness: Mapped[Optional[float]] = mapped_column(
-        Float, nullable=True
-    )
-    quality_text_audio_alignment: Mapped[Optional[float]] = mapped_column(
-        Float, nullable=True
-    )
+    quality_prosody_naturalness: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    quality_text_audio_alignment: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     quality_overall_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    quality_issues: Mapped[Optional[list]] = mapped_column(JSON, default=list)
-    quality_fix_suggestions: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+    quality_issues: Mapped[Optional[list[str]]] = mapped_column(JSON, default=list)
+    quality_fix_suggestions: Mapped[Optional[list[str]]] = mapped_column(JSON, default=list)
     quality_needs_regeneration: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # 音频片段关联
@@ -101,28 +99,45 @@ class Paragraph(Base):
 
     # 状态
     status: Mapped[str] = mapped_column(String, default="pending")
+    content_rating: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
 
     # Relationships
-    project: Mapped[Project] = relationship("Project", back_populates="paragraphs")
-    chapter: Mapped[Chapter] = relationship("Chapter", back_populates="paragraphs")
+    project: Mapped[Project] = relationship("Project", back_populates="paragraphs", lazy="selectin")
+    chapter: Mapped[Chapter] = relationship("Chapter", back_populates="paragraphs", lazy="selectin")
     audio_segment: Mapped[Optional[AudioSegment]] = relationship(
         "AudioSegment",
         back_populates="paragraph",
         uselist=False,
         foreign_keys="AudioSegment.paragraph_id",
+        lazy="selectin",
     )
     tts_edits: Mapped[List[TTSEdit]] = relationship(
-        "TTSEdit", back_populates="paragraph", cascade="all, delete-orphan"
+        "TTSEdit", back_populates="paragraph", cascade="all, delete-orphan", lazy="selectin"
     )
     routings: Mapped[List[Routing]] = relationship(
-        "Routing", back_populates="paragraph", cascade="all, delete-orphan"
+        "Routing", back_populates="paragraph", cascade="all, delete-orphan", lazy="selectin"
     )
     quality_records: Mapped[List[Quality]] = relationship(
-        "Quality", back_populates="paragraph", cascade="all, delete-orphan"
+        "Quality", back_populates="paragraph", cascade="all, delete-orphan", lazy="selectin"
     )
     feedback_records: Mapped[List[FeedbackRecord]] = relationship(
-        "FeedbackRecord", back_populates="paragraph", cascade="all, delete-orphan"
+        "FeedbackRecord", back_populates="paragraph", cascade="all, delete-orphan", lazy="selectin"
     )
+
+    # Composite indexes for query optimization (P2-5)
+    __table_args__ = (
+        # Common query: SELECT * FROM paragraphs WHERE chapter_id=? ORDER BY index
+        Index("ix_paragraphs_chapter_id_index", "chapter_id", "index"),
+        # Common query: SELECT * FROM paragraphs WHERE project_id=? AND status=? ORDER BY index
+        Index("ix_paragraphs_project_id_status_index", "project_id", "status", "index"),
+        # Common query: SELECT * FROM paragraphs WHERE chapter_id=? AND status=?
+        Index("ix_paragraphs_chapter_id_status", "chapter_id", "status"),
+    )
+
+    # Forbid lazy loading on detail endpoints that should use selectinload explicitly
+    from sqlalchemy.orm import raiseload
+
+    __raised_load_attrs__ = (raiseload("*"),)
 
     def to_schema(self):
         from ..schemas.paragraph import Paragraph as ParagraphSchema
@@ -132,10 +147,58 @@ class Paragraph(Base):
             book_id=self.book_id or self.project_id,
             index=self.index,
             text=self.text,
-        speaker=self.speaker or self.speaker_canonical_name,
+            speaker=self.speaker or self.speaker_canonical_name,
         )
 
-    def to_annotation_dict(self) -> dict:
+    def to_full_dict(self) -> dict[str, Any]:
+        """Return a flat dict of all fields for frontend display.
+
+        前端 ChapterTimeline 需要扁平字段（emotion/speech_rate/edited_text 等），
+        但 to_schema() 只返回 CRUD 基础字段。此方法返回完整字段（标注 + 编辑 + 路由 + 质检），
+        供列表端点扁平化返回，避免前端做 N+1 次 detail 查询。
+        """
+        return {
+            "id": self.id,
+            "project_id": self.project_id,
+            "chapter_id": self.chapter_id,
+            "index": self.index,
+            "text": self.text,
+            "speaker": self.speaker,
+            # 环节③标注字段
+            "speaker_canonical_name": self.speaker_canonical_name,
+            "is_dialogue": self.is_dialogue,
+            "emotion": self.emotion,
+            "emotion_intensity": self.emotion_intensity,
+            "speech_rate": self.speech_rate,
+            "pitch_shift_semitones": self.pitch_shift_semitones,
+            "needs_sfx": self.needs_sfx,
+            "sfx_tags": self.sfx_tags or [],
+            "pause_before_ms": self.pause_before_ms,
+            "pause_after_ms": self.pause_after_ms,
+            "confidence": self.confidence,
+            "notes": self.notes,
+            # 环节④编辑后文本
+            "edited_text": self.edited_text,
+            "edit_changes_made": self.edit_changes_made or [],
+            "edit_rationale": self.edit_rationale,
+            "edit_difficulty": self.edit_difficulty,
+            # 环节⑤路由
+            "routing_engine": self.routing_engine,
+            "routing_voice_id": self.routing_voice_id,
+            # 人工终审覆盖
+            "manual_voice_id": self.manual_voice_id,
+            "manual_engine": self.manual_engine,
+            # 环节⑥质检
+            "quality_overall_score": self.quality_overall_score,
+            "quality_needs_regeneration": self.quality_needs_regeneration,
+            "quality_issues": self.quality_issues or [],
+            "quality_fix_suggestions": self.quality_fix_suggestions or [],
+            # 状态
+            "status": self.status,
+            "content_rating": self.content_rating,
+        }
+
+    def to_annotation_dict(self) -> dict[str, Any]:
         """Return annotation fields as a dict (aligned with ParagraphAnnotation schema)."""
         return {
             "speaker_canonical_name": self.speaker_canonical_name,

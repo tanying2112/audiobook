@@ -1,44 +1,39 @@
 """Comprehensive tests for feedback/quality_enhancement.py."""
-import math
-from collections import Counter
-from datetime import datetime, timezone
-from unittest.mock import patch, MagicMock
 
-import pytest
-
-from src.audiobook_studio.feedback.quality_enhancement import (
-    SemanticCoherenceResult,
-    ValidationReport,
+from src.audiobook_studio.feedback.quality_enhancement import (  # noqa: E303
     DifficultyWeights,
-    FreeTierHealth,
     FalsePositiveIssue,
     FalsePositiveTracker,
-    _cosine_similarity,
+    FreeTierHealth,
+    SemanticCoherenceResult,
     _compute_text_difficulty,
+    _cosine_similarity,
     check_semantic_coherence,
-    grade_difficulty,
-    get_free_tier_health,
     get_false_positive_tracker,
+    get_free_tier_health,
+    grade_difficulty,
     validate_emotions,
-    _VALID_EMOTIONS,
-    _DEFAULT_DIFFICULTY_WEIGHTS,
-    _fp_tracker,
 )
 
-
 # ── SemanticCoherenceResult ──────────────────────────────────────────────────
+
 
 class TestSemanticCoherenceResult:
     def test_creation(self):
         r = SemanticCoherenceResult(
-            scores=[0.5, 0.6], mean_score=0.55, std_score=0.05,
-            anomalies=[1], is_coherent=True, details="test",
+            scores=[0.5, 0.6],
+            mean_score=0.55,
+            std_score=0.05,
+            anomalies=[1],
+            is_coherent=True,
+            details="test",
         )
         assert r.mean_score == 0.55
         assert r.anomalies == [1]
 
 
 # ── _cosine_similarity ───────────────────────────────────────────────────────
+
 
 class TestCosineSimilarity:
     def test_identical(self):
@@ -68,6 +63,7 @@ class TestCosineSimilarity:
 
 
 # ── check_semantic_coherence ─────────────────────────────────────────────────
+
 
 class TestSemanticCoherence:
     def test_empty(self):
@@ -107,6 +103,7 @@ class TestSemanticCoherence:
 
 
 # ── validate_emotions ────────────────────────────────────────────────────────
+
 
 class TestValidateEmotions:
     def test_all_valid(self):
@@ -154,6 +151,7 @@ class TestValidateEmotions:
 
 # ── DifficultyWeights ────────────────────────────────────────────────────────
 
+
 class TestDifficultyWeights:
     def test_get_weight(self):
         w = DifficultyWeights({"a": 2.0, "b": 1.5})
@@ -164,6 +162,7 @@ class TestDifficultyWeights:
 
 
 # ── _compute_text_difficulty ─────────────────────────────────────────────────
+
 
 class TestComputeTextDifficulty:
     def test_short_text(self):
@@ -195,6 +194,7 @@ class TestComputeTextDifficulty:
 
 # ── grade_difficulty ─────────────────────────────────────────────────────────
 
+
 class TestGradeDifficulty:
     def test_easy(self):
         result = grade_difficulty("short")
@@ -221,6 +221,7 @@ class TestGradeDifficulty:
 
 # ── get_free_tier_health ─────────────────────────────────────────────────────
 
+
 class TestFreeTierHealth:
     def test_returns_health(self):
         h = get_free_tier_health()
@@ -243,18 +244,24 @@ class TestFreeTierHealth:
 
 # ── FalsePositiveIssue ───────────────────────────────────────────────────────
 
+
 class TestFalsePositiveIssue:
     def test_creation(self):
         issue = FalsePositiveIssue(
-            issue_id="1", segment_id="seg1", issue_type="wer",
-            description="desc", false_positive_reason="reason",
-            reported_by="human", created_at="2024-01-01",
+            issue_id="1",
+            segment_id="seg1",
+            issue_type="wer",
+            description="desc",
+            false_positive_reason="reason",
+            reported_by="human",
+            created_at="2024-01-01",
         )
         assert issue.issue_id == "1"
         assert issue.reported_by == "human"
 
 
 # ── FalsePositiveTracker ─────────────────────────────────────────────────────
+
 
 class TestFalsePositiveTracker:
     def test_record_false_positive(self):
@@ -322,9 +329,11 @@ class TestFalsePositiveTracker:
 
 # ── get_false_positive_tracker ───────────────────────────────────────────────
 
+
 class TestGetFalsePositiveTracker:
     def test_singleton(self):
         import src.audiobook_studio.feedback.quality_enhancement as mod
+
         original = mod._fp_tracker
         mod._fp_tracker = None
         t1 = get_false_positive_tracker()

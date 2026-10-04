@@ -1,0 +1,13 @@
+{{- if and .Values.prometheus.enabled .Values.prometheus.rules.enabled -}}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "audiobook-studio.fullname" . }}-rules
+  labels:
+    {{- include "audiobook-studio.labels" . | nindent 4 }}
+    component: monitoring
+    release: prometheus
+spec:
+  groups:
+    {{- toYaml .Values.prometheus.rules.groups | nindent 4 }}
+{{- end }}

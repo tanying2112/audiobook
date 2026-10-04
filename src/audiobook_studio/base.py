@@ -1,18 +1,19 @@
-from typing import Any, Dict, List, Optional, TypeVar
+import logging
+import threading
+import traceback
+import uuid
 from dataclasses import dataclass
 from enum import Enum
-import threading
-import uuid
-import logging
-import traceback
-from datetime import datetime
+from typing import Any, Dict, List, Optional, TypeVar
 
 T = TypeVar("T")
+
 
 # --- 1. 新增错误等级枚举 ---
 class ErrorSeverity(Enum):
     TRANSIENT = "transient"  # 瞬时错误，建议重试
-    FATAL = "fatal"          # 致命错误，停止该任务
+    FATAL = "fatal"  # 致命错误，停止该任务
+
 
 class AgentCapability(Enum):
     TEXT_EXTRACTION = "extract"
@@ -20,6 +21,7 @@ class AgentCapability(Enum):
     TTS_SYNTHESIS = "synthesize"
     QUALITY_CONTROL = "quality_check"
     FEEDBACK_LEARNING = "learn"
+
 
 @dataclass
 class AgentContext:
@@ -29,11 +31,13 @@ class AgentContext:
     shared_knowledge: Dict[str, Any]
     retry_count: int = 0
 
+
 @dataclass
 class AgentMessage:
     sender: str
     content: Dict[str, Any]
     requires_response: bool = False
+
 
 class AbstractAgent:
     def __init__(self, capabilities: List[AgentCapability]):
@@ -56,7 +60,7 @@ class AbstractAgent:
                 if not self.message_queue:
                     break
                 msg = self.message_queue.pop(0)
-            
+
             try:
                 self._handle_message(msg)
             except Exception as e:

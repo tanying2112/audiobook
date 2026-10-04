@@ -1,32 +1,33 @@
 """publish/podcast_rss_generator.py 扩展测试 — 提升覆盖率到 80%+。"""
 
 import tempfile
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
 
 
-class TestPodcastRSSGeneratorExtended:
+class TestPodcastRSSGeneratorExtended:  # noqa: E303
     """PodcastRSSGenerator 深度覆盖。"""
 
     def _make_feed(self, **kwargs):
         from src.audiobook_studio.publish.podcast_rss_generator import PodcastFeed
+
         defaults = dict(title="播客", description="desc", link="http://x")
         defaults.update(kwargs)
         return PodcastFeed(**defaults)
 
     def _make_ep(self, title="集1", audio_exists=False, **kwargs):
         from src.audiobook_studio.publish.podcast_rss_generator import PodcastEpisode
+
         if audio_exists:
             fp = Path(tempfile.mktemp(suffix=".mp3"))
             fp.write_bytes(b"fake audio")
         else:
             fp = Path("/tmp/nonexistent_file.mp3")
         defaults = dict(
-            title=title, description="desc",
-            audio_file_path=fp, duration_seconds=600,
+            title=title,
+            description="desc",
+            audio_file_path=fp,
+            duration_seconds=600,
             pub_date=datetime(2025, 1, 1),
         )
         defaults.update(kwargs)
@@ -49,6 +50,7 @@ class TestPodcastRSSGeneratorExtended:
     def test_add_episode_with_existing_numbers(self):
         """手动设置的 episode_number 不被覆盖。"""
         from src.audiobook_studio.publish.podcast_rss_generator import PodcastRSSGenerator
+
         feed = self._make_feed()
         gen = PodcastRSSGenerator(feed)
         ep1 = self._make_ep("a")
@@ -63,8 +65,10 @@ class TestPodcastRSSGeneratorExtended:
     def test_rss_xml_with_owner_info(self):
         """RSS 包含 owner 信息。"""
         from src.audiobook_studio.publish.podcast_rss_generator import PodcastRSSGenerator
+
         feed = self._make_feed(
-            owner_name="Owner", owner_email="owner@test.com",
+            owner_name="Owner",
+            owner_email="owner@test.com",
         )
         gen = PodcastRSSGenerator(feed)
         gen.add_episode(self._make_ep())
@@ -75,6 +79,7 @@ class TestPodcastRSSGeneratorExtended:
     def test_rss_xml_with_categories(self):
         """RSS 包含分类。"""
         from src.audiobook_studio.publish.podcast_rss_generator import PodcastRSSGenerator
+
         feed = self._make_feed(categories=["科幻", "有声书"])
         gen = PodcastRSSGenerator(feed)
         gen.add_episode(self._make_ep())
@@ -85,8 +90,10 @@ class TestPodcastRSSGeneratorExtended:
     def test_rss_xml_with_itunes_owner(self):
         """RSS 包含 iTunes owner 标签。"""
         from src.audiobook_studio.publish.podcast_rss_generator import PodcastRSSGenerator
+
         feed = self._make_feed(
-            itunes_owner_name="iOwner", itunes_owner_email="i@test.com",
+            itunes_owner_name="iOwner",
+            itunes_owner_email="i@test.com",
             itunes_categories=[("Arts", "Books")],
         )
         gen = PodcastRSSGenerator(feed)
@@ -100,6 +107,7 @@ class TestPodcastRSSGeneratorExtended:
     def test_rss_xml_with_itunes_no_subcategory(self):
         """RSS 包含无子分类的 iTunes category。"""
         from src.audiobook_studio.publish.podcast_rss_generator import PodcastRSSGenerator
+
         feed = self._make_feed(itunes_categories=[("Science", None)])
         gen = PodcastRSSGenerator(feed)
         gen.add_episode(self._make_ep())
@@ -109,6 +117,7 @@ class TestPodcastRSSGeneratorExtended:
     def test_rss_xml_with_author(self):
         """RSS 包含 author 标签。"""
         from src.audiobook_studio.publish.podcast_rss_generator import PodcastRSSGenerator
+
         feed = self._make_feed(author="TestAuthor")
         gen = PodcastRSSGenerator(feed)
         gen.add_episode(self._make_ep())
@@ -119,6 +128,7 @@ class TestPodcastRSSGeneratorExtended:
     def test_episode_with_season_number(self):
         """RSS 包含 season 标签。"""
         from src.audiobook_studio.publish.podcast_rss_generator import PodcastRSSGenerator
+
         gen = PodcastRSSGenerator(self._make_feed())
         ep = self._make_ep(season_number=2, episode_number=3)
         gen.add_episode(ep)
@@ -130,6 +140,7 @@ class TestPodcastRSSGeneratorExtended:
     def test_episode_explicit(self):
         """RSS 包含 explicit 标签。"""
         from src.audiobook_studio.publish.podcast_rss_generator import PodcastRSSGenerator
+
         gen = PodcastRSSGenerator(self._make_feed())
         ep = self._make_ep(explicit=True)
         gen.add_episode(ep)
@@ -140,6 +151,7 @@ class TestPodcastRSSGeneratorExtended:
     def test_save_to_file_creates_dir(self):
         """save_to_file 自动创建目录。"""
         from src.audiobook_studio.publish.podcast_rss_generator import PodcastRSSGenerator
+
         with tempfile.TemporaryDirectory() as tmpdir:
             feed = self._make_feed()
             gen = PodcastRSSGenerator(feed)
@@ -152,6 +164,7 @@ class TestPodcastRSSGeneratorExtended:
     def test_validate_episode_no_title(self):
         """节目标题为空时报错。"""
         from src.audiobook_studio.publish.podcast_rss_generator import PodcastRSSGenerator
+
         feed = self._make_feed()
         gen = PodcastRSSGenerator(feed)
         ep = self._make_ep(title="  ")
@@ -163,6 +176,7 @@ class TestPodcastRSSGeneratorExtended:
     def test_validate_episode_no_description(self):
         """节目描述为空时报错。"""
         from src.audiobook_studio.publish.podcast_rss_generator import PodcastRSSGenerator
+
         feed = self._make_feed()
         gen = PodcastRSSGenerator(feed)
         ep = self._make_ep(description="  ")
@@ -173,12 +187,13 @@ class TestPodcastRSSGeneratorExtended:
 
     def test_validate_episode_no_audio(self):
         """节目音频路径为空时报错。"""
-        from src.audiobook_studio.publish.podcast_rss_generator import PodcastRSSGenerator
-        from src.audiobook_studio.publish.podcast_rss_generator import PodcastEpisode
+        from src.audiobook_studio.publish.podcast_rss_generator import PodcastEpisode, PodcastRSSGenerator
+
         feed = self._make_feed()
         gen = PodcastRSSGenerator(feed)
         ep = PodcastEpisode(
-            title="t", description="d",
+            title="t",
+            description="d",
             audio_file_path=Path("/tmp/nonexistent.mp3"),
             duration_seconds=60,
             pub_date=datetime.now(),
@@ -191,6 +206,7 @@ class TestPodcastRSSGeneratorExtended:
     def test_validate_episode_file_not_exists(self):
         """节目音频文件不存在时通过（警告但非错误）。"""
         from src.audiobook_studio.publish.podcast_rss_generator import PodcastRSSGenerator
+
         feed = self._make_feed()
         gen = PodcastRSSGenerator(feed)
         ep = self._make_ep(audio_exists=False)
@@ -201,6 +217,7 @@ class TestPodcastRSSGeneratorExtended:
     def test_episode_enclosure_file_exists(self):
         """音频文件存在时 enclosure length 使用文件大小。"""
         from src.audiobook_studio.publish.podcast_rss_generator import PodcastRSSGenerator
+
         gen = PodcastRSSGenerator(self._make_feed())
         ep = self._make_ep(audio_exists=True)
         gen.add_episode(ep)
@@ -211,6 +228,7 @@ class TestPodcastRSSGeneratorExtended:
     def test_episode_enclosure_file_not_exists(self):
         """音频文件不存在时 enclosure length 为 0。"""
         from src.audiobook_studio.publish.podcast_rss_generator import PodcastRSSGenerator
+
         gen = PodcastRSSGenerator(self._make_feed())
         ep = self._make_ep(audio_exists=False)
         gen.add_episode(ep)
@@ -220,11 +238,14 @@ class TestPodcastRSSGeneratorExtended:
     def test_rss_xml_full_structure(self):
         """完整的 RSS XML 结构。"""
         from src.audiobook_studio.publish.podcast_rss_generator import PodcastRSSGenerator
+
         feed = self._make_feed(
             author="Author",
-            owner_name="Owner", owner_email="o@t.com",
+            owner_name="Owner",
+            owner_email="o@t.com",
             itunes_author="iAuthor",
-            itunes_owner_name="iOwner", itunes_owner_email="i@t.com",
+            itunes_owner_name="iOwner",
+            itunes_owner_email="i@t.com",
             itunes_categories=[("Arts", "Books"), ("Science", None)],
             categories=["科幻"],
             image_url="http://x/img.jpg",
@@ -244,6 +265,7 @@ class TestPodcastRSSGeneratorExtended:
     def test_multiple_episodes_sorting(self):
         """多集按发布日期倒序。"""
         from src.audiobook_studio.publish.podcast_rss_generator import PodcastRSSGenerator
+
         gen = PodcastRSSGenerator(self._make_feed())
         ep1 = self._make_ep("早", pub_date=datetime(2025, 1, 1))
         ep2 = self._make_ep("中", pub_date=datetime(2025, 6, 1))

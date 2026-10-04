@@ -16,8 +16,8 @@ from src.audiobook_studio.storage import (
     project_dir,
     raw_dir,
     raw_file_path,
-    reports_dir,
     remove_project_storage,
+    reports_dir,
     save_audio,
     save_chapter_annotations,
     save_extracted_text,
@@ -32,6 +32,7 @@ def temp_storage():
     with tempfile.TemporaryDirectory() as tmpdir:
         # Patch the storage root
         import src.audiobook_studio.storage as storage_mod
+
         original_root = storage_mod._STORAGE_ROOT
         storage_mod._STORAGE_ROOT = Path(tmpdir)
         yield Path(tmpdir)
@@ -89,6 +90,7 @@ class TestPathHelpers:
     def test_chapter_filename(self):
         """Test _chapter_filename helper."""
         from src.audiobook_studio.storage import _chapter_filename
+
         assert _chapter_filename(1, ".txt") == "ch_001.txt"
         assert _chapter_filename(5, ".json") == "ch_005.json"
         assert _chapter_filename(100, ".md") == "ch_100.md"
@@ -96,6 +98,7 @@ class TestPathHelpers:
     def test_paragraph_basename(self):
         """Test _paragraph_basename helper."""
         from src.audiobook_studio.storage import _paragraph_basename
+
         assert _paragraph_basename(1, 1) == "ch_001_p_001"
         assert _paragraph_basename(5, 42) == "ch_005_p_042"
         assert _paragraph_basename(100, 999) == "ch_100_p_999"
@@ -231,9 +234,18 @@ class TestCleanup:
         assert not project_dir(42).exists()
 
     def test_remove_nonexistent_project(self, temp_storage):
-        """Test removing nonexistent project doesn't error."""
+        """Test removing nonexistent project doesn't error and leaves storage intact."""
+        # Removing a never-created project must be a no-op (idempotent), not raise
         remove_project_storage(999)
-        # Should not raise
+        # Confirm the project directory was never created
+        assert not project_dir(999).exists()
+
+        # Verify a *real* project's storage is unaffected by an unrelated remove
+        save_raw_file(42, 1, b"test")
+        saved_dir = project_dir(42)
+        assert saved_dir.exists()
+        remove_project_storage(999)  # remove something else
+        assert saved_dir.exists(), "Unrelated remove must not affect existing project storage"
 
 
 class TestMultipleProjects:
@@ -244,8 +256,8 @@ class TestMultipleProjects:
         save_raw_file(1, 1, b"project 1")
         save_raw_file(2, 1, b"project 2")
 
-        p1 = load_extracted_text(1, 1) is None  # raw not extracted
-        p2 = load_extracted_text(2, 1) is None
+        load_extracted_text(1, 1) is None  # raw not extracted  # noqa: B015
+        load_extracted_text(2, 1) is None  # noqa: B015
         # Just verify both dirs exist independently
         assert (temp_storage / "books" / "1").exists()
         assert (temp_storage / "books" / "2").exists()

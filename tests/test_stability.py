@@ -2,16 +2,13 @@
 
 import os
 import time
-import threading
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 # Set MOCK_LLM environment variable for mock mode testing
 os.environ["MOCK_LLM"] = "true"
 
 from src.audiobook_studio.llm.circuit_breaker import CircuitBreaker
-from src.audiobook_studio.llm.health_probe import HealthProbe, HealthStatus
+from src.audiobook_studio.llm.health_probe import HealthProbe
 from src.audiobook_studio.llm.key_pool import ApiKeyPool, KeyPoolManager
 
 
@@ -29,9 +26,7 @@ class TestCircuitBreaker:
         assert cb.can_proceed() is False
 
     def test_transitions_to_half_open_after_cooldown(self):
-        cb = CircuitBreaker(
-            provider_name="test", failure_threshold=2, recovery_timeout_s=0.1
-        )
+        cb = CircuitBreaker(provider_name="test", failure_threshold=2, recovery_timeout_s=0.1)
         cb.record_failure()
         cb.record_failure()
         assert cb.state == "open"
@@ -40,9 +35,7 @@ class TestCircuitBreaker:
         assert cb.state == "half_open"
 
     def test_half_open_closes_on_success(self):
-        cb = CircuitBreaker(
-            provider_name="test", failure_threshold=2, recovery_timeout_s=0.1
-        )
+        cb = CircuitBreaker(provider_name="test", failure_threshold=2, recovery_timeout_s=0.1)
         cb.record_failure()
         cb.record_failure()
         time.sleep(0.15)
@@ -52,9 +45,7 @@ class TestCircuitBreaker:
         assert cb.failure_count == 0
 
     def test_half_open_opens_on_failure(self):
-        cb = CircuitBreaker(
-            provider_name="test", failure_threshold=2, recovery_timeout_s=0.1
-        )
+        cb = CircuitBreaker(provider_name="test", failure_threshold=2, recovery_timeout_s=0.1)
         cb.record_failure()
         cb.record_failure()
         time.sleep(0.15)
@@ -126,6 +117,7 @@ class TestApiKeyPool:
 
     def test_round_robin_rotation(self):
         import os
+
         os.environ["POOL_KEY_1"] = "key1"
         os.environ["POOL_KEY_2"] = "key2"
         os.environ["POOL_KEY_3"] = "key3"
@@ -160,6 +152,7 @@ class TestApiKeyPool:
 class TestKeyPoolManager:
     def test_register_and_get_key(self):
         import os
+
         os.environ["MGR_TEST_KEY"] = "test_key_value"
         try:
             manager = KeyPoolManager()
@@ -184,12 +177,14 @@ class TestKeyPoolManager:
 class TestEnhancedRouter:
     def test_router_initialization(self):
         from src.audiobook_studio.llm.router import LLMRouter
+
         router = LLMRouter()
         assert len(router.circuit_breakers) > 0
         assert len(router.key_pool._pools) > 0
 
     def test_free_tier_health(self):
         from src.audiobook_studio.llm.router import LLMRouter
+
         router = LLMRouter()
         health = router.get_free_tier_health()
         assert "total_free_providers" in health
@@ -199,6 +194,7 @@ class TestEnhancedRouter:
     def test_mock_call_annotation(self):
         from src.audiobook_studio.llm.router import LLMRouter
         from src.audiobook_studio.schemas import ParagraphAnnotation
+
         router = LLMRouter()
         result = router.call(
             "annotate",
@@ -211,6 +207,7 @@ class TestEnhancedRouter:
     def test_heuristic_fallback(self):
         from src.audiobook_studio.llm.router import LLMRouter
         from src.audiobook_studio.schemas import ParagraphAnnotation
+
         router = LLMRouter()
         fallback = router._heuristic_fallback("annotate", ParagraphAnnotation, segment_id="test_segment")
         assert fallback is not None
@@ -220,6 +217,7 @@ class TestEnhancedRouter:
     def test_heuristic_fallback_edit(self):
         from src.audiobook_studio.llm.router import LLMRouter
         from src.audiobook_studio.schemas import TtsEditOutput
+
         router = LLMRouter()
         fallback = router._heuristic_fallback("edit", TtsEditOutput, segment_id="test_segment")
         assert fallback is not None
@@ -228,6 +226,7 @@ class TestEnhancedRouter:
     def test_heuristic_fallback_judge(self):
         from src.audiobook_studio.llm.router import LLMRouter
         from src.audiobook_studio.schemas import QualityJudgment
+
         router = LLMRouter()
         fallback = router._heuristic_fallback("judge", QualityJudgment, segment_id="test_segment")
         assert fallback is not None

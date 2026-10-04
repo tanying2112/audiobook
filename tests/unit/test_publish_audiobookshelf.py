@@ -2,7 +2,6 @@
 
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -297,15 +296,17 @@ class TestAudiobookshelfPublisher:
     def test_prepare_upload_data(self, publisher, metadata, audio_file):
         # Create a dummy cover image for testing
         import tempfile
-        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp:
-            tmp.write(b'fake image data')
+
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+            tmp.write(b"fake image data")
             cover_path = tmp.name
         metadata.cover_image_path = Path(cover_path)
-        
+
         try:
             upload_data = publisher._prepare_upload_data(metadata, audio_file)
         finally:
             import os
+
             os.unlink(cover_path)
 
         assert upload_data["title"] == "Test Book"
@@ -323,15 +324,17 @@ class TestAudiobookshelfPublisher:
         audio_file.duration_seconds = 7200
 
         import tempfile
-        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp:
-            tmp.write(b'fake image data')
+
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+            tmp.write(b"fake image data")
             cover_path = tmp.name
         metadata.cover_image_path = Path(cover_path)
-        
+
         try:
             upload_data = publisher._prepare_upload_data(metadata, audio_file)
         finally:
             import os
+
             os.unlink(cover_path)
 
         assert len(upload_data["chapters"]) == 1
@@ -347,15 +350,17 @@ class TestAudiobookshelfPublisher:
         audio_file.chapters = chapters
 
         import tempfile
-        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp:
-            tmp.write(b'fake image data')
+
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+            tmp.write(b"fake image data")
             cover_path = tmp.name
         metadata.cover_image_path = Path(cover_path)
-        
+
         try:
             upload_data = publisher._prepare_upload_data(metadata, audio_file)
         finally:
             import os
+
             os.unlink(cover_path)
 
         assert upload_data["chapters"] == chapters

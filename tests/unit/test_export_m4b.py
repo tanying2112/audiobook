@@ -81,7 +81,7 @@ class TestBuildFFmpegChapterMetadata:
 
         result = _build_ffmpeg_chapter_metadata(chapters, total_duration)
 
-        assert "; FFMETADATA" in result
+        assert ";FFMETADATA1" in result  # ffmpeg 要求带版本号的头 (;FFMETADATA1)
         assert "[CHAPTER]" in result
         assert "TIMEBASE=1/1000" in result
         assert "START=0" in result
@@ -97,7 +97,8 @@ class TestBuildFFmpegChapterMetadata:
 
         result = _build_ffmpeg_chapter_metadata(chapters, total_duration)
 
-        assert result == "; FFMETADATA"
+        # 空章节：仅版本头 (;FFMETADATA1)
+        assert result == ";FFMETADATA1"
 
     def test_special_characters_escaped(self):
         chapters = [
@@ -134,11 +135,14 @@ class TestBuildM4b:
             def mock_run_side_effect(*args, **kwargs):
                 # For the final ffmpeg command that creates output.m4b, create the file
                 cmd = args[0] if args else []
-                if isinstance(cmd, list) and str(output_path) in ' '.join(cmd):
+                if isinstance(cmd, list) and str(output_path) in " ".join(cmd):
                     output_path.write_text("dummy m4b")
                 return MagicMock(stdout="10.5", returncode=0)
 
-            with patch("src.audiobook_studio.export.m4b.subprocess.run", side_effect=mock_run_side_effect) as mock_run:
+            with patch(
+                "src.audiobook_studio.export.m4b.subprocess.run",
+                side_effect=mock_run_side_effect,
+            ) as mock_run:
                 build_m4b(
                     audio_segments=[seg1, seg2],
                     chapter_markers=chapters,
@@ -160,11 +164,14 @@ class TestBuildM4b:
 
             def mock_run_side_effect(*args, **kwargs):
                 cmd = args[0] if args else []
-                if isinstance(cmd, list) and str(output_path) in ' '.join(cmd):
+                if isinstance(cmd, list) and str(output_path) in " ".join(cmd):
                     output_path.write_text("dummy m4b")
                 return MagicMock(stdout="10.0", returncode=0)
 
-            with patch("src.audiobook_studio.export.m4b.subprocess.run", side_effect=mock_run_side_effect) as mock_run:
+            with patch(
+                "src.audiobook_studio.export.m4b.subprocess.run",
+                side_effect=mock_run_side_effect,
+            ) as mock_run:
                 build_m4b(
                     audio_segments=[seg1],
                     chapter_markers=chapters,
@@ -209,11 +216,14 @@ class TestBuildM4b:
 
             def mock_run_side_effect(*args, **kwargs):
                 cmd = args[0] if args else []
-                if isinstance(cmd, list) and str(output_path) in ' '.join(cmd):
+                if isinstance(cmd, list) and str(output_path) in " ".join(cmd):
                     output_path.write_text("dummy m4b")
                 return MagicMock(stdout="10.0", returncode=0)
 
-            with patch("src.audiobook_studio.export.m4b.subprocess.run", side_effect=mock_run_side_effect) as mock_run:
+            with patch(
+                "src.audiobook_studio.export.m4b.subprocess.run",
+                side_effect=mock_run_side_effect,
+            ) as mock_run:
                 build_m4b(
                     audio_segments=[seg1],
                     chapter_markers=chapters,
@@ -298,11 +308,14 @@ class TestBuildM4bMissingFiles:
 
             def mock_run_side_effect(*args, **kwargs):
                 cmd = args[0] if args else []
-                if isinstance(cmd, list) and str(output_path) in ' '.join(cmd):
+                if isinstance(cmd, list) and str(output_path) in " ".join(cmd):
                     output_path.write_text("dummy m4b")
                 return MagicMock(stdout="20.0", returncode=0)
 
-            with patch("src.audiobook_studio.export.m4b.subprocess.run", side_effect=mock_run_side_effect) as mock_run:
+            with patch(
+                "src.audiobook_studio.export.m4b.subprocess.run",
+                side_effect=mock_run_side_effect,
+            ) as mock_run:
                 build_m4b(
                     audio_segments=[seg1, seg2],
                     chapter_markers=chapters,

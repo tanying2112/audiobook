@@ -10,13 +10,11 @@ Tests match the ACTUAL API from src/audiobook_studio/pipeline/analyze_structure.
 import json
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
-from src.audiobook_studio.pipeline.analyze_structure import (
-    AnalyzeStructurePipeline,
-    analyze_structure,
-)
+
+from src.audiobook_studio.pipeline.analyze_structure import AnalyzeStructurePipeline, analyze_structure
 from src.audiobook_studio.schemas import (
     BookAnalysisInput,
     BookAnalysisOutput,
@@ -37,6 +35,7 @@ class TestAnalyzeStructurePipeline:
     def teardown_method(self):
         """Clean up test fixtures."""
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def create_minimal_input(self, **overrides):
@@ -80,7 +79,8 @@ class TestAnalyzeStructurePipeline:
                     notes="平静的开头",
                 ),
             ],
-            "story_line_summary": "这是一个关于测试的故事，主角经历各种冒险最终成功，并在过程中获得了宝贵的友谊和成长。" * 3,
+            "story_line_summary": "这是一个关于测试的故事，主角经历各种冒险最终成功，并在过程中获得了宝贵的友谊和成长。"
+            * 3,
             "global_style_notes": "Mock style notes.",
         }
         defaults.update(overrides)
@@ -88,7 +88,6 @@ class TestAnalyzeStructurePipeline:
 
     def test_init_default(self):
         """Test pipeline initialization with defaults."""
-        from src.audiobook_studio.llm import create_router
 
         pipeline = AnalyzeStructurePipeline()
         assert pipeline.router is not None
@@ -178,9 +177,7 @@ class TestAnalyzeStructurePipeline:
         mock_router.call.return_value = mock_result
 
         pipeline = AnalyzeStructurePipeline(router=mock_router)
-        input_data = self.create_minimal_input(
-            raw_text="第1章 开始\n\n这是第一段。"
-        )
+        input_data = self.create_minimal_input(raw_text="第1章 开始\n\n这是第一段。")
 
         result = pipeline.run(input_data)
 
@@ -211,6 +208,7 @@ class TestAnalyzeStructureConvenienceFunction:
 
     def teardown_method(self):
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def create_minimal_params(self, **overrides):
@@ -251,11 +249,10 @@ class TestAnalyzeStructureConvenienceFunction:
                 ),
             ],
             emotion_snapshots=[
-                EmotionSnapshot(
-                    chapter=1, dominant_emotion="neutral", intensity=0.5, notes="开始"
-                ),
+                EmotionSnapshot(chapter=1, dominant_emotion="neutral", intensity=0.5, notes="开始"),
             ],
-            story_line_summary="这是一个关于测试的故事，主角经历各种冒险最终成功，并在过程中获得了宝贵的友谊和成长。" * 3,
+            story_line_summary="这是一个关于测试的故事，主角经历各种冒险最终成功，并在过程中获得了宝贵的友谊和成长。"
+            * 3,
             global_style_notes="风格备注。",
         )
         mock_result.model = "gpt-4o-mini"
@@ -265,9 +262,7 @@ class TestAnalyzeStructureConvenienceFunction:
         mock_result.latency_ms = 800
         mock_result.schema_compliance = True
 
-        from src.audiobook_studio.llm.router import create_router
-
-        with patch("src.audiobook_studio.pipeline.analyze_structure.create_router") as mock_create_router:
+        with patch("src.audiobook_studio.pipeline.analyze_structure.create_router") as mock_create_router:  # noqa: E303
             mock_router = MagicMock()
             mock_router.call.return_value = mock_result
             mock_create_router.return_value = mock_router
@@ -305,11 +300,10 @@ class TestAnalyzeStructureConvenienceFunction:
                 ),
             ],
             emotion_snapshots=[
-                EmotionSnapshot(
-                    chapter=1, dominant_emotion="neutral", intensity=0.5, notes="开始"
-                ),
+                EmotionSnapshot(chapter=1, dominant_emotion="neutral", intensity=0.5, notes="开始"),
             ],
-            story_line_summary="这是一个关于测试的故事，主角经历各种冒险最终成功，并在过程中获得了宝贵的友谊和成长。" * 3,
+            story_line_summary="这是一个关于测试的故事，主角经历各种冒险最终成功，并在过程中获得了宝贵的友谊和成长。"
+            * 3,
             global_style_notes="风格备注。",
         )
         mock_result.model = "gpt-4o-mini"
@@ -320,7 +314,10 @@ class TestAnalyzeStructureConvenienceFunction:
         mock_result.schema_compliance = True
         mock_router.call.return_value = mock_result
 
-        with patch("src.audiobook_studio.pipeline.analyze_structure.create_router", return_value=mock_router):
+        with patch(
+            "src.audiobook_studio.pipeline.analyze_structure.create_router",
+            return_value=mock_router,
+        ):
             params = self.create_minimal_params(raw_text="特定文本内容")
             result = analyze_structure(**params)
 
@@ -340,6 +337,7 @@ class TestAnalyzeStructureEdgeCases:
 
     def teardown_method(self):
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def create_base_input(self, **overrides):
@@ -367,9 +365,7 @@ class TestAnalyzeStructureEdgeCases:
 
     def test_unicode_content(self):
         """Test analysis with unicode content (emoji, special chars)."""
-        input_data = self.create_base_input(
-            raw_text="第1章 🎉\n\n这是测试内容 📚\n\n第2章 🎊\n\n更多内容 🎈"
-        )
+        input_data = self.create_base_input(raw_text="第1章 🎉\n\n这是测试内容 📚\n\n第2章 🎊\n\n更多内容 🎈")
         prompt = self.pipeline._build_prompt(input_data)
         assert "🎉" in prompt
         assert "第1章" in prompt
@@ -383,10 +379,7 @@ class TestAnalyzeStructureEdgeCases:
 
     def test_title_and_author_hints(self):
         """Test title and author hints are passed through."""
-        input_data = self.create_base_input(
-            title_hint="特定书名",
-            author_hint="特定作者"
-        )
+        input_data = self.create_base_input(title_hint="特定书名", author_hint="特定作者")
         prompt = self.pipeline._build_prompt(input_data)
         assert "特定书名" in prompt
         assert "特定作者" in prompt

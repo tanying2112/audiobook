@@ -9,12 +9,11 @@ Covers:
 - _publish_to_audiobookshelf (MIME type mapping, upload flow)
 """
 
-from datetime import datetime, timezone
-from pathlib import Path
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.audiobook_studio.exceptions import DomainError
 
 # ===========================================================================
 # Schema tests
@@ -24,11 +23,13 @@ import pytest
 class TestPublishSchemas:
     def test_audiobookshelf_config(self):
         from src.audiobook_studio.api.publish import AudiobookshelfConfig
+
         cfg = AudiobookshelfConfig(server_url="http://localhost:13378", api_key="key123")
         assert cfg.library_id is None
 
     def test_podcast_rss_config(self):
         from src.audiobook_studio.api.publish import PodcastRSSConfig
+
         cfg = PodcastRSSConfig(
             feed_title="My Pod",
             feed_description="desc",
@@ -42,11 +43,13 @@ class TestPublishSchemas:
 
     def test_publish_request_defaults(self):
         from src.audiobook_studio.api.publish import PublishRequest
+
         req = PublishRequest()
         assert req.destinations == ["audiobookshelf"]
 
     def test_publish_job_out_defaults(self):
         from src.audiobook_studio.api.publish import PublishJobOut
+
         job = PublishJobOut(job_id="j1", project_id=1, destinations=["audiobookshelf"], created_at="now")
         assert job.status == "pending"
         assert job.error is None
@@ -55,6 +58,7 @@ class TestPublishSchemas:
 
     def test_rss_feed_out(self):
         from src.audiobook_studio.api.publish import RSSFeedOut
+
         feed = RSSFeedOut(xml="<rss/>", feed_url="http://x/feed.xml", episode_count=5)
         assert feed.episode_count == 5
 
@@ -73,67 +77,76 @@ class TestPublishEndpoint:
 
     @pytest.mark.asyncio
     async def test_project_not_found(self):
-        from src.audiobook_studio.api.publish import publish_project, PublishRequest
-        from fastapi import HTTPException
 
-        db = MagicMock()
-        db.query.return_value.filter.return_value.first.return_value = None
+        from src.audiobook_studio.api.publish import PublishRequest, publish_project
+
+        db = AsyncMock()
+        # Mock the async execute and scalar_one_or_none
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        db.execute.return_value = mock_result
         req = PublishRequest(destinations=["audiobookshelf"])
 
-        with patch("src.audiobook_studio.api.publish.get_db", return_value=iter([db])):
-            with pytest.raises(HTTPException) as exc_info:
-                await publish_project(
-                    project_id=999,
-                    request=req,
-                    background_tasks=MagicMock(),
-                    db=db,
-                )
-            assert exc_info.value.status_code == 404
+        with pytest.raises(DomainError) as exc_info:
+            await publish_project(
+                project_id=999,
+                request=req,
+                background_tasks=MagicMock(),
+                db=db,
+            )
+        assert exc_info.value.error_code == "NOT_FOUND"
 
     @pytest.mark.asyncio
     async def test_project_not_completed(self):
-        from src.audiobook_studio.api.publish import publish_project, PublishRequest
-        from fastapi import HTTPException
 
-        db = MagicMock()
-        db.query.return_value.filter.return_value.first.return_value = self._make_project(status="processing")
+        from src.audiobook_studio.api.publish import PublishRequest, publish_project
+
+        db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = self._make_project(status="processing")
+        db.execute.return_value = mock_result
         req = PublishRequest(destinations=["audiobookshelf"])
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(DomainError) as exc_info:
             await publish_project(
                 project_id=10,
                 request=req,
                 background_tasks=MagicMock(),
                 db=db,
             )
-        assert exc_info.value.status_code == 400
-        assert "not ready" in exc_info.value.detail.lower()
+        assert exc_info.value.error_code == "VALIDATION_ERROR"
+        assert "not ready" in exc_info.value.message.lower()
 
     @pytest.mark.asyncio
     async def test_invalid_destination(self):
-        from src.audiobook_studio.api.publish import publish_project, PublishRequest
-        from fastapi import HTTPException
 
-        db = MagicMock()
-        db.query.return_value.filter.return_value.first.return_value = self._make_project()
+        from src.audiobook_studio.api.publish import PublishRequest, publish_project
+
+        db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = self._make_project()
+        db.execute.return_value = mock_result
         req = PublishRequest(destinations=["invalid_service"])
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(DomainError) as exc_info:
             await publish_project(
                 project_id=10,
                 request=req,
                 background_tasks=MagicMock(),
                 db=db,
             )
-        assert exc_info.value.status_code == 400
-        assert "Invalid destinations" in exc_info.value.detail
+        assert exc_info.value.error_code == "VALIDATION_ERROR"
+        assert "Invalid destinations" in exc_info.value.message
 
     @pytest.mark.asyncio
     async def test_valid_publish_creates_job(self):
-        from src.audiobook_studio.api.publish import publish_project, PublishRequest, _publish_jobs
 
-        db = MagicMock()
-        db.query.return_value.filter.return_value.first.return_value = self._make_project()
+        from src.audiobook_studio.api.publish import PublishRequest, _publish_jobs, publish_project
+
+        db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = self._make_project()
+        db.execute.return_value = mock_result
         req = PublishRequest(destinations=["audiobookshelf", "podcast_rss"])
         bg = MagicMock()
 
@@ -155,10 +168,18 @@ class TestPublishEndpoint:
 
     @pytest.mark.asyncio
     async def test_publish_with_audiobookshelf_config(self):
-        from src.audiobook_studio.api.publish import publish_project, PublishRequest, AudiobookshelfConfig, _publish_jobs
 
-        db = MagicMock()
-        db.query.return_value.filter.return_value.first.return_value = self._make_project()
+        from src.audiobook_studio.api.publish import (
+            AudiobookshelfConfig,
+            PublishRequest,
+            _publish_jobs,
+            publish_project,
+        )
+
+        db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = self._make_project()
+        db.execute.return_value = mock_result
         ab_config = AudiobookshelfConfig(server_url="http://abs:13378", api_key="key")
         req = PublishRequest(
             destinations=["audiobookshelf"],
@@ -167,7 +188,10 @@ class TestPublishEndpoint:
         bg = MagicMock()
 
         result = await publish_project(
-            project_id=10, request=req, background_tasks=bg, db=db,
+            project_id=10,
+            request=req,
+            background_tasks=bg,
+            db=db,
         )
         assert result.job_id.startswith("publish_10_")
         _publish_jobs.clear()
@@ -181,6 +205,7 @@ class TestPublishEndpoint:
 class TestPublishJobEndpoints:
     def _setup_job(self):
         from src.audiobook_studio.api.publish import _publish_jobs
+
         _publish_jobs.clear()
         _publish_jobs["publish_10_001"] = {
             "job_id": "publish_10_001",
@@ -205,7 +230,7 @@ class TestPublishJobEndpoints:
         _publish_jobs.clear()
 
     def test_get_job_found(self):
-        from src.audiobook_studio.api.publish import get_publish_job, _publish_jobs
+        from src.audiobook_studio.api.publish import _publish_jobs, get_publish_job
 
         _publish_jobs.clear()
         _publish_jobs["publish_10_001"] = {
@@ -217,22 +242,23 @@ class TestPublishJobEndpoints:
             "created_at": "2025-01-01T00:00:00Z",
         }
         import asyncio
+
         result = asyncio.run(get_publish_job(project_id=10, job_id="publish_10_001"))
         assert result.status == "completed"
         _publish_jobs.clear()
 
     def test_get_job_not_found(self):
-        from src.audiobook_studio.api.publish import get_publish_job
-        from fastapi import HTTPException
-
         import asyncio
-        with pytest.raises(HTTPException) as exc_info:
+
+        from src.audiobook_studio.api.publish import get_publish_job
+
+        with pytest.raises(DomainError) as exc_info:
             asyncio.run(get_publish_job(project_id=10, job_id="nonexistent"))
-        assert exc_info.value.status_code == 404
+        assert exc_info.value.error_code == "NOT_FOUND"
 
     def test_get_job_wrong_project(self):
-        from src.audiobook_studio.api.publish import get_publish_job, _publish_jobs
-        from fastapi import HTTPException
+
+        from src.audiobook_studio.api.publish import _publish_jobs, get_publish_job
 
         _publish_jobs.clear()
         _publish_jobs["publish_10_001"] = {
@@ -244,29 +270,40 @@ class TestPublishJobEndpoints:
             "created_at": "2025-01-01T00:00:00Z",
         }
         import asyncio
-        with pytest.raises(HTTPException) as exc_info:
+
+        with pytest.raises(DomainError) as exc_info:
             asyncio.run(get_publish_job(project_id=99, job_id="publish_10_001"))
-        assert exc_info.value.status_code == 400
+        assert exc_info.value.error_code == "FORBIDDEN"
         _publish_jobs.clear()
 
     def test_get_history(self):
-        from src.audiobook_studio.api.publish import get_publish_history, _publish_jobs
+        from src.audiobook_studio.api.publish import _publish_jobs, get_publish_history
 
         _publish_jobs.clear()
         _publish_jobs["a"] = {
-            "job_id": "a", "project_id": 10, "status": "completed",
-            "destinations": ["audiobookshelf"], "created_at": "2025-01-01",
+            "job_id": "a",
+            "project_id": 10,
+            "status": "completed",
+            "destinations": ["audiobookshelf"],
+            "created_at": "2025-01-01",
         }
         _publish_jobs["b"] = {
-            "job_id": "b", "project_id": 20, "status": "failed",
-            "destinations": ["podcast_rss"], "created_at": "2025-01-02",
+            "job_id": "b",
+            "project_id": 20,
+            "status": "failed",
+            "destinations": ["podcast_rss"],
+            "created_at": "2025-01-02",
         }
         _publish_jobs["c"] = {
-            "job_id": "c", "project_id": 10, "status": "completed",
-            "destinations": [], "created_at": "2025-01-03",
+            "job_id": "c",
+            "project_id": 10,
+            "status": "completed",
+            "destinations": [],
+            "created_at": "2025-01-03",
         }
 
         import asyncio
+
         history = asyncio.run(get_publish_history(project_id=10))
         assert len(history) == 2
         # Sorted descending by created_at
@@ -286,6 +323,7 @@ class TestPublishBackground:
 
         _publish_jobs.clear()
         import asyncio
+
         # Should not raise — just logs error and returns
         asyncio.run(_publish_background(job_id="nonexistent", project_id=1, destinations=["audiobookshelf"]))
 
@@ -295,12 +333,18 @@ class TestPublishBackground:
 
         _publish_jobs.clear()
         _publish_jobs["j1"] = {
-            "job_id": "j1", "project_id": 1, "status": "pending",
-            "destinations": ["audiobookshelf"], "results": {},
+            "job_id": "j1",
+            "project_id": 1,
+            "status": "pending",
+            "destinations": ["audiobookshelf"],
+            "results": {},
         }
 
-        with patch("src.audiobook_studio.api.publish._publish_to_audiobookshelf",
-                    new_callable=AsyncMock, return_value={"book_url": "http://abs/1"}):
+        with patch(
+            "src.audiobook_studio.api.publish._publish_to_audiobookshelf",
+            new_callable=AsyncMock,
+            return_value={"book_url": "http://abs/1"},
+        ):
             await _publish_background(job_id="j1", project_id=1, destinations=["audiobookshelf"])
 
         job = _publish_jobs["j1"]
@@ -315,12 +359,18 @@ class TestPublishBackground:
 
         _publish_jobs.clear()
         _publish_jobs["j2"] = {
-            "job_id": "j2", "project_id": 2, "status": "pending",
-            "destinations": ["audiobookshelf"], "results": {},
+            "job_id": "j2",
+            "project_id": 2,
+            "status": "pending",
+            "destinations": ["audiobookshelf"],
+            "results": {},
         }
 
-        with patch("src.audiobook_studio.api.publish._publish_to_audiobookshelf",
-                    new_callable=AsyncMock, side_effect=ValueError("Connection refused")):
+        with patch(
+            "src.audiobook_studio.api.publish._publish_to_audiobookshelf",
+            new_callable=AsyncMock,
+            side_effect=ValueError("Connection refused"),
+        ):
             await _publish_background(job_id="j2", project_id=2, destinations=["audiobookshelf"])
 
         job = _publish_jobs["j2"]
@@ -334,12 +384,18 @@ class TestPublishBackground:
 
         _publish_jobs.clear()
         _publish_jobs["j3"] = {
-            "job_id": "j3", "project_id": 3, "status": "pending",
-            "destinations": ["podcast_rss"], "results": {},
+            "job_id": "j3",
+            "project_id": 3,
+            "status": "pending",
+            "destinations": ["podcast_rss"],
+            "results": {},
         }
 
-        with patch("src.audiobook_studio.api.publish._generate_podcast_rss",
-                    new_callable=AsyncMock, return_value={"rss_url": "http://x/feed.xml", "episode_count": 5}):
+        with patch(
+            "src.audiobook_studio.api.publish._generate_podcast_rss",
+            new_callable=AsyncMock,
+            return_value={"rss_url": "http://x/feed.xml", "episode_count": 5},
+        ):
             await _publish_background(job_id="j3", project_id=3, destinations=["podcast_rss"])
 
         job = _publish_jobs["j3"]
@@ -354,16 +410,26 @@ class TestPublishBackground:
 
         _publish_jobs.clear()
         _publish_jobs["j4"] = {
-            "job_id": "j4", "project_id": 4, "status": "pending",
-            "destinations": ["audiobookshelf", "podcast_rss"], "results": {},
+            "job_id": "j4",
+            "project_id": 4,
+            "status": "pending",
+            "destinations": ["audiobookshelf", "podcast_rss"],
+            "results": {},
         }
 
-        with patch("src.audiobook_studio.api.publish._publish_to_audiobookshelf",
-                    new_callable=AsyncMock, return_value={"book_url": "http://abs/4"}):
-            with patch("src.audiobook_studio.api.publish._generate_podcast_rss",
-                      new_callable=AsyncMock, side_effect=RuntimeError("RSS error")):
+        with patch(
+            "src.audiobook_studio.api.publish._publish_to_audiobookshelf",
+            new_callable=AsyncMock,
+            return_value={"book_url": "http://abs/4"},
+        ):
+            with patch(
+                "src.audiobook_studio.api.publish._generate_podcast_rss",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("RSS error"),
+            ):
                 await _publish_background(
-                    job_id="j4", project_id=4,
+                    job_id="j4",
+                    project_id=4,
                     destinations=["audiobookshelf", "podcast_rss"],
                 )
 
@@ -385,12 +451,12 @@ class TestAudiobookshelfMimeTypes:
 
     def test_m4b_returns_audio_mp4(self):
         """Core requirement: .m4b → audio/mp4."""
-        from src.audiobook_studio.api.publish import _publish_to_audiobookshelf
-        from pathlib import Path
-
         # The _mime_type function is a local function inside _publish_to_audiobookshelf.
         # We can't call it directly, but we can test by checking the function source.
         import inspect
+
+        from src.audiobook_studio.api.publish import _publish_to_audiobookshelf
+
         source = inspect.getsource(_publish_to_audiobookshelf)
         assert '".m4b": "audio/mp4"' in source
 
@@ -417,7 +483,14 @@ class TestAudiobookshelfMimeTypes:
 class TestPodcastRSSFeedEndpoint:
     """Test the RSS feed generation endpoint, focusing on enclosure type for .m4b."""
 
-    def _make_segment(self, file_path="chapter_1.m4b", duration_ms=60000, file_size_bytes=1024000, index=1, chapter_index=1):
+    def _make_segment(
+        self,
+        file_path="chapter_1.m4b",
+        duration_ms=60000,
+        file_size_bytes=1024000,
+        index=1,
+        chapter_index=1,
+    ):
         seg = MagicMock()
         seg.file_path = file_path
         seg.duration_ms = duration_ms
@@ -439,27 +512,39 @@ class TestPodcastRSSFeedEndpoint:
     def _run_feed(self, project, segments, **kwargs):
         """Helper to run get_podcast_rss_feed with proper mocking.
 
-        AudioSegment has no 'index' column but the code accesses
-        AudioSegment.index in order_by(). We temporarily add it to the class.
+        AudioSegment has an 'index' column but we need to mock it for the order_by clause.
+        We use a different approach - create a mock for the column directly.
         """
+        from unittest.mock import AsyncMock, MagicMock
+
         from src.audiobook_studio.api.publish import get_podcast_rss_feed
         from src.audiobook_studio.models.audio_segment import AudioSegment
 
-        mock_db = MagicMock()
-        mock_db.query.return_value.filter.return_value.first.return_value = project
-        mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = segments
+        mock_db = AsyncMock()
+        # Mock the execute results
+        mock_result1 = MagicMock()
+        mock_result1.scalar_one_or_none.return_value = project
+        mock_result2 = MagicMock()
+        mock_result2.scalars.return_value.all.return_value = segments
+
+        # The endpoint makes two execute calls - one for project, one for segments
+        mock_db.execute.side_effect = [mock_result1, mock_result2]
 
         import asyncio
-        with patch("src.audiobook_studio.database.SessionLocal", return_value=mock_db):
-            # Temporarily add 'index' to AudioSegment class
-            AudioSegment.index = MagicMock(name="index_col")
-            try:
-                return asyncio.run(get_podcast_rss_feed(project_id=5, **kwargs))
-            finally:
-                try:
-                    del AudioSegment.index
-                except AttributeError:
-                    pass
+
+        # Mock the index column on AudioSegment for the order_by() call
+        # We don't delete it afterwards to avoid SQLAlchemy errors
+        # Just override the existing column temporarily for this test
+        original_index = AudioSegment.index
+        mock_index_col = MagicMock()
+        mock_index_col.__clause_element__ = lambda self: mock_index_col
+        # Replace the Mapped attribute temporarily
+        AudioSegment.index = mock_index_col
+        try:
+            return asyncio.run(get_podcast_rss_feed(project_id=5, db=mock_db, **kwargs))
+        finally:
+            # Restore original
+            AudioSegment.index = original_index
 
     def test_m4b_enclosure_type_is_audio_mp4(self):
         """Core test: .m4b files produce enclosure type='audio/mp4'."""
@@ -495,18 +580,20 @@ class TestPodcastRSSFeedEndpoint:
         assert 'type="audio/mp4"' in result.xml
         assert "episode_1.m4b" in result.xml
 
-    def test_project_not_found(self):
+    @pytest.mark.asyncio
+    async def test_project_not_found(self):
+        from unittest.mock import AsyncMock, MagicMock
+
         from src.audiobook_studio.api.publish import get_podcast_rss_feed
-        from fastapi import HTTPException
 
-        mock_db = MagicMock()
-        mock_db.query.return_value.filter.return_value.first.return_value = None
+        mock_db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_db.execute.return_value = mock_result
 
-        import asyncio
-        with patch("src.audiobook_studio.database.SessionLocal", return_value=mock_db):
-            with pytest.raises(HTTPException) as exc_info:
-                asyncio.run(get_podcast_rss_feed(project_id=999))
-        assert exc_info.value.status_code == 404
+        with pytest.raises(DomainError) as exc_info:
+            await get_podcast_rss_feed(project_id=999, db=mock_db)
+        assert exc_info.value.error_code == "NOT_FOUND"
 
     def test_rss_contains_channel_and_items(self):
         project = self._make_project()
@@ -546,17 +633,25 @@ class TestPodcastRSSFeedEndpoint:
 class TestGeneratePodcastRss:
     @pytest.mark.asyncio
     async def test_project_not_found_raises(self):
+        from unittest.mock import AsyncMock, MagicMock
+
         from src.audiobook_studio.api.publish import _generate_podcast_rss
 
-        mock_db = MagicMock()
-        mock_db.query.return_value.filter.return_value.first.return_value = None
+        mock_db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_db.execute.return_value = mock_result
 
-        with patch("src.audiobook_studio.database.SessionLocal", return_value=mock_db):
+        # The function uses AsyncSessionLocal internally from ..database
+        with patch("src.audiobook_studio.database.AsyncSessionLocal") as mock_session:
+            mock_session.return_value.__aenter__.return_value = mock_db
             with pytest.raises(ValueError, match="not found"):
                 await _generate_podcast_rss(project_id=999, config={})
 
     @pytest.mark.asyncio
     async def test_returns_episode_count(self):
+        from unittest.mock import AsyncMock, MagicMock
+
         from src.audiobook_studio.api.publish import _generate_podcast_rss
         from src.audiobook_studio.models.audio_segment import AudioSegment
 
@@ -564,19 +659,27 @@ class TestGeneratePodcastRss:
         mock_project.id = 5
         mock_segments = [MagicMock(), MagicMock(), MagicMock()]
 
-        mock_db = MagicMock()
-        mock_db.query.return_value.filter.return_value.first.return_value = mock_project
-        mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = mock_segments
+        mock_db = AsyncMock()
+        mock_result1 = MagicMock()
+        mock_result1.scalar_one_or_none.return_value = mock_project
+        mock_result2 = MagicMock()
+        mock_result2.scalars.return_value.all.return_value = mock_segments
+        mock_db.execute.side_effect = [mock_result1, mock_result2]
 
-        AudioSegment.index = MagicMock(name="index_col")
+        # NOTE: 必须设置 ``AudioSegment.index`` (类属性) 而非 ``type(AudioSegment).index``。
+        # ``type(AudioSegment)`` 是声明式元类 (DeclarativeMeta)，在其上设置属性会通过
+        # 元类 MRO 污染 *所有* 声明式模型 (Chapter/AudioSegment/...) 的 ``index`` 访问，
+        # 导致后续测试用例 (如 test_db_optimization) 编译 SQL 时 ``Chapter.index`` 变成 MagicMock。
+        _original_index = AudioSegment.index
+        mock_index_col = MagicMock()
+        mock_index_col.__clause_element__ = lambda self: mock_index_col
+        AudioSegment.index = mock_index_col
         try:
-            with patch("src.audiobook_studio.database.SessionLocal", return_value=mock_db):
+            with patch("src.audiobook_studio.database.AsyncSessionLocal") as mock_session:
+                mock_session.return_value.__aenter__.return_value = mock_db
                 result = await _generate_podcast_rss(project_id=5, config={})
         finally:
-            try:
-                del AudioSegment.index
-            except AttributeError:
-                pass
+            AudioSegment.index = _original_index
 
         assert result["episode_count"] == 3
         assert result["success"] is True

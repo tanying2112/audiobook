@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from sqlalchemy import Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from ..database import Base
+from ..orm_base import Base
 from ..schemas.routing import Routing as RoutingSchema
 
 if TYPE_CHECKING:
@@ -22,20 +22,14 @@ class Routing(Base):
     __tablename__ = "routings"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    project_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
-    )
-    chapter_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("chapters.id", ondelete="CASCADE"), nullable=True
-    )
-    paragraph_id: Mapped[int] = mapped_column(
-        ForeignKey("paragraphs.id", ondelete="CASCADE"), nullable=False
-    )
+    project_id: Mapped[Optional[int]] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=True)
+    chapter_id: Mapped[Optional[int]] = mapped_column(ForeignKey("chapters.id", ondelete="CASCADE"), nullable=True)
+    paragraph_id: Mapped[int] = mapped_column(ForeignKey("paragraphs.id", ondelete="CASCADE"), nullable=False)
 
     # HARNESS fields
     engine_choice: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     voice_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    prosody_overrides: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    prosody_overrides: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     fallback_engine: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     reasoning: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     estimated_cost_usd: Mapped[float] = mapped_column(Float, default=0.0)

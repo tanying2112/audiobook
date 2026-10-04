@@ -17,67 +17,66 @@ Features:
 import json
 import logging
 import os
-import re
 import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import date, datetime
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Type, TypeVar
+from datetime import date
 
+# Langfuse monitoring - use lazy import to avoid circular dependency
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, TypeVar
+
+from ..di import get_app_container
 from ..schemas import (
     BookAnalysisOutput,
     ExtractionResult,
     FeedbackAnalysis,
+    PairwiseJudgment,
     ParagraphAnnotation,
     QualityJudgment,
     TtsEditOutput,
-    TtsRoutingDecision,
 )
 from .circuit_breaker import CircuitBreaker
-from .client import LLMCallResult, LLMClient, LLMClientConfig, create_client
+from .client import LLMCallResult, LLMClient, create_client
 from .config_loader import LLMProvidersConfig, ProviderConfig, ProviderType, StageName
-from .health_probe import HealthProbe, HealthStatus
+from .direct_client import DirectProviderClientConfig, DirectProviderType, create_direct_client
+from .health_probe import HealthProbe
 from .key_pool import KeyPoolManager
 from .quota_registry import QuotaRegistry
-from ..di import get_app_container
 
-# Langfuse monitoring - use lazy import to avoid circular dependency
-from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from ..monitoring.langfuse_client import (
-        init_langfuse,
-        is_enabled as langfuse_is_enabled,
-        observe_llm_call,
-        span,
-    )
+    pass
 
 # trace_function is imported at runtime in the lazy decorator below
 
 # Runtime imports will be done in functions
 
-from .utils import LLMParseError, validate_and_parse_llm_response
+from .utils import LLMParseError
 
 
 def _lazy_trace_function(stage: str):
     """Lazy-loading decorator for trace_function to avoid import-time errors."""
+
     def decorator(func):
         from functools import wraps
+
         @wraps(func)
         def wrapper(*args, **kwargs):
             try:
                 from ..monitoring.langfuse_client import trace_function
+
                 return trace_function(name=func.__name__, stage=stage)(func)(*args, **kwargs)
-            except Exception:
-                # If langfuse not available or any error, run without tracing
+            except Exception:  # noqa: BLE001 — langfuse 缺失或任何错误均无痕直跑
                 return func(*args, **kwargs)
+
         return wrapper
+
     return decorator
 
 
 # Hardware profile integration
-from ..config.hardware_profile import get_hardware_profile, HardwareProfile
+from ..config.hardware_profile import HardwareProfile, get_hardware_profile
+
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
@@ -125,10 +124,7 @@ class ProviderRateLimiter:
                 self._tokens_used = 0
                 self._requests_used = 0
                 self._window_start = now
-            return (
-                self._tokens_used + estimated_tokens <= self.max_tpm
-                and self._requests_used + 1 <= self.max_rpm
-            )
+            return self._tokens_used + estimated_tokens <= self.max_tpm and self._requests_used + 1 <= self.max_rpm
 
     def record_usage(self, tokens: int):
         with self._lock:
@@ -140,11 +136,10 @@ class ProviderRateLimiter:
 class CostTracker:
     """Tracks costs per model per day with thread safety."""
 
-    _costs: Dict[str, Dict[date, float]] = field(
-        default_factory=lambda: defaultdict(lambda: defaultdict(float))
-    )
+    _costs: Dict[str, Dict[date, float]] = field(default_factory=lambda: defaultdict(lambda: defaultdict(float)))
     _lock: threading.Lock = field(default_factory=threading.Lock)
     _daily_limits: Dict[str, float] = field(default_factory=dict)
+    _global_daily_limit: float = 10.0  # Global daily limit in USD
     _alert_threshold: float = 0.8
 
     def add_cost(self, model: str, cost_usd: float):
@@ -171,9 +166,21 @@ class CostTracker:
         with self._lock:
             self._daily_limits[model] = limit_usd
 
+    def set_global_daily_limit(self, limit_usd: float):
+        """Set the global daily cost limit across all providers."""
+        with self._lock:
+            self._global_daily_limit = limit_usd
+
+    def is_global_limit_exceeded(self) -> bool:
+        """Check if the global daily cost limit has been exceeded."""
+        return self.get_total_daily_cost() >= self._global_daily_limit
+
     def is_limit_exceeded(self, model: str) -> bool:
         limit = self._daily_limits.get(model, float("inf"))
         current = self.get_daily_cost(model)
+        # Also check global limit
+        if self.is_global_limit_exceeded():
+            return True
         return current >= limit
 
     def is_alert_threshold(self, model: str) -> bool:
@@ -185,17 +192,14 @@ class CostTracker:
         today = date.today()
         with self._lock:
             status = {}
-            for model in set(
-                list(self._costs.keys()) + list(self._daily_limits.keys())
-            ):
+            for model in set(list(self._costs.keys()) + list(self._daily_limits.keys())):
                 current = self._costs[model].get(today, 0.0)
                 limit = self._daily_limits.get(model, None)
                 status[model] = {
                     "daily_cost_usd": round(current, 6),
                     "daily_limit_usd": limit,
                     "limit_exceeded": current >= (limit or float("inf")),
-                    "alert_triggered": limit
-                    and current >= limit * self._alert_threshold,
+                    "alert_triggered": limit and current >= limit * self._alert_threshold,
                     "usage_pct": round(current / limit * 100, 1) if limit else 0,
                 }
             return status
@@ -206,12 +210,14 @@ class CostTracker:
 def get_cost_tracker() -> CostTracker:
     """Deprecated: use get_app_container().get(CostTracker)"""
     from ..di import get_app_container
+
     return get_app_container().get(CostTracker)
 
 
 def reset_cost_tracker():
     """Deprecated: use container.clear() or reset_app_container()"""
     from ..di import get_app_container
+
     container = get_app_container()
     container.unregister(CostTracker)
     container.register_singleton(CostTracker, CostTracker())
@@ -293,6 +299,7 @@ class LLMRouter:
         self.quota_registry = quota_registry or container.get(QuotaRegistry)
 
         # Load provider config
+        self._config_path = config_path
         self.config = LLMProvidersConfig.load(config_path)
 
         # Hardware profile integration for stage-specific model routing
@@ -320,9 +327,8 @@ class LLMRouter:
         self._free_quota_success: Dict[str, int] = defaultdict(int)
         self._free_quota_fail: Dict[str, int] = defaultdict(int)
 
-        # Free tier tracking (legacy, kept for backward compatibility)
-        self._free_quota_success: Dict[str, int] = defaultdict(int)
-        self._free_quota_fail: Dict[str, int] = defaultdict(int)
+        # Direct provider clients cache (for providers with use_direct_sdk=True)
+        self.direct_clients = {}
 
         # Initialize components for each provider
         for provider in self.config.get_all_enabled():
@@ -345,14 +351,74 @@ class LLMRouter:
             )
 
             # Load daily limits from config
-            self.cost_tracker.set_daily_limit(
-                provider.name, provider.max_daily_cost_usd
-            )
+            self.cost_tracker.set_daily_limit(provider.name, provider.max_daily_cost_usd)
+
+        # Set global daily cost limit from config
+        # Default $10/day, configurable via cost_control.daily_limit_usd in YAML
+        try:
+            cost_control = getattr(self.config, "cost_control", None)
+            if cost_control and hasattr(cost_control, "daily_limit_usd"):
+                self.cost_tracker.set_global_daily_limit(cost_control.daily_limit_usd)
+        except AttributeError:
+            pass  # Use default if config doesn't have cost_control
 
         # Initialize Langfuse lazy attributes
         self._langfuse_enabled_cached = False
 
-        # Start health probe
+        # Build per-provider runtime state (clients, limiters, circuit
+        # breakers, key pool, health probe). Extracted so it can be re-run on
+        # hot-reload without re-creating the router (see reload_config).
+        self._rebuild_provider_runtime()
+
+    def _rebuild_provider_runtime(self) -> None:
+        """(Re)build all per-provider runtime components from ``self.config``.
+
+        Safe to call repeatedly: clears and recreates clients, rate limiters,
+        circuit breakers, key-pool registrations, cost limits and the health
+        probe. Used by :meth:`reload_config` to apply provider changes made at
+        runtime (e.g. via the dynamic provider-management API) without a restart.
+        """
+        # Reset runtime state
+        self.clients.clear()
+        self.rate_limiters.clear()
+        self.circuit_breakers.clear()
+        self.direct_clients.clear()
+        # Fresh key-pool manager (clears all registered provider pools).
+        self.key_pool = KeyPoolManager()
+
+        # Initialize components for each provider
+        for provider in self.config.get_all_enabled():
+            self.rate_limiters[provider.name] = ProviderRateLimiter(
+                max_tpm=provider.max_tokens_per_minute,
+                max_rpm=provider.max_requests_per_minute,
+            )
+            self.circuit_breakers[provider.name] = CircuitBreaker(
+                provider_name=provider.name,
+                failure_threshold=3,
+                recovery_timeout_s=120.0,
+            )
+
+            # Register key pool
+            self.key_pool.register(
+                provider_name=provider.name,
+                primary_key_env=provider.api_key_env or "",
+                pool_key_envs=provider.api_key_pool_env,
+                strategy=provider.key_rotation_strategy,
+            )
+
+            # Load daily limits from config
+            self.cost_tracker.set_daily_limit(provider.name, provider.max_daily_cost_usd)
+
+        # Set global daily cost limit from config
+        # Default $10/day, configurable via cost_control.daily_limit_usd in YAML
+        try:
+            cost_control = getattr(self.config, "cost_control", None)
+            if cost_control and hasattr(cost_control, "daily_limit_usd"):
+                self.cost_tracker.set_global_daily_limit(cost_control.daily_limit_usd)
+        except AttributeError:
+            pass  # Use default if config doesn't have cost_control
+
+        # (Re)start health probe
         enabled_providers = self.config.get_all_enabled()
         if enabled_providers:
             self.health_probe = HealthProbe(
@@ -362,8 +428,42 @@ class LLMRouter:
             )
             try:
                 self.health_probe.start()
-            except Exception:
+            except (RuntimeError, OSError):
                 logger.warning("Failed to start health probe")
+
+    def reload_config(self, config_path: Optional[str] = None) -> None:
+        """Hot-reload provider configuration without restarting the router.
+
+        Re-reads ``LLMProvidersConfig`` (YAML by default, or ``config_path`` if
+        given) and rebuilds all per-provider runtime state via
+        :meth:`_rebuild_provider_runtime`. Provider changes made through the
+        dynamic provider-management API therefore take effect on the next
+        routing decision with no process restart.
+        """
+        if config_path is not None:
+            self._config_path = config_path
+        self.config = LLMProvidersConfig.load(self._config_path)
+        self._rebuild_provider_runtime()
+        logger.info(
+            "[LLM Router] Hot-reloaded config: %d provider(s) enabled",
+            len(self.config.get_all_enabled()),
+        )
+
+    def apply_provider_configs(self, providers: List[ProviderConfig]) -> None:
+        """Push externally-managed provider configs into the live router.
+
+        Replaces the active provider list with ``providers`` (typically built
+        from the DB-backed dynamic provider table by the admin API) and rebuilds
+        per-provider runtime state. This is the bridge that makes changes made
+        through the provider-management UI take effect without a restart.
+        """
+        # Sort by priority (lower number = higher priority), matching load().
+        self.config.providers = sorted(providers, key=lambda p: p.priority)
+        self._rebuild_provider_runtime()
+        logger.info(
+            "[LLM Router] Applied %d provider config(s) from external source",
+            len(self.config.providers),
+        )
 
     def _init_langfuse(self):
         """Lazy initialization of Langfuse."""
@@ -371,6 +471,7 @@ class LLMRouter:
             return
         try:
             from ..monitoring.langfuse_client import init_langfuse
+
             init_langfuse(
                 public_key=self.langfuse_public_key,
                 secret_key=self.langfuse_secret_key,
@@ -386,8 +487,9 @@ class LLMRouter:
         if not self._langfuse_enabled_cached:
             try:
                 from ..monitoring.langfuse_client import is_enabled as langfuse_is_enabled
+
                 self._langfuse_enabled_cached = langfuse_is_enabled()
-            except Exception:
+            except Exception:  # noqa: BLE001 — 观测组件故障不得影响主流程
                 self._langfuse_enabled_cached = False
         return self._langfuse_enabled_cached
 
@@ -397,9 +499,19 @@ class LLMRouter:
             # Initialize Langfuse if not already done
             if self.langfuse_public_key and self.langfuse_secret_key and not self._langfuse_initialized:
                 self._init_langfuse()
+
+            # Get API key from key pool (with rotation support)
+            pool_key = self.key_pool.get_key(provider.name)
+            if pool_key and provider.api_key_env:
+                # Set API key in environment for LiteLLM to pick up
+                os.environ[provider.api_key_env] = pool_key
+
             self.clients[key] = create_client(
                 provider.get_litellm_model_name(),
                 api_base=provider.base_url,
+                api_key=pool_key or None,
+                timeout=provider.timeout_seconds or None,  # 0 or None = no timeout
+                extra_headers=provider.extra_params.get("extra_headers") if provider.extra_params else None,
                 langfuse_public_key=self.langfuse_public_key,
                 langfuse_secret_key=self.langfuse_secret_key,
                 langfuse_host=self.langfuse_host,
@@ -407,9 +519,46 @@ class LLMRouter:
             )
         return self.clients[key]
 
-    def _build_messages(
-        self, stage: StageName, prompt: str, schema_json: str, few_shot: str
-    ) -> list:
+    def get_direct_client(self, provider: ProviderConfig):
+        """Get or create a direct provider client (bypasses LiteLLM)."""
+        # Check if provider is configured for direct SDK
+        if not provider.extra_params.get("use_direct_sdk", False):
+            return None
+
+        key = provider.name
+        if key not in self.direct_clients:
+            # Map ProviderType to DirectProviderType
+            provider_type_map = {
+                ProviderType.OPENAI: DirectProviderType.OPENAI,
+                ProviderType.ANTHROPIC: DirectProviderType.ANTHROPIC,
+                ProviderType.VLLM: DirectProviderType.OPENAI,
+                ProviderType.OLLAMA: DirectProviderType.OLLAMA,
+            }
+            direct_type = provider_type_map.get(provider.provider)
+            if not direct_type:
+                logger.warning(f"Provider {provider.name} type {provider.provider} not supported for direct SDK")
+                return None
+
+            # Get API key from key pool
+            pool_key = self.key_pool.get_key(provider.name)
+            api_key = pool_key or provider.get_api_key()
+
+            direct_config = DirectProviderClientConfig(
+                provider=direct_type,
+                model=provider.model,
+                temperature=0.1,
+                max_tokens=4000,
+                timeout=provider.timeout_seconds or 60,
+                api_base=provider.base_url,
+                api_key=api_key,
+                extra_headers=provider.extra_params.get("extra_headers") if provider.extra_params else None,
+            )
+            self.direct_clients[key] = create_direct_client(direct_config)
+            logger.info(f"Created direct client for provider: {provider.name} ({direct_type.value})")
+
+        return self.direct_clients[key]
+
+    def _build_messages(self, stage: StageName, prompt: str, schema_json: str, few_shot: str) -> list[dict[str, str]]:
         """Build messages with explicit JSON output requirement."""
         system_content = (
             f"你是专业的有声书{stage.value}专家。"
@@ -428,7 +577,10 @@ class LLMRouter:
         return json.dumps(response_model.model_json_schema(), ensure_ascii=False)
 
     def _apply_hardware_profile_routing(
-        self, stage: str, providers: List[ProviderConfig], stage_models: List[Dict[str, Any]]
+        self,
+        stage: str,
+        providers: List[ProviderConfig],
+        stage_models: List[Dict[str, Any]],
     ) -> List[ProviderConfig]:
         """Reorder and filter providers based on hardware profile stage model map.
 
@@ -474,68 +626,9 @@ class LLMRouter:
 
         return ordered
 
-    def _select_provider(
-        self, providers: List[ProviderConfig], estimated_tokens: int
-    ) -> Optional[ProviderConfig]:
-        """Select the best available provider with multi-layer filtering."""
-        from ..monitoring.langfuse_client import span
-
-        with span("router.select_provider", metadata={"estimated_tokens": estimated_tokens}) as s:
-            for provider in providers:
-                # Layer 1: Circuit breaker check
-                cb = self.circuit_breakers.get(provider.name)
-                if cb and not cb.can_proceed():
-                    logger.debug(f"Circuit breaker open for {provider.name}, skipping")
-                    continue
-
-                # Layer 2: Rate limit check
-                if not self.rate_limiters[provider.name].can_proceed(estimated_tokens):
-                    logger.debug(f"Rate limit near for {provider.name}, skipping")
-                    continue
-
-                # Layer 3: Cost limit check
-                if self.cost_tracker.is_limit_exceeded(provider.name):
-                    logger.debug(f"Daily cost limit exceeded for {provider.name}")
-                    continue
-
-                # Layer 4: Health probe check (if available)
-                if self.health_probe and not self.health_probe.is_healthy(provider.name):
-                    logger.debug(
-                        f"Health probe reports {provider.name} unhealthy, skipping"
-                    )
-                    continue
-
-                # Layer 5: Quota registry check (for free-tier providers)
-                quota_status = self.quota_registry.get_quota_status(provider.name)
-                if quota_status.get("configured", False) and not quota_status.get("healthy", True):
-                    logger.debug(
-                        f"Quota exhausted or unhealthy for {provider.name}: "
-                        f"daily_pct={quota_status['daily']['requests_pct']}%, "
-                        f"minute_pct={quota_status['minute']['requests_pct']}%"
-                    )
-                    continue
-
-                # Layer 6: Free quota prediction (legacy, kept for backward compatibility)
-                if provider.max_daily_cost_usd == 0:
-                    success = self._free_quota_success.get(provider.name, 0)
-                    fail = self._free_quota_fail.get(provider.name, 0)
-                    total = success + fail
-                    if total > 10 and (fail / total) > 0.3:
-                        logger.debug(
-                            f"Free tier {provider.name} has high failure rate "
-                            f"({fail}/{total}), skipping"
-                        )
-                        continue
-
-                if s:
-                    s.update(metadata={"selected_provider": provider.name})
-                return provider
-
-            if s:
-                s.update(metadata={"selected_provider": None})
-            return None
-
-    def _heuristic_fallback(self, stage: str, response_model, segment_id: str, **context) -> Optional[Any]:
+    def _heuristic_fallback(
+        self, stage: str, response_model, segment_id: str, paragraph_index: int = 0, **context
+    ) -> Optional[Any]:
         """Kill Switch: pure rule-based fallback when ALL LLM providers fail.
 
         Returns a valid instance matching the response_model for each stage.
@@ -548,7 +641,10 @@ class LLMRouter:
         """
         from ..monitoring.langfuse_client import span
 
-        with span("router.heuristic_fallback", metadata={"stage": stage, "segment_id": segment_id}) as s:
+        with span(
+            "router.heuristic_fallback",
+            metadata={"stage": stage, "segment_id": segment_id},
+        ) as s:
             logger.warning(
                 f"All LLM providers failed for stage {stage} (segment_id={segment_id}), using heuristic fallback"
             )
@@ -556,6 +652,7 @@ class LLMRouter:
             if stage == "analyze":
                 # Return a valid BookAnalysisOutput for analyze stage
                 from ..schemas import BookMeta, CharacterVoiceBinding, EmotionSnapshot
+
                 result = BookAnalysisOutput(
                     book_meta=BookMeta(
                         title="Unknown Book",
@@ -589,7 +686,7 @@ class LLMRouter:
                 )
             elif stage == "annotate":
                 result = ParagraphAnnotation(
-                    paragraph_index=0,
+                    paragraph_index=paragraph_index,
                     speaker_canonical_name="_narrator_",
                     is_dialogue=False,
                     emotion="neutral",
@@ -614,20 +711,35 @@ class LLMRouter:
                 )
             elif stage == "judge":
                 # segment_id is now a REQUIRED parameter
-                result = QualityJudgment(
-                    segment_id=segment_id,
-                    speaker_clarity=0.5,
-                    emotion_match=0.5,
-                    prosody_naturalness=0.5,
-                    text_audio_alignment=0.5,
-                    overall_score=0.5,
-                    issues=["wrong_speaker"],
-                    fix_suggestions=[],
-                    needs_regeneration=True,
-                    contract_version=1,
-                    judge_model="heuristic_fallback",
-                    judge_prompt_version="heuristic_v1",
-                )
+                if response_model == PairwiseJudgment:
+                    result = PairwiseJudgment(
+                        segment_id=segment_id,
+                        winner="tie",
+                        confidence=0.5,
+                        dimension_scores={},
+                        reasoning={},
+                        overall_reasoning="Heuristic fallback: all LLM providers unavailable",
+                        statistical_significance=None,
+                        p_value=None,
+                        effect_size=None,
+                        judge_model="heuristic_fallback",
+                        judge_prompt_version="pairwise_v1",
+                    )
+                else:
+                    result = QualityJudgment(
+                        segment_id=segment_id,
+                        speaker_clarity=0.5,
+                        emotion_match=0.5,
+                        prosody_naturalness=0.5,
+                        text_audio_alignment=0.5,
+                        overall_score=0.5,
+                        issues=["wrong_speaker"],
+                        fix_suggestions=[],
+                        needs_regeneration=True,
+                        contract_version=1,
+                        judge_model="heuristic_fallback",
+                        judge_prompt_version="heuristic_v1",
+                    )
             else:
                 result = None
 
@@ -636,18 +748,28 @@ class LLMRouter:
             return result
 
     @_lazy_trace_function(stage="llm")
-    def call(self, stage: str, response_model, messages: list, **kwargs):
+    def call(
+        self,
+        stage: str,
+        response_model: type,
+        messages: list[dict[str, str]],
+        **kwargs: Any,
+    ) -> Any:
         stage_enum = StageName(stage)
-        
+
         # Get providers from config
         providers = self.config.get_providers_for_stage(stage_enum)
-        
+
         # Apply hardware profile stage model mapping if available
         if self.hardware_profile:
             stage_models = self.hardware_profile.get_llm_stage_models(stage)
             if stage_models:
                 # Filter and reorder providers based on hardware profile priority
                 providers = self._apply_hardware_profile_routing(stage, providers, stage_models)
+
+        # Mock mode: return mock result immediately without checking providers
+        if self.mock_mode:
+            return self._create_mock_result(response_model, stage, **kwargs)
 
         if not providers:
             raise ValueError(f"No providers configured for stage: {stage}")
@@ -662,134 +784,174 @@ class LLMRouter:
         messages = self._build_messages(stage_enum, compressed_prompt, "", "")
 
         # Try each provider in priority order
+        last_provider = None
         for provider in providers:
+            if last_provider is not None:
+                # Log self-healing fallback warning
+                logger.warning(f"[WARN] {last_provider.name} 触发限流/错误，正在自愈切换至 {provider.name} 节点...")
+
             if not self.rate_limiters[provider.name].can_proceed(estimated_tokens):
                 logger.warning(f"Rate limit near for {provider.name}, skipping")
+                last_provider = provider
                 continue
 
             if self.cost_tracker.is_limit_exceeded(provider.name):
                 logger.warning(f"Daily cost limit exceeded for {provider.name}")
+                last_provider = provider
                 continue
 
             # Circuit breaker check
             cb = self.circuit_breakers.get(provider.name)
             if cb and not cb.can_proceed():
                 logger.warning(f"Circuit breaker open for {provider.name}, skipping")
+                last_provider = provider
                 continue
 
             # Health probe check
             if self.health_probe and not self.health_probe.is_healthy(provider.name):
-                logger.warning(
-                    f"Health probe reports {provider.name} unhealthy, skipping"
-                )
+                logger.warning(f"Health probe reports {provider.name} unhealthy, skipping")
+                last_provider = provider
                 continue
 
             # Quota registry check before making request
             if not self.quota_registry.can_make_request(provider.name, estimated_tokens):
                 logger.warning(f"Quota exceeded for {provider.name}, skipping")
+                last_provider = provider
                 continue
 
-            client = self.get_client(provider)
-            try:
-                # Pass full messages list to preserve system message (JSON enforcement)
-                result = client.call(
-                    prompt=messages,
-                    response_model=response_model,
-                    temperature=kwargs.get("temperature", 0.1),
-                    max_tokens=kwargs.get("max_tokens", 4000),
-                )
+            # Try direct client first (bypasses LiteLLM for lower latency)
+            direct_client = self.get_direct_client(provider)
+            client = direct_client if direct_client else self.get_client(provider)
+            use_direct = direct_client is not None
 
-                # Validate the result matches expected model
-                if result.output is None:
-                    logger.warning(f"Provider {provider.name} returned None output for stage {stage}")
-                    raise ValueError("LLM returned None output")
+            max_retries = 0 if self.mock_mode else 2
+            retry_delay = 1.0
 
-                # Defensive JSON parsing validation
-                # The raw_response should be validated before Pydantic validation
-                if hasattr(result, 'raw_response') and result.raw_response is not None:
-                    from .client import validate_and_parse_llm_response
-                    try:
-                        validate_and_parse_llm_response(
-                            result.raw_response, response_model, stage
+            for attempt in range(max_retries + 1):
+                try:
+                    # Pass full messages list to preserve system message (JSON enforcement)
+                    result = client.call(
+                        prompt=messages,
+                        response_model=response_model,
+                        temperature=kwargs.get("temperature", 0.1),
+                        max_tokens=kwargs.get("max_tokens", 4000),
+                    )
+
+                    # Validate the result matches expected model
+                    if result.output is None:
+                        logger.warning(f"Provider {provider.name} returned None output for stage {stage}")
+                        raise ValueError("LLM returned None output")
+
+                    # Defensive JSON parsing validation
+                    # The raw_response should be validated before Pydantic validation.
+                    # Only applies to text payloads (str/dict): direct-SDK clients set
+                    # raw_response to the SDK object (e.g. ChatCompletion) whose output
+                    # instructor already parsed/validated — re-validating it as JSON
+                    # wrongly rejects every successful direct-SDK call (2026-09-05,
+                    # nvidia_nemotron 全部因此被误判失败).
+                    if (
+                        hasattr(result, "raw_response")
+                        and result.raw_response is not None
+                        and isinstance(result.raw_response, (str, dict))
+                    ):
+                        from .utils import validate_and_parse_llm_response
+
+                        try:
+                            validate_and_parse_llm_response(result.raw_response, response_model, stage)
+                        except LLMParseError as e:
+                            logger.warning(f"Provider {provider.name} returned invalid JSON for stage {stage}: {e}")
+                            raise
+
+                    self.rate_limiters[provider.name].record_usage(result.tokens_in + result.tokens_out)
+                    self.cost_tracker.add_cost(provider.name, result.cost_usd)
+
+                    # Record success for circuit breaker
+                    if cb:
+                        cb.record_success()
+
+                    # Track free tier usage
+                    if provider.max_daily_cost_usd == 0:
+                        self._free_quota_success[provider.name] += 1
+
+                    # Record quota usage
+                    self.quota_registry.record_request(
+                        provider.name,
+                        tokens_used=result.tokens_in + result.tokens_out,
+                        success=True,
+                    )
+
+                    # Langfuse tracing - lazy import
+                    if self._is_langfuse_enabled():
+                        try:
+                            from ..monitoring.langfuse_client import observe_llm_call
+
+                            observe_llm_call(
+                                stage=stage,
+                                model=result.model,
+                                provider=provider.name,
+                                prompt_tokens=result.tokens_in,
+                                completion_tokens=result.tokens_out,
+                                total_tokens=result.tokens_in + result.tokens_out,
+                                cost_usd=result.cost_usd,
+                                latency_ms=result.latency_ms,
+                                metadata={
+                                    "schema_compliance": result.schema_compliance,
+                                    "contract_version": result.contract_version,
+                                },
+                            )
+                        except Exception as e:
+                            logger.debug(f"Langfuse observe failed: {e}")
+
+                    mode = "direct" if use_direct else "litellm"
+                    logger.info(
+                        f"LLM call [{stage}] provider={provider.name} mode={mode} "
+                        f"model={result.model} tokens={result.tokens_in}/{result.tokens_out} "
+                        f"cost=${result.cost_usd:.6f} latency={result.latency_ms}ms "
+                        f"schema_ok={result.schema_compliance}"
+                    )
+
+                    return result
+                except Exception as e:
+                    if attempt < max_retries:
+                        logger.info(
+                            f"Provider {provider.name} attempt {attempt+1}/{max_retries+1} "
+                            f"failed for stage {stage}: {e}. Retrying in {retry_delay:.1f}s..."
                         )
-                    except LLMParseError as e:
-                        logger.warning(f"Provider {provider.name} returned invalid JSON for stage {stage}: {e}")
-                        raise
-
-                self.rate_limiters[provider.name].record_usage(
-                    result.tokens_in + result.tokens_out
-                )
-                self.cost_tracker.add_cost(provider.name, result.cost_usd)
-
-                # Record success for circuit breaker
-                if cb:
-                    cb.record_success()
-
-                # Track free tier usage
-                if provider.max_daily_cost_usd == 0:
-                    self._free_quota_success[provider.name] += 1
-
-                # Record quota usage
-                self.quota_registry.record_request(
-                    provider.name,
-                    tokens_used=result.tokens_in + result.tokens_out,
-                    success=True
-                )
-
-                # Langfuse tracing - lazy import
-                if self._is_langfuse_enabled():
-                    try:
-                        from ..monitoring.langfuse_client import observe_llm_call
-                        observe_llm_call(
-                            stage=stage,
-                            model=result.model,
-                            provider=provider.name,
-                            prompt_tokens=result.tokens_in,
-                            completion_tokens=result.tokens_out,
-                            total_tokens=result.tokens_in + result.tokens_out,
-                            cost_usd=result.cost_usd,
-                            latency_ms=result.latency_ms,
-                            metadata={
-                                "schema_compliance": result.schema_compliance,
-                                "contract_version": result.contract_version,
-                            },
+                        time.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
+                        # Rotate key on retry
+                        self.key_pool.record_failure(provider.name)
+                        continue
+                    else:
+                        logger.warning(
+                            f"Provider {provider.name} failed all {max_retries+1} attempts " f"for stage {stage}: {e}"
                         )
-                    except Exception as e:
-                        logger.debug(f"Langfuse observe failed: {e}")
-
-                logger.info(
-                    f"LLM call [{stage}] provider={provider.name} "
-                    f"model={result.model} tokens={result.tokens_in}/{result.tokens_out} "
-                    f"cost=${result.cost_usd:.6f} latency={result.latency_ms}ms "
-                    f"schema_ok={result.schema_compliance}"
-                )
-
-                return result
-            except Exception as e:
-                logger.warning(
-                    f"Provider {provider.name} failed for stage {stage}: {e}"
-                )
-                # Record failure for circuit breaker
-                if cb:
-                    cb.record_failure()
-                # Record failure for free tier tracking
-                if provider.max_daily_cost_usd == 0:
-                    self._free_quota_fail[provider.name] += 1
-                # Record quota failure
-                self.quota_registry.record_request(
-                    provider.name,
-                    tokens_used=0,
-                    success=False
-                )
-                continue
+                        # Record failure for circuit breaker
+                        if cb:
+                            cb.record_failure()
+                        # Record failure for key pool
+                        self.key_pool.record_failure(provider.name)
+                        # Record failure for free tier tracking
+                        if provider.max_daily_cost_usd == 0:
+                            self._free_quota_fail[provider.name] += 1
+                        # Record quota failure
+                        self.quota_registry.record_request(provider.name, tokens_used=0, success=False)
+                        break  # Move to next provider
 
         # All providers failed — Kill Switch heuristic fallback
         # Pass segment_id for judge stage (required)
+        # Pass paragraph_index for annotate stage (required for correct paragraph alignment)
         segment_id = "unknown"
+        paragraph_index = None
         if stage == "judge":
             # Try to extract segment_id from kwargs
             segment_id = kwargs.get("segment_id", "unknown")
-        fallback = self._heuristic_fallback(stage, response_model, segment_id=segment_id)
+        elif stage == "annotate":
+            # Try to extract paragraph_index from kwargs
+            paragraph_index = kwargs.get("paragraph_index", 0)
+        fallback = self._heuristic_fallback(
+            stage, response_model, segment_id=segment_id, paragraph_index=paragraph_index
+        )
         if fallback:
             return LLMCallResult(
                 output=fallback,
@@ -896,11 +1058,22 @@ class LLMRouter:
                 root_cause="prompt 缺少对话归属推断的明确规则",
                 confidence=0.85,
             )
+        elif response_model == PairwiseJudgment:
+            mock_output = PairwiseJudgment(
+                segment_id=kwargs.get("segment_id", "mock_segment"),
+                winner="tie",
+                confidence=0.5,
+                dimension_scores={},
+                reasoning={},
+                overall_reasoning="Mock pairwise judgment for testing",
+                judge_model="mock-model",
+                judge_prompt_version="mock_v1",
+            )
         else:
             # For any other response model, try to create a default instance
             try:
                 mock_output = response_model()
-            except Exception:
+            except TypeError:
                 # If we can't create an instance, return None to indicate failure
                 return None
 
@@ -916,7 +1089,7 @@ class LLMRouter:
             raw_response=None,
         )
 
-    def get_free_tier_health(self) -> dict:
+    def get_free_tier_health(self) -> dict[str, Any]:
         """Expose free tier health status for Promotion Gate and monitoring."""
         enabled = self.config.get_all_enabled()
         free_providers = [p for p in enabled if p.max_daily_cost_usd == 0]
@@ -941,9 +1114,7 @@ class LLMRouter:
         success_rate = total_success / total if total > 0 else 1.0
 
         # Check local model availability
-        local_available = any(
-            p.provider == ProviderType.OLLAMA and p.enabled for p in enabled
-        )
+        local_available = any(p.provider == ProviderType.OLLAMA and p.enabled for p in enabled)
 
         # Overall health assessment
         if success_rate >= 0.95 and healthy_count >= len(free_providers) * 0.5:
@@ -968,7 +1139,7 @@ class LLMRouter:
             },
         }
 
-    def get_quota_status(self, provider_name: str = None) -> dict:
+    def get_quota_status(self, provider_name: str | None = None) -> dict[str, Any]:
         """Get quota registry status for all or a specific provider."""
         if provider_name:
             return self.quota_registry.get_quota_status(provider_name)
@@ -1024,3 +1195,51 @@ def create_router(
         quota_registry=quota_registry,
         mock_mode=mock_mode,
     )
+
+
+# ── Module-level singleton (S2.1 hot-reload target) ─────────────────────────
+#
+# A single router instance is shared across the app. The dynamic
+# provider-management API mutates the DB provider table and then calls
+# :func:`reload_llm_router` to push those changes into the live router without
+# restarting the process.
+
+_ROUTER_INSTANCE: Optional["LLMRouter"] = None
+_ROUTER_LOCK = threading.Lock()
+
+
+def get_llm_router(config_path: Optional[str] = None) -> "LLMRouter":
+    """Return the process-wide :class:`LLMRouter` singleton (lazily created)."""
+    global _ROUTER_INSTANCE
+    if _ROUTER_INSTANCE is None:
+        with _ROUTER_LOCK:
+            if _ROUTER_INSTANCE is None:
+                _ROUTER_INSTANCE = create_router(config_path)
+    return _ROUTER_INSTANCE
+
+
+def reload_llm_router(config_path: Optional[str] = None) -> "LLMRouter":
+    """Hot-reload the singleton router from its config source.
+
+    Creates the singleton if it does not yet exist, otherwise calls
+    :meth:`LLMRouter.reload_config` in place. Safe to call after any provider
+    DB mutation; failures are logged but never raised (the DB write already
+    succeeded by the time this is invoked).
+    """
+    global _ROUTER_INSTANCE
+    with _ROUTER_LOCK:
+        if _ROUTER_INSTANCE is None:
+            _ROUTER_INSTANCE = create_router(config_path)
+        else:
+            try:
+                _ROUTER_INSTANCE.reload_config(config_path)
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning("[LLM Router] reload failed (ignored): %s", exc)
+    return _ROUTER_INSTANCE
+
+
+def reset_llm_router() -> None:
+    """Drop the cached singleton (used by tests / app shutdown)."""
+    global _ROUTER_INSTANCE
+    with _ROUTER_LOCK:
+        _ROUTER_INSTANCE = None

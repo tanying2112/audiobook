@@ -12,12 +12,10 @@ Downloads Kokoro-ONNX model files from Hugging Face with:
 
 import hashlib
 import logging
-import os
-import sys
 import time
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
+from typing import Any, List, Optional, Tuple
 
 import requests
 from tqdm import tqdm
@@ -30,32 +28,32 @@ DEFAULT_MODEL_DIR = Path(__file__).parent.parent.parent / "models" / "kokoro-onn
 
 # Required model files with expected SHA256 checksums (for integrity verification)
 # These are the standard kokoro-onnx files
-REQUIRED_FILES = {
+REQUIRED_FILES: dict[str, dict[str, Any]] = {
     "kokoro-v1.0.onnx": {
         "url": f"https://huggingface.co/{KOKORO_REPO}/resolve/main/kokoro-v1.0.onnx",
         "size_mb": 308,
-        "sha256": None  # Will be verified on first download
+        "sha256": None,  # Will be verified on first download
     },
     "voices-v1.0.bin": {
         "url": f"https://huggingface.co/{KOKORO_REPO}/resolve/main/voices-v1.0.bin",
         "size_mb": 56,
-        "sha256": None
-    }
+        "sha256": None,
+    },
 }
 
 # Alternative: Official ONNX models from the kokoro-onnx repo
 # If above fails, fallback to these
-FALLBACK_FILES = {
+FALLBACK_FILES: dict[str, dict[str, Any]] = {
     "model.onnx": {
         "url": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/v0.1.0/kokoro-v1.0.onnx",
         "size_mb": 308,
-        "sha256": None
+        "sha256": None,
     },
     "voices.bin": {
         "url": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/v0.1.0/voices-v1.0.bin",
         "size_mb": 56,
-        "sha256": None
-    }
+        "sha256": None,
+    },
 }
 
 CHUNK_SIZE = 8192
@@ -77,7 +75,7 @@ def download_file(
     url: str,
     filepath: Path,
     expected_size_mb: float = None,
-    progress_bar: Optional[tqdm] = None
+    progress_bar: Optional[tqdm] = None,
 ) -> Tuple[bool, str]:
     """
     Download a single file with resume support.
@@ -139,7 +137,7 @@ def download_file(
     return False, f"Max retries exceeded after {MAX_RETRIES} attempts"
 
 
-def verify_model_files(model_dir: Path, files_spec: Dict) -> Tuple[bool, List[str]]:
+def verify_model_files(model_dir: Path, files_spec: dict[str, dict[str, Any]]) -> tuple[bool, list[str]]:
     """
     Verify all required model files exist and have valid checksums.
     Returns: (all_valid, list_of_missing_or_corrupt)
@@ -163,9 +161,9 @@ def verify_model_files(model_dir: Path, files_spec: Dict) -> Tuple[bool, List[st
 
 def download_all_models(
     model_dir: Path = DEFAULT_MODEL_DIR,
-    files_spec: Dict = REQUIRED_FILES,
+    files_spec: dict[str, dict[str, Any]] = REQUIRED_FILES,
     max_workers: int = MAX_WORKERS,
-    force: bool = False
+    force: bool = False,
 ) -> bool:
     """
     Download all required model files.
@@ -243,7 +241,7 @@ def ensure_models_available(
     model_dir: Optional[Path] = None,
     force: bool = False,
     fallback: bool = False,
-    max_workers: int = MAX_WORKERS
+    max_workers: int = MAX_WORKERS,
 ) -> Tuple[bool, Path]:
     """
     Ensure Kokoro models are available, downloading if necessary.
@@ -264,7 +262,7 @@ def ensure_models_available(
         model_dir=target_dir,
         files_spec=files_spec,
         max_workers=max_workers,
-        force=force
+        force=force,
     )
 
     if not success and not fallback:

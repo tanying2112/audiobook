@@ -1,17 +1,11 @@
 """Comprehensive tests for publish/podcast_rss_generator.py — coverage boost to 80%+."""
 
 import tempfile
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
-from src.audiobook_studio.publish.podcast_rss_generator import (
-    PodcastEpisode,
-    PodcastFeed,
-    PodcastRSSGenerator,
-)
+from src.audiobook_studio.publish.podcast_rss_generator import PodcastEpisode, PodcastFeed, PodcastRSSGenerator
 
 
 def _feed(**kw):
@@ -64,8 +58,10 @@ class TestPodcastEpisode:
     def test_guid_file_not_exists(self):
         fp = Path("/nonexistent/ep.mp3")
         ep = PodcastEpisode(
-            title="Test", description="desc",
-            audio_file_path=fp, duration_seconds=60,
+            title="Test",
+            description="desc",
+            audio_file_path=fp,
+            duration_seconds=60,
             pub_date=datetime(2024, 1, 1),
         )
         assert ep.guid is not None
@@ -80,7 +76,8 @@ class TestPodcastEpisode:
     def test_default_optional_fields(self):
         with tempfile.TemporaryDirectory() as td:
             ep = PodcastEpisode(
-                title="T", description="D",
+                title="T",
+                description="D",
                 audio_file_path=Path(td) / "a.mp3",
                 duration_seconds=60,
                 pub_date=datetime(2024, 1, 1),
@@ -162,8 +159,10 @@ class TestGenerator:
         gen = PodcastRSSGenerator(_feed())
         fp = Path("/nonexistent/ep.mp3")
         ep = PodcastEpisode(
-            title="T", description="D",
-            audio_file_path=fp, duration_seconds=60,
+            title="T",
+            description="D",
+            audio_file_path=fp,
+            duration_seconds=60,
             pub_date=datetime(2024, 1, 1),
         )
         gen.add_episode(ep)
@@ -291,8 +290,10 @@ class TestGenerator:
         gen = PodcastRSSGenerator(_feed())
         fp = Path("/nonexistent/ep.mp3")
         ep = PodcastEpisode(
-            title="T", description="D",
-            audio_file_path=fp, duration_seconds=60,
+            title="T",
+            description="D",
+            audio_file_path=fp,
+            duration_seconds=60,
             pub_date=datetime(2024, 1, 1),
         )
         gen.add_episode(ep)
@@ -303,7 +304,7 @@ class TestGenerator:
         gen = PodcastRSSGenerator(_feed())
         with tempfile.TemporaryDirectory() as td:
             for i in range(3):
-                gen.add_episode(_episode(td, title=f"Ep {i+1}", episode_number=i+1))
+                gen.add_episode(_episode(td, title=f"Ep {i+1}", episode_number=i + 1))
             xml = gen.generate_rss_xml()
             assert "Ep 1" in xml
             assert "Ep 2" in xml
@@ -314,5 +315,6 @@ class TestGenerator:
 class TestMain:
     def test_main_runs(self):
         from src.audiobook_studio.publish.podcast_rss_generator import main
+
         with patch("builtins.print"):
             main()

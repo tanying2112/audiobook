@@ -11,7 +11,6 @@ from fastapi.websockets import WebSocketDisconnect
 from src.audiobook_studio.api.websocket import (
     ConnectionManager,
     PipelineEventType,
-    manager,
     emit_pipeline_event,
     handle_client_message,
     pipeline_websocket,
@@ -61,12 +60,16 @@ class TestConnectionManager:
         # They are cleaned up in broadcast_to_project when empty
 
     def test_disconnect_not_connected(self):
-        """Test disconnecting a WebSocket that wasn't connected."""
+        """Test disconnecting a WebSocket that wasn't connected is a safe no-op."""
         manager = ConnectionManager()
         websocket = AsyncMock(spec=WebSocket)
 
-        # Should not raise
+        # Should not raise — disconnect must be idempotent (uses .pop with default)
         manager.disconnect(websocket)
+
+        # State must remain clean: no orphaned project mapping, no stray connection sets
+        assert websocket not in manager.connection_to_project
+        assert manager.active_connections == {}, "Disconnecting unknown websocket must not create stray project sets"
 
     @pytest.mark.asyncio
     async def test_broadcast_to_project(self):
@@ -234,14 +237,17 @@ class TestHandleClientMessage:
         project_id = 1
         message = {"type": "pause"}
 
-        await handle_client_message(websocket, project_id, message)
+        # Patch the module-global `manager` with a fresh instance so the test is
+        # isolated from global connection/pause state left by other tests.
+        with patch("src.audiobook_studio.api.websocket.manager", ConnectionManager()):
+            await handle_client_message(websocket, project_id, message)
 
         websocket.send_text.assert_awaited_once()
         call_args = websocket.send_text.call_args[0][0]
         response = json.loads(call_args)
         assert response["type"] == "ack"
         assert response["action"] == "pause"
-        assert response["status"] == "pending_implementation"
+        assert response["status"] == "paused"
 
     @pytest.mark.asyncio
     async def test_handle_resume_message(self):
@@ -250,14 +256,21 @@ class TestHandleClientMessage:
         project_id = 1
         message = {"type": "resume"}
 
-        await handle_client_message(websocket, project_id, message)
+        # Patch the module-global `manager` with a fresh instance. Pre-create the
+        # pause state so resume is meaningful without depending on global state
+        # left by other tests (order-independent, event-loop independent).
+        with patch("src.audiobook_studio.api.websocket.manager", ConnectionManager()) as mock_manager:
+            mock_manager.pause_events[project_id] = asyncio.Event()
+            mock_manager.pause_states[project_id] = True
+
+            await handle_client_message(websocket, project_id, message)
 
         websocket.send_text.assert_awaited_once()
         call_args = websocket.send_text.call_args[0][0]
         response = json.loads(call_args)
         assert response["type"] == "ack"
         assert response["action"] == "resume"
-        assert response["status"] == "pending_implementation"
+        assert response["status"] == "resumed"
 
     @pytest.mark.asyncio
     async def test_handle_status_message(self):
@@ -266,14 +279,15 @@ class TestHandleClientMessage:
         project_id = 1
         message = {"type": "status"}
 
-        await handle_client_message(websocket, project_id, message)
+        with patch("src.audiobook_studio.api.websocket.manager", ConnectionManager()):
+            await handle_client_message(websocket, project_id, message)
 
         websocket.send_text.assert_awaited_once()
         call_args = websocket.send_text.call_args[0][0]
         response = json.loads(call_args)
         assert response["type"] == "status"
         assert response["project_id"] == 1
-        assert response["status"] == "unknown"
+        assert response["status"] == "running"
 
     @pytest.mark.asyncio
     async def test_handle_unknown_message(self):
@@ -282,7 +296,8 @@ class TestHandleClientMessage:
         project_id = 1
         message = {"type": "unknown"}
 
-        await handle_client_message(websocket, project_id, message)
+        with patch("src.audiobook_studio.api.websocket.manager", ConnectionManager()):
+            await handle_client_message(websocket, project_id, message)
 
         # Should not send any response for unknown message types
         websocket.send_text.assert_not_awaited()
@@ -307,8 +322,8 @@ class TestPipelineWebsocket:
 
             await pipeline_websocket(websocket, project_id)
 
-            # Check connection handling
-            mock_manager.connect.assert_awaited_once_with(websocket, project_id)
+            # Check connection handling (subprotocol negotiated from client headers)
+            mock_manager.connect.assert_awaited_once_with(websocket, project_id, subprotocol=None)
             mock_manager.disconnect.assert_called_once_with(websocket)
 
             # Check initial connection message
@@ -334,7 +349,7 @@ class TestPipelineWebsocket:
                 # Second message: WebSocketDisconnect to end the loop
                 websocket.receive_text.side_effect = [
                     json.dumps({"type": "pause"}),
-                    WebSocketDisconnect()
+                    WebSocketDisconnect(),
                 ]
 
                 await pipeline_websocket(websocket, project_id)
@@ -361,7 +376,7 @@ class TestPipelineWebsocket:
                 # Second call: WebSocketDisconnect to end
                 mock_wait_for.side_effect = [
                     asyncio.TimeoutError(),
-                    WebSocketDisconnect()
+                    WebSocketDisconnect(),
                 ]
 
                 await pipeline_websocket(websocket, project_id)
@@ -370,10 +385,7 @@ class TestPipelineWebsocket:
                 mock_manager.send_to_connection.assert_awaited()
                 # Check for keepalive message
                 call_args_list = [call[0][1] for call in mock_manager.send_to_connection.call_args_list]
-                keepalive_found = any(
-                    arg["type"] == "keepalive"
-                    for arg in call_args_list
-                )
+                keepalive_found = any(arg["type"] == "keepalive" for arg in call_args_list)
                 assert keepalive_found
 
     @pytest.mark.asyncio

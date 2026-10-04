@@ -8,8 +8,22 @@
 fastapi==0.110.0
 uvicorn[standard]==0.27.0
 pydantic>=2.7,<3.0
+# FastAPI validates Form/File/UploadFile routes at app startup (api/upload.py,
+# api/tts_voices.py); without python-multipart it raises RuntimeError before the
+# server binds — surfaced only in the clean container (local venv had it).
+python-multipart==0.0.32
+# Pydantic EmailStr models (auth / collaboration) lazy-import email-validator at
+# startup; missing it mid-startup raises ImportError. Mirrors pydantic[email].
+email-validator==2.3.0
 pydantic-settings>=2.0
 python-dotenv==1.0.1
+
+# =============================================================================
+# 安全与认证
+# =============================================================================
+bcrypt==4.1.2
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
 
 # =============================================================================
 # 数据库
@@ -35,7 +49,7 @@ pymupdf>=1.23.0  # PDF 渲染/OCR 兜底 (fitz)
 ebooklib>=0.18  # EPUB 解析
 python-docx>=1.1.0  # DOCX 解析
 pillow>=10.0.0  # 图片处理
-# OCR 可选: pytesseract, paddleocr, easyocr
+pytesseract>=0.3.10  # OCR 图片文字识别
 
 # =============================================================================
 # TTS 音频合成 (核心: edge-tts 无平台限制)
@@ -43,7 +57,7 @@ pillow>=10.0.0  # 图片处理
 edge-tts>=6.1.0  # 微软免费云端 TTS (纯 Python, 跨平台)
 # 可选本地 TTS (需额外安装, 平台相关):
 # kokoro-onnx>=0.1.0  # 本地轻量级 TTS (ONNX, 需 onnxruntime)
-# piper-tts>=1.2.0  # 备选本地 TTS
+# piper-tts>=1.7.0  # 备选本地 TTS
 # 声音克隆可选: gpt-sovits, rvc
 
 # =============================================================================
@@ -53,6 +67,11 @@ numpy>=1.26.0  # 数值计算
 soundfile>=0.12.0  # 音频文件读写
 ffmpeg-python>=0.2.0  # ffmpeg 封装
 # M4B 章节标记需 ffmpeg 命令行工具
+
+# =============================================================================
+# 认证与安全
+# =============================================================================
+python-jose[cryptography]>=3.3.0  # JWT 令牌签发/验证
 
 # =============================================================================
 # 工具库
@@ -69,12 +88,19 @@ mkdocs==1.5.3
 mkdocs-material==9.5.13
 
 # =============================================================================
+# 音频质量评估 (轻量级免费模型，CPU/GPU 均可跑)
+# =============================================================================
+onnxruntime>=1.18.0        # DNSMOS/UTMOS ONNX 推理
+faster-whisper>=1.0.0      # ASR WER (tiny model ~39MB，CPU 实时跑)
+
+# =============================================================================
 # 评估与监控 (可选，按需安装)
 # =============================================================================
 # deepeval>=1.0.0
 # promptfoo>=0.8.0
 langfuse>=2.0.0
 prometheus-client>=0.19.0
+prometheus-fastapi-instrumentator>=6.1.0
 
 # =============================================================================
 # OpenTelemetry 可观测性
@@ -87,3 +113,12 @@ opentelemetry-instrumentation-httpx>=0.41b0
 opentelemetry-instrumentation-requests>=0.41b0
 opentelemetry-exporter-otlp>=1.20.0
 opentelemetry-exporter-prometheus>=0.41b0
+
+# =============================================================================
+# 异步任务队列 (Celery worker 后端, 与 pyproject.toml dependencies 对齐)
+# 容器构建走 `pip install -r requirements.txt` 而非 `-e .`, 故 celery/redis 必须
+# 在此声明, 否则 compose 的 celery-worker 与 ci.yml "Test Celery worker entrypoint"
+# 会因 celery 命令缺失而跑不通。
+# =============================================================================
+celery>=5.3.0  # Celery 任务队列 (export_tasks / pipeline_tasks)
+redis>=5.0.0   # Celery broker + result backend (celery_app.py REDIS_URL)

@@ -13,13 +13,17 @@ TTS 合成完成后，对音频进行标准化后处理：
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
-import subprocess
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import List, Optional
 
+from ..analyzer import DEFAULT_EFFECTS_LIBRARY_PATH, SceneTagMapper
+from ..export.pool import run_ffmpeg
 from ..schemas.audio_finalize import AudioFinalizeParams, AudioFinalizeResult
+from ..security import safe_subprocess_args
+from ..utils.async_utils import run_async_safe
 
 logger = logging.getLogger(__name__)
 
@@ -46,10 +50,14 @@ class AudioFinalizer:
     def __init__(
         self,
         sfx_library_path: Optional[Path] = None,
+        effects_library_path: Optional[Path] = None,
         mock_mode: bool = False,
     ):
         self.sfx_library_path = sfx_library_path or DEFAULT_SFX_LIBRARY_PATH
+        self.effects_library_path = effects_library_path or DEFAULT_EFFECTS_LIBRARY_PATH
         self.mock_mode = mock_mode
+        # Initialize scene tag mapper from analyzer module
+        self.scene_tag_mapper = SceneTagMapper(effects_library_path=self.effects_library_path)
 
     def finalize(
         self,
@@ -57,6 +65,7 @@ class AudioFinalizer:
         output_path: Path,
         params: AudioFinalizeParams,
         sfx_tags: Optional[List[str]] = None,
+        scene_tags: Optional[List[str]] = None,
     ) -> AudioFinalizeResult:
         """对 TTS 输出音频进行后处理.
 
@@ -64,7 +73,8 @@ class AudioFinalizer:
             input_path: 输入音频文件路径 (TTS 合成输出)
             output_path: 输出音频文件路径 (后处理完成)
             params: 后处理参数配置
-            sfx_tags: 音效标签列表 (用于从 SFX 库查找对应音效文件)
+            sfx_tags: 情感音效标签列表 (用于从 SFX 库查找对应音效文件)
+            scene_tags: 环境场景标签列表 (用于从 effects 库查找环境音效文件)
 
         Returns:
             AudioFinalizeResult: 后处理结果
@@ -72,9 +82,9 @@ class AudioFinalizer:
         logger.info(f"Finalizing audio: {input_path} → {output_path}")
 
         if not self.mock_mode:
-            return self._finalize_real(input_path, output_path, params, sfx_tags)
+            return self._finalize_real(input_path, output_path, params, sfx_tags, scene_tags)
         else:
-            return self._finalize_mock(input_path, output_path, params, sfx_tags)
+            return self._finalize_mock(input_path, output_path, params, sfx_tags, scene_tags)
 
     def _finalize_mock(
         self,
@@ -82,6 +92,7 @@ class AudioFinalizer:
         output_path: Path,
         params: AudioFinalizeParams,
         sfx_tags: Optional[List[str]] = None,
+        scene_tags: Optional[List[str]] = None,
     ) -> AudioFinalizeResult:
         """Mock mode: simulate processing without actual ffmpeg."""
         # Create dummy output
@@ -98,7 +109,7 @@ class AudioFinalizer:
             measured_thresh=-40.0,
             loudnorm_applied=params.apply_loudnorm,
             fade_applied=params.apply_fade,
-            sfx_applied=params.apply_sfx and bool(sfx_tags),
+            sfx_applied=params.apply_sfx and (bool(sfx_tags) or bool(scene_tags)),
             metadata_embedded=params.embed_metadata and bool(params.metadata_title),
             warnings=[],
             errors=[],
@@ -110,10 +121,11 @@ class AudioFinalizer:
         output_path: Path,
         params: AudioFinalizeParams,
         sfx_tags: Optional[List[str]] = None,
+        scene_tags: Optional[List[str]] = None,
     ) -> AudioFinalizeResult:
         """Real mode: actual ffmpeg processing."""
-        warnings = []
-        errors = []
+        warnings: List[str] = []
+        errors: List[str] = []
 
         # Validate input
         if not input_path.exists():
@@ -179,40 +191,96 @@ class AudioFinalizer:
                 filter_complex = f"[0:a]{filter_complex}[main]"
                 for i in range(len(sfx_inputs)):
                     filter_complex += f";[{i+1}:a]volume={params.sfx_gain_db/20:.4f}[sfx{i}]"
-                filter_complex += f";[main]"+"".join(f"[sfx{i}]" for i in range(len(sfx_inputs)))
+                filter_complex += ";[main]" + "".join(f"[sfx{i}]" for i in range(len(sfx_inputs)))
                 filter_complex += f"amix=inputs={num_inputs}:duration=first:dropout_transition=2"
+
+        # Add scene tags (environmental effects) if requested
+        scene_inputs = []
+        if params.apply_sfx and scene_tags:
+            scene_files = self.scene_tag_mapper.resolve(scene_tags)
+            for scene_path in scene_files:
+                if scene_path.exists():
+                    cmd.extend(["-i", str(scene_path)])
+                    scene_inputs.append(scene_path)
+                else:
+                    warnings.append(f"Scene effect file not found: {scene_path}")
+
+            if scene_inputs:
+                sfx_applied = True
+                # Add amix filter for scene effects overlay
+                # Note: This extends the existing filter_complex if SFX was also added
+                if sfx_inputs:
+                    # Update filter_complex to include scene inputs
+                    num_scene_inputs = len(scene_inputs)
+                    for i in range(num_scene_inputs):
+                        filter_complex += f";[{1 + len(sfx_inputs) + i}:a]volume={params.sfx_gain_db/20:.4f}[scene{i}]"
+                    filter_complex += ";[main]" + "".join(f"[scene{i}]" for i in range(num_scene_inputs))
+                    num_inputs = 1 + len(sfx_inputs) + num_scene_inputs
+                    filter_complex = filter_complex.replace(
+                        f"amix=inputs={1 + len(sfx_inputs)}:duration=first:dropout_transition=2",
+                        f"amix=inputs={num_inputs}:duration=first:dropout_transition=2",
+                    )
+                else:
+                    # Only scene tags, no SFX
+                    sfx_applied = True
+                    num_inputs = 1 + len(scene_inputs)
+                    filter_complex = f"[0:a]{filter_complex}[main]"
+                    for i in range(len(scene_inputs)):
+                        filter_complex += f";[{i+1}:a]volume={params.sfx_gain_db/20:.4f}[scene{i}]"
+                    filter_complex += ";[main]" + "".join(f"[scene{i}]" for i in range(len(scene_inputs)))
+                    filter_complex += f"amix=inputs={num_inputs}:duration=first:dropout_transition=2"
 
         # Apply filter and set output format
         if filter_complex:
             cmd.extend(["-filter_complex", filter_complex])
 
-        cmd.extend([
-            "-c:a", "libmp3lame" if params.output_format == "mp3" else "aac" if params.output_format == "m4b" else "pcm_s16le",
-            "-b:a", params.output_bitrate,
-            "-map", "0:a" if not sfx_inputs else "0:a",
-            str(output_path),
-        ])
+        cmd.extend(
+            [
+                "-c:a",
+                (
+                    "libmp3lame"
+                    if params.output_format == "mp3"
+                    else "aac" if params.output_format == "m4b" else "pcm_s16le"
+                ),
+                "-b:a",
+                params.output_bitrate,
+                "-map",
+                "0:a" if not sfx_inputs else "0:a",
+                str(output_path),
+            ]
+        )
 
         # Execute ffmpeg
         try:
             logger.info(f"Running ffmpeg: {' '.join(cmd[:10])}...")
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            # Validate command args for security
+            cmd = safe_subprocess_args(cmd)
+            # Run under global semaphore with timeout
+            result = run_async_safe(run_ffmpeg(cmd, timeout=120))
 
             if result.returncode != 0:
-                errors.append(f"ffmpeg failed: {result.stderr}")
+                stderr_str = (
+                    result.stderr.decode("utf-8", errors="replace")
+                    if isinstance(result.stderr, bytes)
+                    else str(result.stderr)
+                )
+                errors.append(f"ffmpeg failed: {stderr_str}")
                 # Fallback: copy input to output
                 import shutil
+
                 shutil.copy2(input_path, output_path)
                 warnings.append("ffmpeg failed, fell back to simple copy")
 
         except FileNotFoundError:
             errors.append("ffmpeg not found")
             import shutil
+
             shutil.copy2(input_path, output_path)
             warnings.append("ffmpeg not found, fell back to simple copy")
-        except subprocess.TimeoutExpired:
+        except asyncio.TimeoutError:
             errors.append("ffmpeg timed out")
             import shutil
+
             shutil.copy2(input_path, output_path)
             warnings.append("ffmpeg timed out, fell back to simple copy")
 
@@ -226,8 +294,7 @@ class AudioFinalizer:
         duration_ms = self._get_duration(output_path)
 
         logger.info(
-            f"Audio finalized: {output_path.name}, "
-            f"duration={duration_ms}ms, loudness={measured_i:.1f} LUFS"
+            f"Audio finalized: {output_path.name}, " f"duration={duration_ms}ms, loudness={measured_i:.1f} LUFS"
         )
 
         return AudioFinalizeResult(
@@ -316,19 +383,32 @@ class AudioFinalizer:
         # Temporary file for atomic write
         temp_path = audio_path.with_suffix(audio_path.suffix + ".tmp")
 
-        cmd = [
-            "ffmpeg", "-y", "-i", str(audio_path),
-            "-c", "copy",  # Copy audio stream without re-encoding
-        ] + metadata_args + [str(temp_path)]
+        cmd = (
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(audio_path),
+                "-c",
+                "copy",  # Copy audio stream without re-encoding
+            ]
+            + metadata_args
+            + [str(temp_path)]
+        )
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            # Validate command args for security
+            cmd = safe_subprocess_args(cmd)
+            # Run under global semaphore with timeout
+            result = run_async_safe(run_ffmpeg(cmd, timeout=60))
             if result.returncode == 0:
                 temp_path.replace(audio_path)
                 logger.info(f"Embedded metadata into {audio_path.name}")
                 return True
             else:
-                logger.warning(f"Failed to embed metadata: {result.stderr}")
+                logger.warning(
+                    f"Failed to embed metadata: {result.stderr.decode('utf-8', errors='replace') if isinstance(result.stderr, bytes) else str(result.stderr)}"
+                )
                 if temp_path.exists():
                     temp_path.unlink()
                 return False
@@ -338,20 +418,32 @@ class AudioFinalizer:
                 temp_path.unlink()
             return False
 
-    def _measure_loudness(self, audio_path: Path) -> tuple:
+    def _measure_loudness(self, audio_path: Path) -> tuple[float, float, float, float]:
         """Measure EBU R128 loudness using ffmpeg."""
         if not audio_path.exists():
             return 0.0, 0.0, 0.0, 0.0
 
         cmd = [
-            "ffmpeg", "-i", str(audio_path),
-            "-af", "ebur128=peak=true",
-            "-f", "null", "-"
+            "ffmpeg",
+            "-i",
+            str(audio_path),
+            "-af",
+            "ebur128=peak=true",
+            "-f",
+            "null",
+            "-",
         ]
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-            stderr = result.stderr
+            # Validate command args for security
+            cmd = safe_subprocess_args(cmd)
+            # Run under global semaphore with timeout
+            result = run_async_safe(run_ffmpeg(cmd, timeout=60))
+            stderr = (
+                result.stderr.decode("utf-8", errors="replace")
+                if isinstance(result.stderr, bytes)
+                else str(result.stderr)
+            )
 
             # Parse ebur128 output
             # Look for: I: -20.0 LUFS, LRA: 7.0 LU, Peak: -2.0 dBFS, Threshold: -40.0 LUFS
@@ -376,14 +468,21 @@ class AudioFinalizer:
             return 0
 
         cmd = [
-            "ffprobe", "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(audio_path)
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(audio_path),
         ]
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            # Validate command args for security
+            cmd = safe_subprocess_args(cmd)
+            # Run under global semaphore with timeout
+            result = run_async_safe(run_ffmpeg(cmd, timeout=10))
             return int(float(result.stdout.strip()) * 1000)
         except Exception as e:
             logger.warning(f"Failed to get duration: {e}")
@@ -396,6 +495,7 @@ def finalize_audio(
     output_path: Path,
     params: Optional[AudioFinalizeParams] = None,
     sfx_tags: Optional[List[str]] = None,
+    scene_tags: Optional[List[str]] = None,
     mock_mode: bool = False,
 ) -> AudioFinalizeResult:
     """Convenience function for audio finalization.
@@ -405,6 +505,7 @@ def finalize_audio(
         output_path: Output audio file path
         params: Post-processing parameters (uses defaults if None)
         sfx_tags: SFX tags to overlay
+        scene_tags: Scene tags for environmental effects
         mock_mode: If True, simulate processing without ffmpeg
 
     Returns:
@@ -413,4 +514,4 @@ def finalize_audio(
     finalizer = AudioFinalizer(mock_mode=mock_mode)
     if params is None:
         params = AudioFinalizeParams()
-    return finalizer.finalize(input_path, output_path, params, sfx_tags)
+    return finalizer.finalize(input_path, output_path, params, sfx_tags, scene_tags)

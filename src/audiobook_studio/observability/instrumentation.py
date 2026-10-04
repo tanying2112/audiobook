@@ -1,133 +1,157 @@
 """FastAPI instrumentation and middleware for observability."""
 
-import time
+from __future__ import annotations
+
 import logging
-from typing import Callable, Optional
+import time
 from functools import wraps
+from typing import Any, Callable, Optional
 
-from fastapi import Request, Response, FastAPI
-from starlette.middleware.base import BaseHTTPMiddleware
-from opentelemetry import trace, metrics
+from fastapi import FastAPI
+from opentelemetry.metrics import Counter, Histogram
 from opentelemetry.trace import Status, StatusCode
-from opentelemetry.metrics import Histogram, Counter
 
+from .metrics import get_meter
 from .tracing import get_tracer
-from .metrics import get_meter, create_histogram, create_counter
 
 logger = logging.getLogger(__name__)
 
-# Global metrics instruments
-_http_duration: Optional[Histogram] = None
-_http_requests: Optional[Counter] = None
-_http_errors: Optional[Counter] = None
+# Module-level HTTP metric singletons, lazily created by ``_get_http_metrics``
+# and reset between tests via the ``_reset_http_metrics`` fixture.
+_http_duration: Optional[Histogram[float]] = None
+_http_requests: Optional[Counter[int]] = None
+_http_errors: Optional[Counter[int]] = None
 
 
-def _get_http_metrics():
-    """Get or create HTTP metrics instruments."""
+class ObservabilityMiddleware:
+    """Pure ASGI middleware for HTTP request tracing and metrics.
+
+    Replaces the deprecated BaseHTTPMiddleware subclass that is incompatible
+    with Python 3.14 + Starlette 0.37+.
+    """
+
+    def __init__(self, app, exclude_paths: Optional[list] = None):
+        self.app = app
+        self.exclude_paths = exclude_paths or [
+            "/health",
+            "/metrics",
+            "/docs",
+            "/openapi.json",
+            "/redoc",
+        ]
+        self.tracer = get_tracer("audiobook_studio.http")
+
+    async def __call__(self, scope: dict, receive: Callable, send: Callable) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        # Parse request from scope without slow body consumption
+        from starlette.datastructures import Headers as _Headers
+
+        # Build a lightweight request representation for path/method/header access
+        scope_headers = _Headers(scope=scope)
+        path = scope.get("path", "")
+        method = scope.get("method", "GET")
+        scheme = scope.get("scheme", "http")
+        server = scope.get("server")
+        hostname = (server[0] if server else "") if server else ""
+
+        # Skip excluded paths
+        if path in self.exclude_paths:
+            await self.app(scope, receive, send)
+            return
+
+        # Start trace span
+        span_name = f"{method} {path}"
+        with self.tracer.start_as_current_span(span_name) as span:
+            span.set_attribute("http.method", method)
+            span.set_attribute("http.url", f"{scheme}://{hostname}{path}")
+            span.set_attribute("http.scheme", scheme)
+            span.set_attribute("http.host", hostname)
+            span.set_attribute("http.target", path)
+            span.set_attribute("http.user_agent", scope_headers.get("user-agent", ""))
+
+            start_time = time.perf_counter()
+
+            # Wrap send to capture response status and body
+            status_code: list = []
+            body_chunks: list = []
+
+            async def send_wrapper(message: dict) -> None:
+                if message["type"] == "http.response.start":
+                    status_code.append(message["status"])
+                    span.set_attribute("http.status_code", message["status"])
+                elif message["type"] == "http.response.body":
+                    body_chunks.append(message.get("body", b""))
+                await send(message)
+
+            try:
+                await self.app(scope, receive, send_wrapper)
+                duration_seconds = time.perf_counter() - start_time
+                sc = status_code[0] if status_code else 200
+
+                # Record metrics using the cached HTTP instruments
+                _record_http_metrics(method, path, sc, duration_seconds)
+
+                if sc >= 400:
+                    span.set_status(Status(StatusCode.ERROR, f"HTTP {sc}"))
+                else:
+                    span.set_status(Status(StatusCode.OK))
+
+            except Exception as e:
+                duration_seconds = time.perf_counter() - start_time
+                sc = status_code[0] if status_code else 500
+
+                _record_http_metrics(method, path, sc, duration_seconds)
+
+                span.record_exception(e)
+                span.set_status(Status(StatusCode.ERROR, str(e)))
+                raise
+
+
+def _get_http_metrics() -> tuple[Histogram[float], Counter[int], Counter[int]]:
+    """Lazily create and cache the three HTTP server instruments.
+
+    Returns ``(duration, requests, errors)`` — an OTel Histogram plus two
+    Counters. The objects are cached on module-level singletons so repeated
+    calls return the same instances (deterministic for caching tests).
+    """
     global _http_duration, _http_requests, _http_errors
     if _http_duration is None:
         meter = get_meter("audiobook_studio.http")
         _http_duration = meter.create_histogram(
-            "http_request_duration_ms",
-            "HTTP request latency in milliseconds",
-            "ms",
-            explicit_bucket_boundaries_advisory=[50, 100, 200, 500, 1000, 2000, 5000, 10000],
+            "http.server.duration",
+            description="HTTP server request duration in seconds",
+            unit="s",
         )
         _http_requests = meter.create_counter(
-            "http_requests_total",
-            "Total HTTP requests",
-            "1",
+            "http.server.requests",
+            description="Total HTTP server requests",
         )
         _http_errors = meter.create_counter(
-            "http_errors_total",
-            "Total HTTP errors (5xx)",
-            "1",
+            "http.server.errors",
+            description="Total HTTP server errors (status >= 500)",
         )
-    return _http_duration, _http_requests, _http_errors
+    duration = _http_duration
+    requests = _http_requests
+    errors = _http_errors
+    assert duration is not None and requests is not None and errors is not None
+    return duration, requests, errors
 
 
-class ObservabilityMiddleware(BaseHTTPMiddleware):
-    """Middleware for HTTP request tracing and metrics."""
-
-    def __init__(self, app: FastAPI, exclude_paths: Optional[list] = None):
-        super().__init__(app)
-        self.exclude_paths = exclude_paths or ["/health", "/metrics", "/docs", "/openapi.json", "/redoc"]
-        self.tracer = get_tracer("audiobook_studio.http")
-
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        # Skip excluded paths
-        if request.url.path in self.exclude_paths:
-            return await call_next(request)
-
-        # Start trace span
-        span_name = f"{request.method} {request.url.path}"
-        with self.tracer.start_as_current_span(span_name) as span:
-            # Add HTTP attributes
-            span.set_attribute("http.method", request.method)
-            span.set_attribute("http.url", str(request.url))
-            span.set_attribute("http.scheme", request.url.scheme)
-            span.set_attribute("http.host", request.url.hostname or "")
-            span.set_attribute("http.target", request.url.path)
-            span.set_attribute("http.user_agent", request.headers.get("user-agent", ""))
-
-            start_time = time.perf_counter()
-
-            try:
-                response = await call_next(request)
-
-                # Record success metrics
-                duration_ms = (time.perf_counter() - start_time) * 1000
-                http_duration, http_requests, http_errors = _get_http_metrics()
-
-                http_duration.record(duration_ms, attributes={
-                    "method": request.method,
-                    "path": request.url.path,
-                    "status_code": str(response.status_code),
-                })
-                http_requests.add(1, attributes={
-                    "method": request.method,
-                    "path": request.url.path,
-                    "status_code": str(response.status_code),
-                })
-
-                # Add response attributes to span
-                span.set_attribute("http.status_code", response.status_code)
-                if response.status_code >= 400:
-                    span.set_status(Status(StatusCode.ERROR, f"HTTP {response.status_code}"))
-                    if response.status_code >= 500:
-                        http_errors.add(1, attributes={
-                            "method": request.method,
-                            "path": request.url.path,
-                        })
-                else:
-                    span.set_status(Status(StatusCode.OK))
-
-                return response
-
-            except Exception as e:
-                # Record error metrics
-                duration_ms = (time.perf_counter() - start_time) * 1000
-                http_duration, http_requests, http_errors = _get_http_metrics()
-
-                http_duration.record(duration_ms, attributes={
-                    "method": request.method,
-                    "path": request.url.path,
-                    "status_code": "500",
-                })
-                http_requests.add(1, attributes={
-                    "method": request.method,
-                    "path": request.url.path,
-                    "status_code": "500",
-                })
-                http_errors.add(1, attributes={
-                    "method": request.method,
-                    "path": request.url.path,
-                })
-
-                # Record exception in span
-                span.record_exception(e)
-                span.set_status(Status(StatusCode.ERROR, str(e)))
-                raise
+def _record_http_metrics(method: str, path: str, status_code: int, duration_seconds: float) -> None:
+    """Record one HTTP request's duration, count, and (if >=500) error."""
+    dur, req, err = _get_http_metrics()
+    attrs: dict[str, Any] = {
+        "http.method": method,
+        "http.status_code": status_code,
+        "http.target": path,
+    }
+    dur.record(duration_seconds, attributes=attrs)
+    req.add(1, attributes=attrs)
+    if status_code >= 500:
+        err.add(1, attributes=attrs)
 
 
 def instrument_app(
@@ -151,7 +175,9 @@ def instrument_app(
         exclude_paths: Paths to exclude from instrumentation
     """
     # Initialize tracing
+    from .metrics import create_slo_metrics, init_metrics
     from .tracing import init_tracing
+
     init_tracing(
         service_name=service_name,
         service_version=service_version,
@@ -160,14 +186,13 @@ def instrument_app(
     )
 
     # Initialize metrics
-    from .metrics import init_metrics, create_slo_metrics
     init_metrics(
         service_name=service_name,
         service_version=service_version,
         prometheus_port=prometheus_port,
     )
 
-    # Create SLO metrics
+    # Create SLO metrics (this initializes all core metrics lazily)
     create_slo_metrics()
 
     # Add middleware
@@ -175,6 +200,7 @@ def instrument_app(
 
     # Add Prometheus metrics endpoint
     from prometheus_client import make_asgi_app
+
     metrics_app = make_asgi_app()
     app.mount("/metrics", metrics_app)
 
@@ -191,6 +217,7 @@ def trace_function(span_name: Optional[str] = None, attributes: Optional[dict] =
     Returns:
         Decorated function
     """
+
     def decorator(func: Callable) -> Callable:
         tracer = get_tracer(func.__module__)
         name = span_name or f"{func.__module__}.{func.__name__}"
@@ -226,6 +253,7 @@ def trace_function(span_name: Optional[str] = None, attributes: Optional[dict] =
                     raise
 
         import asyncio
+
         if asyncio.iscoroutinefunction(func):
             return async_wrapper
         return sync_wrapper
@@ -237,7 +265,12 @@ def trace_function(span_name: Optional[str] = None, attributes: Optional[dict] =
 class trace_span:
     """Context manager for manual span creation."""
 
-    def __init__(self, name: str, attributes: Optional[dict] = None, tracer_name: str = "audiobook_studio"):
+    def __init__(
+        self,
+        name: str,
+        attributes: Optional[dict] = None,
+        tracer_name: str = "audiobook_studio",
+    ):
         self.tracer = get_tracer(tracer_name)
         self.name = name
         self.attributes = attributes or {}

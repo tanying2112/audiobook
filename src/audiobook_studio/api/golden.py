@@ -6,19 +6,21 @@ and historical trend tracking for prompt quality evolution.
 
 import json
 import logging
-from difflib import SequenceMatcher
-from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
+from difflib import SequenceMatcher
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, BackgroundTasks, Depends
 from pydantic import BaseModel, Field
-
-from ..database import get_db
-from sqlalchemy.orm import Session
+from sqlalchemy import select
 
 logger = logging.getLogger(__name__)
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ..api.dependencies import get_async_db
+from ..exceptions import BadRequestError, NotFoundError
+from ..models.feedback_record import FeedbackRecord
 
 router = APIRouter(prefix="/golden", tags=["golden"])
 
@@ -27,8 +29,10 @@ router = APIRouter(prefix="/golden", tags=["golden"])
 # Response Schemas
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class GoldenSample(BaseModel):
     """Golden sample item."""
+
     id: str
     stage: str
     input: Dict[str, Any]
@@ -42,6 +46,7 @@ class GoldenSample(BaseModel):
 
 class GoldenSampleListResponse(BaseModel):
     """Golden samples list response."""
+
     samples: List[GoldenSample] = Field(default_factory=list)
     total_count: int = 0
     by_stage: Dict[str, int] = {}
@@ -49,6 +54,7 @@ class GoldenSampleListResponse(BaseModel):
 
 class GoldenContributionRequest(BaseModel):
     """Request to contribute template to golden dataset."""
+
     template_id: int = Field(..., description="Template (feedback record) ID")
     stage: str = Field(..., description="Pipeline stage this sample belongs to")
     quality_score: float = Field(1.0, ge=0, le=1, description="Quality score 0-1")
@@ -57,6 +63,7 @@ class GoldenContributionRequest(BaseModel):
 
 class GoldenContributionResponse(BaseModel):
     """Response after contributing to golden dataset."""
+
     contribution_id: str
     status: str  # pending, approved, rejected
     message: str
@@ -64,6 +71,7 @@ class GoldenContributionResponse(BaseModel):
 
 class GoldenTestResult(BaseModel):
     """Single golden test result."""
+
     sample_id: str
     stage: str
     passed: bool = False
@@ -73,6 +81,7 @@ class GoldenTestResult(BaseModel):
 
 class GoldenTestReport(BaseModel):
     """Golden dataset regression test report."""
+
     run_id: str
     timestamp: str
     total_samples: int = 0
@@ -86,12 +95,14 @@ class GoldenTestReport(BaseModel):
 
 class GoldenRegressionRequest(BaseModel):
     """Request to run golden dataset regression."""
+
     stages: Optional[List[str]] = Field(None, description="Specific stages to test, or None for all")
     prompt_versions: Optional[Dict[str, str]] = Field(None, description="Specific prompt versions to test")
 
 
 class GoldenTrendPoint(BaseModel):
     """Historical trend data point."""
+
     timestamp: str
     pass_rate: float
     total_samples: int
@@ -100,6 +111,7 @@ class GoldenTrendPoint(BaseModel):
 
 class GoldenTrendResponse(BaseModel):
     """Golden pass rate trend response."""
+
     trend: List[GoldenTrendPoint] = Field(default_factory=list)
     current_pass_rate: float = 0.0
     historical_best: float = 0.0
@@ -137,14 +149,16 @@ def _load_golden_samples(stage: str) -> List[Dict[str, Any]]:
                 if line.strip():
                     try:
                         sample = json.loads(line)
-                        samples.append({
-                            "id": f"few_shot_{len(samples)}",
-                            "stage": stage,
-                            "input": sample.get("input", {}),
-                            "expected_output": sample.get("output", {}),
-                            "human_verified": True,
-                            "source": "few_shot",
-                        })
+                        samples.append(
+                            {
+                                "id": f"few_shot_{len(samples)}",
+                                "stage": stage,
+                                "input": sample.get("input", {}),
+                                "expected_output": sample.get("output", {}),
+                                "human_verified": True,
+                                "source": "few_shot",
+                            }
+                        )
                     except json.JSONDecodeError:
                         continue
 
@@ -153,14 +167,16 @@ def _load_golden_samples(stage: str) -> List[Dict[str, Any]]:
         try:
             with open(case_file, "r", encoding="utf-8") as f:
                 case_data = json.load(f)
-                samples.append({
-                    "id": case_file.stem,
-                    "stage": stage,
-                    "input": case_data.get("input", {}),
-                    "expected_output": case_data.get("expected_output", case_data.get("output", {})),
-                    "human_verified": True,
-                    "source": "golden_case",
-                })
+                samples.append(
+                    {
+                        "id": case_file.stem,
+                        "stage": stage,
+                        "input": case_data.get("input", {}),
+                        "expected_output": case_data.get("expected_output", case_data.get("output", {})),
+                        "human_verified": True,
+                        "source": "golden_case",
+                    }
+                )
         except (json.JSONDecodeError, IOError):
             continue
 
@@ -179,16 +195,21 @@ def _save_golden_sample(stage: str, sample: Dict[str, Any]) -> str:
     # Save as JSON file
     case_file = stage_dir / f"{sample_id}.json"
     with open(case_file, "w", encoding="utf-8") as f:
-        json.dump({
-            "input": sample.get("input", {}),
-            "expected_output": sample.get("output", {}),
-            "human_verified": False,  # Pending approval
-            "source": "contribution",
-            "quality_score": sample.get("quality_score", 1.0),
-            "pattern_tags": sample.get("pattern_tags", []),
-            "notes": sample.get("notes"),
-            "contributed_at": timestamp,
-        }, f, ensure_ascii=False, indent=2)
+        json.dump(
+            {
+                "input": sample.get("input", {}),
+                "expected_output": sample.get("output", {}),
+                "human_verified": False,  # Pending approval
+                "source": "contribution",
+                "quality_score": sample.get("quality_score", 1.0),
+                "pattern_tags": sample.get("pattern_tags", []),
+                "notes": sample.get("notes"),
+                "contributed_at": timestamp,
+            },
+            f,
+            ensure_ascii=False,
+            indent=2,
+        )
 
     return sample_id
 
@@ -196,6 +217,7 @@ def _save_golden_sample(stage: str, sample: Dict[str, Any]) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 # API Endpoints
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @router.get("/samples", response_model=GoldenSampleListResponse)
 async def list_golden_samples(
@@ -244,13 +266,13 @@ async def get_golden_sample(stage: str, sample_id: str):
         if sample.get("id") == sample_id:
             return sample
 
-    raise HTTPException(status_code=404, detail=f"Sample {sample_id} not found in stage {stage}")
+    raise NotFoundError(resource="GoldenSample", identifier=f"{stage}/{sample_id}")
 
 
 @router.post("/contribute", response_model=GoldenContributionResponse)
 async def contribute_to_golden(
     request: GoldenContributionRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     Contribute template to golden dataset.
@@ -258,14 +280,10 @@ async def contribute_to_golden(
     Loads the FeedbackRecord by ID and extracts its input_snapshot + corrected_output
     as the golden sample's input/output pair. The rationale is stored as metadata.
     """
-    from ..models.feedback_record import FeedbackRecord
-
-    record = db.query(FeedbackRecord).filter(FeedbackRecord.id == request.template_id).first()
+    result = await db.execute(select(FeedbackRecord).where(FeedbackRecord.id == request.template_id))
+    record = result.scalar_one_or_none()
     if not record:
-        raise HTTPException(
-            status_code=404,
-            detail=f"FeedbackRecord with id={request.template_id} not found",
-        )
+        raise NotFoundError(resource="FeedbackRecord", identifier=str(request.template_id))
 
     sample_id = _save_golden_sample(
         stage=request.stage,
@@ -276,7 +294,7 @@ async def contribute_to_golden(
             "notes": request.notes,
             "pattern_tags": record.pattern_tags or [],
             "source_rationale": record.rationale,
-        }
+        },
     )
 
     return GoldenContributionResponse(
@@ -297,10 +315,7 @@ async def approve_golden_sample(stage: str, sample_id: str):
     sample_file = stage_dir / f"{sample_id}.json"
 
     if not sample_file.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"Sample file not found: {sample_file}",
-        )
+        raise NotFoundError(resource="GoldenSampleFile", identifier=str(sample_file))
 
     try:
         data = json.loads(sample_file.read_text(encoding="utf-8"))
@@ -311,7 +326,7 @@ async def approve_golden_sample(stage: str, sample_id: str):
             encoding="utf-8",
         )
     except (json.JSONDecodeError, OSError) as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update sample: {e}")
+        raise BadRequestError(message=f"Failed to update sample: {e}") from e
 
     return {
         "sample_id": sample_id,
@@ -328,10 +343,7 @@ async def reject_golden_sample(stage: str, sample_id: str):
     sample_file = stage_dir / f"{sample_id}.json"
 
     if not sample_file.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"Sample file not found: {sample_file}",
-        )
+        raise NotFoundError(resource="GoldenSampleFile", identifier=str(sample_file))
 
     # Move to rejected subdirectory
     rejected_dir = stage_dir / "rejected"
@@ -348,7 +360,7 @@ async def reject_golden_sample(stage: str, sample_id: str):
         )
         sample_file.unlink()
     except (json.JSONDecodeError, OSError) as e:
-        raise HTTPException(status_code=500, detail=f"Failed to reject sample: {e}")
+        raise BadRequestError(message=f"Failed to reject sample: {e}") from e
 
     return {
         "sample_id": sample_id,
@@ -396,6 +408,7 @@ def _compute_output_similarity(
 async def run_golden_regression(
     request: Optional[GoldenRegressionRequest] = None,
     background_tasks: BackgroundTasks = BackgroundTasks(),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """
     Trigger golden dataset regression test.
@@ -406,12 +419,13 @@ async def run_golden_regression(
 
     This is used by Promotion Gate to validate prompt upgrades.
     """
-    from ..pipeline.orchestrator import run_stage
-    from ..models.book import Project
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
     import os
     import uuid
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from ..pipeline.orchestrator import run_stage
 
     run_id = f"regression_{int(datetime.now().timestamp())}"
 
@@ -419,7 +433,7 @@ async def run_golden_regression(
     database_url = os.getenv("DATABASE_URL", "sqlite:///./audiobook_studio.db")
     engine = create_engine(database_url, connect_args={"check_same_thread": False})
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    db = SessionLocal()
+    db_session = SessionLocal()
 
     # Load all samples for requested stages
     stages_to_test = request.stages if request and request.stages else list(STAGE_DIRS.keys())
@@ -438,6 +452,7 @@ async def run_golden_regression(
 
             # Track which prompt version was used (from VersionStore)
             from ..feedback.release import VersionStore as VS
+
             vs = VS(Path("prompts"))
             current_ver = vs.get_current_version(stage)
             if current_ver > 0:
@@ -451,14 +466,13 @@ async def run_golden_regression(
                 try:
                     # Run the stage through the actual pipeline
                     # We use a dummy project_id=0 for regression testing (no DB writes)
-                    actual_result = run_stage(
+                    actual_result = await run_stage(
                         stage,
-                        db,
+                        db_session,
                         project_id=0,
                         chapter_index=sample_input.get("chapter_index", 1),
                         paragraph_index=sample_input.get("paragraph_index", 1),
-                        **{k: v for k, v in sample_input.items()
-                           if k not in ("chapter_index", "paragraph_index")},
+                        **{k: v for k, v in sample_input.items() if k not in ("chapter_index", "paragraph_index")},
                     )
 
                     # Convert result to dict for comparison
@@ -501,7 +515,7 @@ async def run_golden_regression(
             by_stage[stage] = {"passed": stage_passed, "failed": stage_failed}
 
     finally:
-        db.close()
+        db_session.close()
 
     total = passed_count + failed_count
     pass_rate = passed_count / total if total > 0 else 0.0
@@ -582,11 +596,13 @@ async def get_golden_trend(
                 if stage not in by_stage:
                     continue
 
-            trend.append(GoldenTrendPoint(
-                timestamp=ts_str,
-                pass_rate=data.get("pass_rate", 0.0),
-                total_samples=data.get("total_samples", 0),
-            ))
+            trend.append(
+                GoldenTrendPoint(
+                    timestamp=ts_str,
+                    pass_rate=data.get("pass_rate", 0.0),
+                    total_samples=data.get("total_samples", 0),
+                )
+            )
 
         except (json.JSONDecodeError, OSError) as e:
             logger.warning(f"Failed to load report {report_file}: {e}")
@@ -610,23 +626,47 @@ async def bootstrap_fewshot(
     optimization_target: str = "diversity",
 ):
     """
-    Trigger DSPy Bootstrap Few-shot optimization.
+    DSPy Bootstrap Few-shot optimization (EXPERIMENTAL, optional dependency).
 
-    Selects optimal subset of golden samples as few-shot examples
-    using multi-objective Pareto optimization.
+    Selects an optimal subset of golden samples as few-shot examples using
+    multi-objective (GEPA) Pareto optimization. This path is **not** part of the
+    default pipeline: it requires the optional ``dspy`` dependency which is not
+    bundled in ``requirements.txt`` and is therefore absent from the production
+    Docker image. The default self-improvement loop is the SOP reflection +
+    promotion-gate path (see ``feedback/sop_reflection.py``,
+    ``feedback/promotion_gate.py``).
 
     Args:
     - stage: Which stage to optimize
     - max_samples: Maximum few-shot examples to select
     - optimization_target: "diversity", "coverage", or "accuracy"
     """
-    # Placeholder - would call bootstrap_fewshot.py
-    # In production, this runs GEPA optimization
+    # The DSPy-backed optimiser is an *optional, experimental* feature gated on
+    # the (undeclared) ``dspy`` dependency. Surface its status honestly rather
+    # than claiming work was queued when nothing runs (docs/AUDIT_REPORT_2026-08-14.md §4.4).
+    dspy_available = False
+    try:
+        import dspy  # noqa: F401
+
+        dspy_available = True
+    except ModuleNotFoundError:
+        dspy_available = False
 
     return {
-        "status": "queued",
+        "status": "not_enabled" if not dspy_available else "available",
         "stage": stage,
         "max_samples": max_samples,
         "optimization_target": optimization_target,
-        "message": "Few-shot optimization started. Results will be available shortly.",
+        "dspy_available": dspy_available,
+        "message": (
+            "The DSPy-backed few-shot optimiser is experimental and not enabled in the "
+            "default pipeline (requires the optional 'dspy' dependency, which is not bundl"
+            "ed). The default self-improvement path is SOP reflection + promotion gate. "
+            "Install dspy separately and set the flag to opt in. "
+            "See docs/AUDIT_REPORT_2026-08-14.md §4.4."
+            if not dspy_available
+            else "dspy is installed; the experimental GEPA optimiser can be run explicitly. "
+            "Note: it remains outside the default evolution loop (use the promotion gate for "
+            "gated, regression-safe self-improvement)."
+        ),
     }

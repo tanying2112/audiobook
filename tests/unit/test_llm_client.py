@@ -1,19 +1,11 @@
 """Tests for LLM client module."""
 
 import os
-import tempfile
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.audiobook_studio.llm.client import (
-    LLMCallResult,
-    LLMClient,
-    LLMClientConfig,
-    MODEL_PRICING,
-    create_client,
-)
+from src.audiobook_studio.llm.client import MODEL_PRICING, LLMCallResult, LLMClient, LLMClientConfig, create_client
 
 
 class TestLLMClientConfig:
@@ -76,7 +68,7 @@ class TestLLMClientRealMode:
     """Tests for LLMClient in real mode (mocked)."""
 
     @patch.dict(os.environ, {"MOCK_LLM": "false"})
-    @patch("instructor.from_litellm")
+    @patch("src.audiobook_studio.llm.client.instructor.from_litellm")
     def test_init_real_mode(self, mock_instructor):
         """Test initializing client in real mode."""
         mock_client = MagicMock()
@@ -89,7 +81,7 @@ class TestLLMClientRealMode:
         assert mock_instructor.called
 
     @patch.dict(os.environ, {"MOCK_LLM": "false"})
-    @patch("instructor.from_litellm")
+    @patch("src.audiobook_studio.llm.client.instructor.from_litellm")
     def test_call_real_mode_success(self, mock_instructor):
         """Test successful real mode call."""
         mock_client = MagicMock()
@@ -108,9 +100,20 @@ class TestLLMClientRealMode:
             fix_suggestions=[],
             needs_regeneration=False,
         )
-        mock_response._raw_response = {
-            "usage": {"prompt_tokens": 100, "completion_tokens": 50}
+        # Create a mock ModelResponse-like object that instructor returns
+        mock_model_response = MagicMock()
+        mock_model_response._raw_response = MagicMock()
+        mock_model_response._raw_response.usage = MagicMock()
+        mock_model_response._raw_response.usage.model_dump.return_value = {
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
         }
+        mock_model_response._raw_response.choices = [
+            MagicMock(message=MagicMock(content=mock_response.model_dump_json()))
+        ]
+        # When instructor parses the response, it returns the Pydantic model
+        # But we need the mock to have _raw_response attribute
+        mock_response._raw_response = mock_model_response._raw_response
 
         mock_client.chat.completions.create.return_value = mock_response
 
@@ -128,7 +131,7 @@ class TestLLMClientRealMode:
         assert result.schema_compliance is True
 
     @patch.dict(os.environ, {"MOCK_LLM": "false"})
-    @patch("instructor.from_litellm")
+    @patch("src.audiobook_studio.llm.client.instructor.from_litellm")
     def test_call_real_mode_exception(self, mock_instructor):
         """Test real mode call exception handling."""
         mock_client = MagicMock()
@@ -147,8 +150,7 @@ class TestLLMClientRealMode:
             client.call(response_model=QualityJudgment, messages=messages, stage="judge")
 
     @patch.dict(os.environ, {"MOCK_LLM": "false"})
-    @patch.dict(os.environ, {"MOCK_LLM": "false"})
-    @patch("instructor.from_litellm")
+    @patch("src.audiobook_studio.llm.client.instructor.from_litellm")
     def test_call_real_mode_with_api_base(self, mock_instructor):
         """Test call with custom api_base."""
         mock_client = MagicMock()
@@ -167,7 +169,18 @@ class TestLLMClientRealMode:
             fix_suggestions=[],
             needs_regeneration=False,
         )
-        mock_response._raw_response = {"usage": {"prompt_tokens": 100, "completion_tokens": 50}}
+        # Create a mock ModelResponse-like object that instructor returns
+        mock_model_response = MagicMock()
+        mock_model_response._raw_response = MagicMock()
+        mock_model_response._raw_response.usage = MagicMock()
+        mock_model_response._raw_response.usage.model_dump.return_value = {
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+        }
+        mock_model_response._raw_response.choices = [
+            MagicMock(message=MagicMock(content=mock_response.model_dump_json()))
+        ]
+        mock_response._raw_response = mock_model_response._raw_response
 
         mock_client.chat.completions.create.return_value = mock_response
 
@@ -176,7 +189,7 @@ class TestLLMClientRealMode:
         client._client = mock_client
 
         messages = [{"role": "user", "content": "Test"}]
-        result = client.call(response_model=QualityJudgment, messages=messages, stage="judge")
+        client.call(response_model=QualityJudgment, messages=messages, stage="judge")
 
         call_kwargs = mock_client.chat.completions.create.call_args[1]
         assert call_kwargs.get("api_base") == "https://custom.api/v1"

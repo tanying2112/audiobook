@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Any, List, Optional
 
-from sqlalchemy import Float, ForeignKey, String, Text
+from sqlalchemy import Float, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from ..database import Base
+from ..orm_base import Base
 
 if TYPE_CHECKING:
     from .audio_segment import AudioSegment
@@ -22,27 +22,35 @@ class Chapter(Base):
     __tablename__ = "chapters"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    project_id: Mapped[int] = mapped_column(
-        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
-    )
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
 
-    index: Mapped[int] = mapped_column(nullable=False)
+    index: Mapped[int] = mapped_column(nullable=False, index=True)
     title: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     raw_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     extracted_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    analyzed_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    annotated_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    edited_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    analyzed_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    annotated_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    edited_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    # Segmentation results (P0-3)
+    segment_data: Mapped[Optional[list[dict[str, Any]]]] = mapped_column(JSON, nullable=True)
+    segment_strategy: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    segment_stats: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    segment_status: Mapped[str] = mapped_column(String, default="pending")
 
     # 处理状态
     status: Mapped[str] = mapped_column(String, default="pending")
     extract_status: Mapped[str] = mapped_column(String, default="pending")
+    segment_status: Mapped[str] = mapped_column(String, default="pending")
     analyze_status: Mapped[str] = mapped_column(String, default="pending")
     annotate_status: Mapped[str] = mapped_column(String, default="pending")
     edit_status: Mapped[str] = mapped_column(String, default="pending")
     route_status: Mapped[str] = mapped_column(String, default="pending")
     synthesize_status: Mapped[str] = mapped_column(String, default="pending")
     quality_status: Mapped[str] = mapped_column(String, default="pending")
+    # 人工终审门 (Manual Review Gate，位于 audio_postprocess 与 synthesize 之间)：
+    # NULL=未在审 | "pending_review"=待审 | "approved"=客户已确认。
+    # 注意与 StageRegistry 的 "review" 阶段（LLM 质检门）语义无关。
+    review_status: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     # 成本追踪
     cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
@@ -54,10 +62,23 @@ class Chapter(Base):
     completed_at: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     # Relationships
-    project: Mapped[Project] = relationship("Project", back_populates="chapters")
+    project: Mapped[Project] = relationship("Project", back_populates="chapters", lazy="selectin")
     paragraphs: Mapped[List[Paragraph]] = relationship(
-        "Paragraph", back_populates="chapter", cascade="all, delete-orphan"
+        "Paragraph", back_populates="chapter", cascade="all, delete-orphan", lazy="selectin"
     )
     audio_segments: Mapped[List[AudioSegment]] = relationship(
-        "AudioSegment", back_populates="chapter", cascade="all, delete-orphan"
+        "AudioSegment", back_populates="chapter", cascade="all, delete-orphan", lazy="selectin"
     )
+
+    # Composite indexes for query optimization (P2-5)
+    __table_args__ = (
+        # Common query: SELECT * FROM chapters WHERE project_id=? AND status=? ORDER BY index
+        Index("ix_chapters_project_id_status_index", "project_id", "status", "index"),
+        # Common query: SELECT * FROM chapters WHERE project_id=? AND index=?
+        Index("ix_chapters_project_id_index", "project_id", "index"),
+    )
+
+    # Forbid lazy loading on detail endpoints that should use selectinload explicitly
+    from sqlalchemy.orm import raiseload
+
+    __raised_load_attrs__ = (raiseload("*"),)

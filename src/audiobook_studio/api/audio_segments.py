@@ -1,4 +1,4 @@
-"""FastAPI router for audio segment operations.
+"""FastAPI router for audio segment operations (async SQLAlchemy 2.0).
 
 Provides endpoints for:
 - GET /api/audio-segments/{book_id} - List audio segments for a book
@@ -7,20 +7,22 @@ Provides endpoints for:
 - POST /api/audio-segments/{id}/merge - Merge segments
 """
 
-from typing import List, Optional
 from pathlib import Path
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from .dependencies import get_db
+from ..exceptions import BadRequestError, NotFoundError
+from .dependencies import get_async_db
 
 router = APIRouter(prefix="/audio-segments", tags=["audio-segments"])
 
 
 class AudioSegmentResponse(BaseModel):
     """Audio segment response schema."""
+
     id: str = Field(description="Segment identifier")
     file_path: str = Field(description="Path to audio file")
     duration_ms: int = Field(description="Duration in milliseconds")
@@ -31,24 +33,27 @@ class AudioSegmentResponse(BaseModel):
 
 class ReorderRequest(BaseModel):
     """Reorder request schema."""
+
     segment_ids: List[str] = Field(description="Ordered list of segment IDs")
     crossfade_ms: int = Field(default=50, description="Crossfade duration in milliseconds")
 
 
 class TrimRequest(BaseModel):
     """Trim request schema."""
+
     start_ms: int = Field(description="Start time in milliseconds")
     end_ms: int = Field(description="End time in milliseconds")
 
 
 class MergeRequest(BaseModel):
     """Merge request schema."""
+
     segment_ids: List[str] = Field(description="List of segment IDs to merge")
     output_path: Optional[str] = Field(default=None, description="Custom output path")
 
 
 @router.get("/book/{book_id}", response_model=List[AudioSegmentResponse])
-def list_audio_segments(book_id: str, db: Session = Depends(get_db)):
+async def list_audio_segments(book_id: str, db: AsyncSession = Depends(get_async_db)):
     """List all audio segments for a book.
 
     In MVP implementation, scans the storage directory for audio files.
@@ -62,23 +67,25 @@ def list_audio_segments(book_id: str, db: Session = Depends(get_db)):
     segments = []
     for audio_file in sorted(storage_path.glob("*.mp3")):
         # Mock duration - in production use ffprobe
-        segments.append(AudioSegmentResponse(
-            id=audio_file.stem,
-            file_path=str(audio_file),
-            duration_ms=5000,  # Mock 5 seconds
-            paragraph_index=int(audio_file.stem.split("_")[-1]) if "_" in audio_file.stem else 0,
-        ))
+        segments.append(
+            AudioSegmentResponse(
+                id=audio_file.stem,
+                file_path=str(audio_file),
+                duration_ms=5000,  # Mock 5 seconds
+                paragraph_index=(int(audio_file.stem.split("_")[-1]) if "_" in audio_file.stem else 0),
+            )
+        )
 
     return segments
 
 
 @router.get("/{segment_id}", response_model=AudioSegmentResponse)
-def get_audio_segment(segment_id: str, book_id: str, db: Session = Depends(get_db)):
+async def get_audio_segment(segment_id: str, book_id: str, db: AsyncSession = Depends(get_async_db)):
     """Get a specific audio segment."""
     storage_path = Path("storage/books") / book_id / "audio" / f"{segment_id}.mp3"
 
     if not storage_path.exists():
-        raise HTTPException(status_code=404, detail="Segment not found")
+        raise NotFoundError(resource="Segment", identifier=segment_id)
 
     return AudioSegmentResponse(
         id=segment_id,
@@ -88,11 +95,11 @@ def get_audio_segment(segment_id: str, book_id: str, db: Session = Depends(get_d
 
 
 @router.patch("/{segment_id}/reorder")
-def reorder_segments(
+async def reorder_segments(
     segment_id: str,
     request: ReorderRequest,
     book_id: Optional[str] = None,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Reorder audio segments.
 
@@ -108,11 +115,11 @@ def reorder_segments(
 
 
 @router.post("/{segment_id}/trim")
-def trim_segment(
+async def trim_segment(
     segment_id: str,
     request: TrimRequest,
     book_id: Optional[str] = None,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Trim audio segment to specified range.
 
@@ -125,7 +132,7 @@ def trim_segment(
         Trimmed segment metadata
     """
     if request.start_ms >= request.end_ms:
-        raise HTTPException(status_code=400, detail="start_ms must be less than end_ms")
+        raise BadRequestError(message="start_ms must be less than end_ms", field="start_ms")
 
     # In production: run ffmpeg -ss {start} -to {end} -i input -c copy output
     trimmed_duration = request.end_ms - request.start_ms
@@ -140,10 +147,10 @@ def trim_segment(
 
 
 @router.post("/merge")
-def merge_segments(
+async def merge_segments(
     request: MergeRequest,
     book_id: Optional[str] = None,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Merge multiple audio segments into one.
 
@@ -155,7 +162,7 @@ def merge_segments(
         Merged segment metadata
     """
     if len(request.segment_ids) < 2:
-        raise HTTPException(status_code=400, detail="At least 2 segments required for merge")
+        raise BadRequestError(message="At least 2 segments required for merge", field="segment_ids")
 
     output_path = request.output_path or f"storage/books/{book_id}/audio/merged.mp3"
 
@@ -169,16 +176,16 @@ def merge_segments(
 
 
 @router.delete("/{segment_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_audio_segment(
+async def delete_audio_segment(
     segment_id: str,
     book_id: Optional[str] = None,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
 ):
     """Delete an audio segment."""
     storage_path = Path("storage/books") / book_id / "audio" / f"{segment_id}.mp3"
 
     if not storage_path.exists():
-        raise HTTPException(status_code=404, detail="Segment not found")
+        raise NotFoundError(resource="Segment", identifier=segment_id)
 
     # In production: os.remove(storage_path)
     return None

@@ -8,11 +8,12 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional, Union, cast
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from ..llm import LLMRouter, create_router
+from ..pipeline.progress_emitter import emit_stage_enter, emit_stage_exit, emit_stage_progress
 from ..schemas import ParagraphAnnotation, TtsEditInput, TtsEditOutput
 
 logger = logging.getLogger(__name__)
@@ -23,22 +24,15 @@ class EditForTtsPipeline:
 
     def __init__(
         self,
-        router=None,
-        prompt_dir=None,
+        router: Optional[LLMRouter] = None,
+        prompt_dir: Optional[Union[str, Path]] = None,
         mock_mode: Optional[bool] = None,
     ):
         self.mock_mode = mock_mode if mock_mode is not None else os.environ.get("MOCK_LLM", "false").lower() == "true"
 
-        # Create router (mock mode controlled by MOCK_LLM env var)
+        # Create router (mock mode passed directly to avoid thread-unsafe env manipulation)
         if router is None:
-            old_mock = os.environ.get("MOCK_LLM")
-            if mock_mode:
-                os.environ["MOCK_LLM"] = "true"
-            self.router = create_router()
-            if old_mock is None:
-                os.environ.pop("MOCK_LLM", None)
-            else:
-                os.environ["MOCK_LLM"] = old_mock
+            self.router = create_router(mock_mode=self.mock_mode)
         else:
             self.router = router
 
@@ -54,7 +48,7 @@ class EditForTtsPipeline:
         )
         self.jinja_env.filters["tojson"] = json.dumps
 
-    def _load_few_shot(self, stage):
+    def _load_few_shot(self, stage: str) -> str:
         examples_path = self.prompt_dir / stage / "few_shot.jsonl"
         if not examples_path.exists():
             return "(暂无示例)"
@@ -66,15 +60,11 @@ class EditForTtsPipeline:
         formatted = []
         for i, ex in enumerate(examples[:3], 1):
             formatted.append(f"### 示例 {i}\n")
-            formatted.append(
-                f"输入：{json.dumps(ex['input'], ensure_ascii=False, indent=2)[:2000]}...\n"
-            )
-            formatted.append(
-                f"期望输出：{json.dumps(ex['expected_output'], ensure_ascii=False, indent=2)[:3000]}...\n"
-            )
+            formatted.append(f"输入：{json.dumps(ex['input'], ensure_ascii=False, indent=2)[:2000]}...\n")
+            formatted.append(f"期望输出：{json.dumps(ex['expected_output'], ensure_ascii=False, indent=2)[:3000]}...\n")
         return "\n".join(formatted)
 
-    def _build_prompt(self, input_data):
+    def _build_prompt(self, input_data: TtsEditInput) -> str:
         template = self.jinja_env.get_template("edit_for_tts/v1.j2")
         schema_json = TtsEditOutput.model_json_schema()
         few_shot = self._load_few_shot("edit_for_tts")
@@ -88,10 +78,27 @@ class EditForTtsPipeline:
             few_shot_examples=few_shot,
         )
 
-    def run(self, input_data):
+    def run(self, input_data: TtsEditInput) -> TtsEditOutput:
         logger.info(
             f"Editing paragraph {input_data.paragraph_annotation.paragraph_index} for TTS (difficulty={input_data.difficulty})"
         )
+
+        # Emit stage enter
+        try:
+            import asyncio
+
+            loop = asyncio.get_running_loop()
+            loop.create_task(
+                emit_stage_enter(
+                    stage="edit",
+                    project_id=getattr(input_data, "project_id", 0) or 0,
+                    chapter_index=getattr(input_data.paragraph_annotation, "chapter_index", 1),
+                    paragraph_index=getattr(input_data.paragraph_annotation, "paragraph_index", 1),
+                    total_items=1,
+                )
+            )
+        except RuntimeError:
+            pass
 
         # Hard rule: difficulty A or forbid_edit -> return original (checked BEFORE mock_mode)
         if input_data.difficulty == "A" or input_data.forbid_edit:
@@ -103,6 +110,7 @@ class EditForTtsPipeline:
                 rationale="Difficulty A or forbid_edit=true: preserved original text per hard rule",
             )
 
+        # MOCK: 待真实实现
         # Mock mode: return original text without LLM call
         if self.mock_mode:
             return TtsEditOutput(
@@ -112,6 +120,25 @@ class EditForTtsPipeline:
                 confidence=0.9,
                 rationale="Mock mode: no LLM call made",
             )
+
+        # Emit stage progress
+        try:
+            import asyncio
+
+            loop = asyncio.get_running_loop()
+            loop.create_task(
+                emit_stage_progress(
+                    stage="edit",
+                    project_id=getattr(input_data, "project_id", 0) or 0,
+                    chapter_index=getattr(input_data.paragraph_annotation, "chapter_index", 1),
+                    paragraph_index=getattr(input_data.paragraph_annotation, "paragraph_index", 1),
+                    current=1,
+                    total=1,
+                    message="Editing text for TTS...",
+                )
+            )
+        except RuntimeError:
+            pass
 
         prompt = self._build_prompt(input_data)
         messages = [
@@ -128,6 +155,21 @@ class EditForTtsPipeline:
                 response_model=TtsEditOutput,
                 messages=messages,
             )
+            # Kill-Switch 兜底产物是占位文本（"这是模拟编辑后的文本，用于测试。"），
+            # 直接进 TTS 会被朗读出来。所有 provider 失败时应诚实回退为原文，
+            # 由下游按未编辑文本合成（2026-09-05 项目15 实测兜底文本写入库）。
+            if getattr(result, "model", "") == "heuristic_fallback":
+                logger.warning(
+                    "Edit stage used heuristic fallback; preserving original text for paragraph %s",
+                    input_data.paragraph_annotation.paragraph_index,
+                )
+                result.output = TtsEditOutput(
+                    edited_text=input_data.paragraph_text,
+                    changes_made=["heuristic_fallback_preserved_original"],
+                    forbidden_content_removed=[],
+                    confidence=0.0,
+                    rationale="All LLM providers unavailable; original text preserved",
+                )
             logger.info(
                 f"TTS edit completed: schema_compliance={result.schema_compliance}, "
                 f"model={result.model}, cost=${result.cost_usd:.6f}, latency={result.latency_ms}ms"
@@ -143,15 +185,50 @@ class EditForTtsPipeline:
                 tokens_out=result.tokens_out,
                 cost_usd=result.cost_usd,
                 success=True,
-                provider=(
-                    result.model.split("/")[0] if "/" in result.model else result.model
-                ),
+                provider=(result.model.split("/")[0] if "/" in result.model else result.model),
                 model=result.model,
                 difficulty=input_data.difficulty,
             )
 
-            return result.output
-        except Exception as e:
+            # ``router.call`` returns ``Any`` (its signature predates generics);
+            # it was invoked with ``response_model=TtsEditOutput``, so narrow the
+            # already-validated output to the declared return type.
+            # Emit stage exit (success)
+            try:
+                import asyncio
+
+                loop = asyncio.get_running_loop()
+                loop.create_task(
+                    emit_stage_exit(
+                        stage="edit",
+                        project_id=getattr(input_data, "project_id", 0) or 0,
+                        chapter_index=getattr(input_data.paragraph_annotation, "chapter_index", 1),
+                        paragraph_index=getattr(input_data.paragraph_annotation, "paragraph_index", 1),
+                        success=True,
+                    )
+                )
+            except RuntimeError:
+                pass
+
+            return cast(TtsEditOutput, result.output)
+        except (ValueError, RuntimeError, ConnectionError, TimeoutError) as e:
+            # Emit stage exit (error)
+            try:
+                import asyncio
+
+                loop = asyncio.get_running_loop()
+                loop.create_task(
+                    emit_stage_exit(
+                        stage="edit",
+                        project_id=getattr(input_data, "project_id", 0) or 0,
+                        chapter_index=getattr(input_data.paragraph_annotation, "chapter_index", 1),
+                        paragraph_index=getattr(input_data.paragraph_annotation, "paragraph_index", 1),
+                        success=False,
+                        error_message=str(e),
+                    )
+                )
+            except RuntimeError:
+                pass
             # Record failed performance
             from ..monitoring import record_stage_performance
 
@@ -172,12 +249,12 @@ class EditForTtsPipeline:
 
 
 def edit_for_tts(
-    paragraph_text,
-    paragraph_annotation,
-    difficulty,
-    forbid_edit=False,
+    paragraph_text: str,
+    paragraph_annotation: ParagraphAnnotation,
+    difficulty: Literal["A", "B", "C", "D"],
+    forbid_edit: bool = False,
     mock_mode: bool = True,
-):
+) -> TtsEditOutput:
     input_data = TtsEditInput(
         paragraph_text=paragraph_text,
         paragraph_annotation=paragraph_annotation,
@@ -189,7 +266,6 @@ def edit_for_tts(
 
 
 if __name__ == "__main__":  # pragma: no cover
-    import sys
 
     logging.basicConfig(level=logging.INFO)
-    print("EditForTtsPipeline ready")
+    logger.info("EditForTtsPipeline ready")

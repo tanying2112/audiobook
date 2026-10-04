@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
-from sqlalchemy import Boolean, Float, ForeignKey, Integer, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from ..database import Base
+from ..orm_base import Base
 
 if TYPE_CHECKING:
     from .book import Project
@@ -24,16 +24,13 @@ class AudioSegment(Base):
     __tablename__ = "audio_segments"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    project_id: Mapped[int] = mapped_column(
-        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
-    )
-    chapter_id: Mapped[int] = mapped_column(
-        ForeignKey("chapters.id", ondelete="CASCADE"), nullable=False
-    )
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    chapter_id: Mapped[int] = mapped_column(ForeignKey("chapters.id", ondelete="CASCADE"), nullable=False, index=True)
     paragraph_id: Mapped[int] = mapped_column(
         ForeignKey("paragraphs.id", ondelete="CASCADE"),
         nullable=False,
         unique=True,
+        index=True,
     )
 
     # 文件信息
@@ -47,26 +44,25 @@ class AudioSegment(Base):
     # 合成信息
     engine: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     voice_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    prosody_overrides: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    prosody_overrides: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
 
     # 版本控制
     version: Mapped[int] = mapped_column(Integer, default=1)
     is_current: Mapped[bool] = mapped_column(Boolean, default=True)
-    parent_segment_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("audio_segments.id"), nullable=True
-    )
+    parent_segment_id: Mapped[Optional[int]] = mapped_column(ForeignKey("audio_segments.id"), nullable=True)
+
+    # 排序索引
+    index: Mapped[int] = mapped_column("index", Integer, default=0)
 
     # 质检关联
-    quality_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("qualities.id", ondelete="SET NULL"), nullable=True
-    )
+    quality_id: Mapped[Optional[int]] = mapped_column(ForeignKey("qualities.id", ondelete="SET NULL"), nullable=True)
 
     # 状态
     status: Mapped[str] = mapped_column(String, default="pending")
 
     # 时间戳
-    created_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
-    updated_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     # Relationships
     project: Mapped[Project] = relationship("Project", back_populates="audio_segments")
@@ -77,6 +73,14 @@ class AudioSegment(Base):
         uselist=False,
         foreign_keys="AudioSegment.paragraph_id",
     )
-    quality: Mapped[Optional[Quality]] = relationship(
-        "Quality", back_populates="audio_segment", uselist=False
+    quality: Mapped[Optional[Quality]] = relationship("Quality", back_populates="audio_segment", uselist=False)
+
+    # Composite indexes for query optimization (P2-5)
+    __table_args__ = (
+        # Common query: SELECT * FROM audio_segments WHERE chapter_id=? ORDER BY index
+        Index("ix_audio_segments_chapter_id_index", "chapter_id", "index"),
+        # Common query: SELECT * FROM audio_segments WHERE project_id=? AND status=?
+        Index("ix_audio_segments_project_id_status", "project_id", "status"),
+        # Common query: SELECT * FROM audio_segments WHERE project_id=? AND chapter_id=? AND is_current=?
+        Index("ix_audio_segments_project_chapter_current", "project_id", "chapter_id", "is_current"),
     )

@@ -6,10 +6,9 @@
 3. A/B 测试样本构建的输入源
 """
 
-from typing import Annotated, Literal, Optional
+from typing import Annotated
 
-from pydantic import BaseModel, Field, confloat, conint
-from typing_extensions import Annotated as AnnotatedExt
+from pydantic import BaseModel, Field
 
 from .book import BookMeta, CharacterVoiceBinding, EmotionSnapshot
 from .paragraph import ParagraphAnnotation
@@ -48,19 +47,13 @@ class ChapterSource(BaseModel):
 
     # 上帝视角上下文 (来自 BookAnalysisOutput)
     book_meta: BookMeta = Field(..., description="书籍元信息")
-    character_voice_map: list[CharacterVoiceBinding] = Field(
-        ..., min_length=1, description="角色声音绑定表"
-    )
+    character_voice_map: list[CharacterVoiceBinding] = Field(..., min_length=1, description="角色声音绑定表")
     emotion_snapshot: EmotionSnapshot = Field(..., description="当前章节情感快照")
-    story_line_summary: str = Field(
-        ..., min_length=100, max_length=500, description="故事主线摘要"
-    )
+    story_line_summary: str = Field(..., min_length=100, max_length=500, description="故事主线摘要")
     global_style_notes: str = Field(..., description="全局文风备注")
 
     # 段落标注列表
-    paragraphs: list[ChapterSourceParagraph] = Field(
-        ..., min_length=1, description="章节内所有段落标注"
-    )
+    paragraphs: list[ChapterSourceParagraph] = Field(..., min_length=1, description="章节内所有段落标注")
 
     # 人工标注元数据
     annotated_by: str = Field(default="", description="标注人员/来源")
@@ -71,9 +64,7 @@ class ChapterSource(BaseModel):
     overall_quality_score: Score = Field(default=1.0, description="章节整体质量分")
 
     # 契约版本
-    contract_version: int = Field(
-        default=1, description="契约版本号，用于追踪 schema 变更"
-    )
+    contract_version: int = Field(default=1, description="契约版本号，用于追踪 schema 变更")
 
     model_config = {"from_attributes": True, "extra": "forbid"}
 

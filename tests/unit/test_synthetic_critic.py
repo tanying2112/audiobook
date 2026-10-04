@@ -11,36 +11,32 @@ Verifies:
 7. Serialization (to_dict / from_dict)
 """
 
-import sys
-import pytest
 from pathlib import Path
-from dataclasses import asdict
 
-# Ensure src is on path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
+import pytest
 
 from audiobook_studio.feedback.critics.base import (
-    BaseCritic,
-    CriticType,
-    CriticVerdict,
-    CriticResult,
     CriticEnsemble,
     CriticEnsembleEvaluator,
+    CriticResult,
+    CriticType,
+    CriticVerdict,
 )
 from audiobook_studio.feedback.critics.synthetic_critic import (
-    SyntheticCritic,
-    CalibrationSample,
-    CalibrationResult,
     DEFAULT_CALIBRATION_SAMPLES,
-    create_synthetic_critic,
+    CalibrationSample,
     _compute_confusion_matrix,
     _compute_f1_per_class,
+    create_synthetic_critic,
 )
+
+# Ensure src is on path
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Fixtures
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 @pytest.fixture
 def critic():
@@ -53,22 +49,28 @@ def custom_samples():
     """Small custom calibration dataset for deterministic tests."""
     return [
         CalibrationSample(
-            sample_id="t_pass", description="Test pass",
-            semantic_score=0.85, structural_score=0.80,
+            sample_id="t_pass",
+            description="Test pass",
+            semantic_score=0.85,
+            structural_score=0.80,
             objective_score=0.90,
             ground_truth_verdict=CriticVerdict.PASS,
             ground_truth_score=0.85,
         ),
         CalibrationSample(
-            sample_id="t_warn", description="Test warning",
-            semantic_score=0.65, structural_score=0.58,
+            sample_id="t_warn",
+            description="Test warning",
+            semantic_score=0.65,
+            structural_score=0.58,
             objective_score=0.75,
             ground_truth_verdict=CriticVerdict.WARNING,
             ground_truth_score=0.65,
         ),
         CalibrationSample(
-            sample_id="t_fail", description="Test fail",
-            semantic_score=0.25, structural_score=0.30,
+            sample_id="t_fail",
+            description="Test fail",
+            semantic_score=0.25,
+            structural_score=0.30,
             objective_score=0.30,
             ground_truth_verdict=CriticVerdict.FAIL,
             ground_truth_score=0.28,
@@ -79,6 +81,7 @@ def custom_samples():
 # ═══════════════════════════════════════════════════════════════════════════
 # 1. Architecture tests — three heterogeneous critics
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestTriadArchitecture:
     """Verify the three heterogeneous critics architecture."""
@@ -116,20 +119,29 @@ class TestTriadArchitecture:
             CriticResult(
                 critic_type=CriticType.SEMANTIC,
                 verdict=CriticVerdict.PASS,
-                score=0.85, confidence=0.8,
-                reasoning="test", evidence={}, tags=[],
+                score=0.85,
+                confidence=0.8,
+                reasoning="test",
+                evidence={},
+                tags=[],
             ),
             CriticResult(
                 critic_type=CriticType.STRUCTURAL,
                 verdict=CriticVerdict.WARNING,
-                score=0.65, confidence=0.7,
-                reasoning="test", evidence={}, tags=[],
+                score=0.65,
+                confidence=0.7,
+                reasoning="test",
+                evidence={},
+                tags=[],
             ),
             CriticResult(
                 critic_type=CriticType.OBJECTIVE,
                 verdict=CriticVerdict.PASS,
-                score=0.90, confidence=0.9,
-                reasoning="test", evidence={}, tags=[],
+                score=0.90,
+                confidence=0.9,
+                reasoning="test",
+                evidence={},
+                tags=[],
             ),
         ]
         evaluator = CriticEnsembleEvaluator(
@@ -142,15 +154,14 @@ class TestTriadArchitecture:
         ensemble = evaluator._fuse_results(results)
         # Scores: 0.85*0.3 + 0.65*0.2 + 0.90*0.5 = 0.835
         # With WARNING present, the fusion logic returns WARNING
-        assert ensemble.final_verdict in (
-            CriticVerdict.PASS, CriticVerdict.WARNING
-        )
+        assert ensemble.final_verdict in (CriticVerdict.PASS, CriticVerdict.WARNING)
         assert len(ensemble.results) == 3
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 2. Calibration dataset tests
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestCalibrationDataset:
     """Verify calibration dataset structure and coverage."""
@@ -181,8 +192,10 @@ class TestCalibrationDataset:
     def test_sample_dataclass_fields(self):
         """CalibrationSample has all required fields."""
         sample = CalibrationSample(
-            sample_id="test", description="test",
-            semantic_score=0.8, structural_score=0.7,
+            sample_id="test",
+            description="test",
+            semantic_score=0.8,
+            structural_score=0.7,
             objective_score=0.9,
             ground_truth_verdict=CriticVerdict.PASS,
             ground_truth_score=0.8,
@@ -196,6 +209,7 @@ class TestCalibrationDataset:
 # 3. F1 score verification (central acceptance criterion)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestF1ScoreAcceptance:
     """Verify F1 >= 0.7 on calibration set (acceptance criterion)."""
 
@@ -203,8 +217,7 @@ class TestF1ScoreAcceptance:
         """F1 macro on default calibration set >= 0.7."""
         result = critic.calibrate()
         assert result.f1_macro >= 0.7, (
-            f"F1 macro {result.f1_macro} < 0.7 threshold. "
-            f"Per-class: {result.f1_per_class}"
+            f"F1 macro {result.f1_macro} < 0.7 threshold. " f"Per-class: {result.f1_per_class}"
         )
 
     def test_f1_per_class_all_positive(self, critic):
@@ -253,15 +266,14 @@ class TestF1ScoreAcceptance:
 # 4. Adaptive weight optimization
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestAdaptiveWeights:
     """Verify adaptive weight optimization improves F1."""
 
     def test_adaptive_f1_geq_default(self, critic):
         """Adaptive calibration F1 >= default calibration F1."""
         default_result = critic.calibrate()
-        adaptive_result = critic.calibrate_with_adaptive_weights(
-            n_iterations=10
-        )
+        adaptive_result = critic.calibrate_with_adaptive_weights(n_iterations=10)
         assert adaptive_result.f1_macro >= default_result.f1_macro - 0.01
 
     def test_adaptive_weights_preserved(self, critic):
@@ -272,9 +284,7 @@ class TestAdaptiveWeights:
 
     def test_adaptive_with_custom_samples(self, critic, custom_samples):
         """Adaptive calibration works with custom samples."""
-        result = critic.calibrate_with_adaptive_weights(
-            samples=custom_samples, n_iterations=5
-        )
+        result = critic.calibrate_with_adaptive_weights(samples=custom_samples, n_iterations=5)
         assert result.total_samples == 3
         assert result.f1_macro > 0
 
@@ -282,6 +292,7 @@ class TestAdaptiveWeights:
 # ═══════════════════════════════════════════════════════════════════════════
 # 5. Mock mode evaluation
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestMockEvaluation:
     """Verify mock mode evaluation path."""
@@ -312,26 +323,31 @@ class TestMockEvaluation:
 # 6. Weight management
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestWeightManagement:
     """Verify weight setting and normalization."""
 
     def test_set_weights_normalizes(self, critic):
         """Weights are normalized when set to non-unit sum."""
-        critic.set_weights({
-            CriticType.SEMANTIC: 2.0,
-            CriticType.STRUCTURAL: 2.0,
-            CriticType.OBJECTIVE: 6.0,
-        })
+        critic.set_weights(
+            {
+                CriticType.SEMANTIC: 2.0,
+                CriticType.STRUCTURAL: 2.0,
+                CriticType.OBJECTIVE: 6.0,
+            }
+        )
         weights = critic.get_weights()
         assert abs(sum(weights.values()) - 1.0) < 0.01
 
     def test_set_weights_preserves_ratio(self, critic):
         """Normalization preserves weight ratios."""
-        critic.set_weights({
-            CriticType.SEMANTIC: 1.0,
-            CriticType.STRUCTURAL: 1.0,
-            CriticType.OBJECTIVE: 3.0,
-        })
+        critic.set_weights(
+            {
+                CriticType.SEMANTIC: 1.0,
+                CriticType.STRUCTURAL: 1.0,
+                CriticType.OBJECTIVE: 3.0,
+            }
+        )
         weights = critic.get_weights()
         assert abs(weights["objective"] - 0.6) < 0.01
         assert abs(weights["semantic"] - 0.2) < 0.01
@@ -341,6 +357,7 @@ class TestWeightManagement:
 # 7. Serialization
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestSerialization:
     """Verify serialization of results."""
 
@@ -349,8 +366,11 @@ class TestSerialization:
         result = CriticResult(
             critic_type=CriticType.SEMANTIC,
             verdict=CriticVerdict.PASS,
-            score=0.85, confidence=0.9,
-            reasoning="test", evidence={"a": 1}, tags=["t1"],
+            score=0.85,
+            confidence=0.9,
+            reasoning="test",
+            evidence={"a": 1},
+            tags=["t1"],
         )
         d = result.to_dict()
         assert d["critic_type"] == "semantic"
@@ -394,6 +414,7 @@ class TestSerialization:
 # 8. Score-to-verdict mapping
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestScoreToVerdict:
     """Verify score-to-verdict mapping logic."""
 
@@ -416,6 +437,7 @@ class TestScoreToVerdict:
 # ═══════════════════════════════════════════════════════════════════════════
 # 9. Helper function tests
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestHelperFunctions:
     """Test internal helper functions."""
@@ -461,6 +483,7 @@ class TestHelperFunctions:
 # 10. Factory function tests
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestFactoryFunction:
     """Verify create_synthetic_critic factory."""
 
@@ -476,9 +499,7 @@ class TestFactoryFunction:
             CriticType.STRUCTURAL: 0.1,
             CriticType.OBJECTIVE: 0.5,
         }
-        critic = create_synthetic_critic(
-            mock_mode=True, weights=weights
-        )
+        critic = create_synthetic_critic(mock_mode=True, weights=weights)
         assert critic.get_weights()["semantic"] == 0.4
 
     def test_create_with_custom_thresholds(self):
@@ -496,6 +517,7 @@ class TestFactoryFunction:
 # 11. Ensemble fusion edge cases
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestEnsembleEdgeCases:
     """Test edge cases in ensemble fusion."""
 
@@ -506,9 +528,7 @@ class TestEnsembleEdgeCases:
             structural_critic=None,
             objective_critic=None,
         )
-        ensemble = evaluator.evaluate(
-            Path("x"), None, None, "text"
-        )
+        ensemble = evaluator.evaluate(Path("x"), None, None, "text")
         assert ensemble.final_verdict == CriticVerdict.ABSTAIN
 
     def test_single_fail_overrides(self):
@@ -517,20 +537,29 @@ class TestEnsembleEdgeCases:
             CriticResult(
                 critic_type=CriticType.SEMANTIC,
                 verdict=CriticVerdict.FAIL,
-                score=0.3, confidence=0.8,
-                reasoning="test", evidence={}, tags=[],
+                score=0.3,
+                confidence=0.8,
+                reasoning="test",
+                evidence={},
+                tags=[],
             ),
             CriticResult(
                 critic_type=CriticType.STRUCTURAL,
                 verdict=CriticVerdict.PASS,
-                score=0.8, confidence=0.7,
-                reasoning="test", evidence={}, tags=[],
+                score=0.8,
+                confidence=0.7,
+                reasoning="test",
+                evidence={},
+                tags=[],
             ),
             CriticResult(
                 critic_type=CriticType.OBJECTIVE,
                 verdict=CriticVerdict.PASS,
-                score=0.75, confidence=0.9,
-                reasoning="test", evidence={}, tags=[],
+                score=0.75,
+                confidence=0.9,
+                reasoning="test",
+                evidence={},
+                tags=[],
             ),
         ]
         evaluator = CriticEnsembleEvaluator(
@@ -542,9 +571,7 @@ class TestEnsembleEdgeCases:
         )
         ensemble = evaluator._fuse_results(results)
         # Verdict should reflect that there's at least one FAIL
-        assert ensemble.final_verdict in (
-            CriticVerdict.WARNING, CriticVerdict.FAIL
-        )
+        assert ensemble.final_verdict in (CriticVerdict.WARNING, CriticVerdict.FAIL)
 
     def test_all_pass_gives_pass(self):
         """All PASS → final PASS."""
@@ -552,20 +579,29 @@ class TestEnsembleEdgeCases:
             CriticResult(
                 critic_type=CriticType.SEMANTIC,
                 verdict=CriticVerdict.PASS,
-                score=0.85, confidence=0.8,
-                reasoning="test", evidence={}, tags=[],
+                score=0.85,
+                confidence=0.8,
+                reasoning="test",
+                evidence={},
+                tags=[],
             ),
             CriticResult(
                 critic_type=CriticType.STRUCTURAL,
                 verdict=CriticVerdict.PASS,
-                score=0.80, confidence=0.7,
-                reasoning="test", evidence={}, tags=[],
+                score=0.80,
+                confidence=0.7,
+                reasoning="test",
+                evidence={},
+                tags=[],
             ),
             CriticResult(
                 critic_type=CriticType.OBJECTIVE,
                 verdict=CriticVerdict.PASS,
-                score=0.90, confidence=0.9,
-                reasoning="test", evidence={}, tags=[],
+                score=0.90,
+                confidence=0.9,
+                reasoning="test",
+                evidence={},
+                tags=[],
             ),
         ]
         evaluator = CriticEnsembleEvaluator(

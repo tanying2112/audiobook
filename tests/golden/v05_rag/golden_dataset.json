@@ -1,0 +1,1990 @@
+{
+  "metadata": {
+    "version": "0.5",
+    "created_at": "2026-08-24T00:43:57.670055",
+    "total_chapters": 100,
+    "description": "Golden dataset for v0.5 RAG consistency testing - 100 chapter epic fantasy",
+    "validation_criteria": {
+      "character_consistency": "All 5 core characters maintain canonical names, pronouns, voice, personality across 100 chapters",
+      "world_building_consistency": "Geography, magic system, history, organizations never contradict",
+      "style_consistency": "Narrative voice, tone, dialogue rules, forbidden patterns enforced",
+      "proper_noun_consistency": "All 30+ proper nouns use canonical forms, no variant drift"
+    }
+  },
+  "world_building": {
+    "geography": {
+      "title": "艾泽拉大陆地理志",
+      "doc_type": "geography",
+      "content": "艾泽拉大陆由五大王国组成：\n1. 北境霜狼王国 (Frostwolf) - 永冬之地，首都冰冠城，以重骑兵著称\n2. 南疆炎阳帝国 (Solaria) - 沙漠帝国，首都琥珀城，擅长火魔法和轻骑兵\n3. 东方青藤联邦 (Verdant) - 森林精灵领地，首都翡翠城，自然魔法最强\n4. 西域钢铁公国 (Ironhold) - 矮人锻造之地，首都深岩城，科技与符文结合\n5. 中央星辰圣殿 (Astral) - 中立圣地，首都星光城，神术与预言中心\n\n主要地标：\n- 世界之树：位于青藤联邦核心，连接物质界与灵界\n- 永恒熔炉：钢铁公国核心，能熔炼任何金属\n- 冰封王座：霜狼王国皇宫，从未融化\n- 沙海灯塔：炎阳帝国边境，指引商队\n- 星辰观测台：星辰圣殿最高塔，可窥探命运",
+      "summary": "艾泽拉大陆五大王国地理分布、首都、特色及主要地标",
+      "key_entities": [
+        "艾泽拉大陆",
+        "霜狼王国",
+        "炎阳帝国",
+        "青藤联邦",
+        "钢铁公国",
+        "星辰圣殿",
+        "冰冠城",
+        "琥珀城",
+        "翡翠城",
+        "深岩城",
+        "星光城",
+        "世界之树",
+        "永恒熔炉",
+        "冰封王座",
+        "沙海灯塔",
+        "星辰观测台"
+      ],
+      "chapter_range": "1-100",
+      "priority": 10
+    },
+    "magic_system": {
+      "title": "艾泽拉魔法体系",
+      "doc_type": "magic_system",
+      "content": "艾泽拉魔法分为六大系，互相克制：\n1. 冰系 (霜狼专长) - 克制火系，被雷系克制\n2. 火系 (炎阳专长) - 克制风系，被水系克制  \n3. 自然系 (青藤专长) - 克制土系，被火系克制\n4. 符文/科技系 (钢铁专长) - 克制神圣系，被自然系克制\n5. 神圣/星辰系 (星辰专长) - 克制暗影系，被符文系克制\n6. 暗影/虚空系 (禁忌) - 克制光明，被神圣克制\n\n魔力等级：凡人级 -> 觉醒级 -> 大师级 -> 传说级 -> 神话级\n每个王国只能修习本系魔法，跨系修习会导致魔力失控（魔力反噬）。\n\n关键规则：\n- 魔力来源于「星尘」，只能通过冥想汲取\n- 施法需吟唱咒语（古语），咒语错误会导致反噬\n- 禁忌魔法：死灵、血祭、灵魂篡改 - 使用者必遭天谴\n- 传送门只能在星辰观测台开启，需三位大祭司共同主持",
+      "summary": "六大魔法系相生相克、等级划分、施法规则、禁忌魔法",
+      "key_entities": [
+        "冰系",
+        "火系",
+        "自然系",
+        "符文系",
+        "神圣系",
+        "暗影系",
+        "星尘",
+        "魔力反噬",
+        "古语",
+        "死灵",
+        "血祭",
+        "灵魂篡改",
+        "传送门",
+        "星辰观测台",
+        "大祭司"
+      ],
+      "chapter_range": "1-100",
+      "priority": 10
+    },
+    "history": {
+      "title": "千年战争简史",
+      "doc_type": "history",
+      "content": "艾泽拉历史分为四纪元：\n1. 创世纪元 (Year 0-500) - 诸神创世，五大种族诞生\n2. 繁荣纪元 (Year 500-1200) - 五国建交，魔法文明鼎盛\n3. 千年战争纪元 (Year 1200-2200) - 暗影主宰入侵，五国联盟抗争\n4. 重建纪元 (Year 2200-今) - 战争结束，建立星辰圣殿维持和平\n\n关键历史事件：\n- Year 1199: 暗影裂隙开启，虚空生物涌入\n- Year 1200: 霜狼王国首都陷落，冰封王座被污染\n- Year 1500: 晨曦之战五国联军反攻转折点\n- Year 1800: 永恒熔炉锻造圣剑曙光\n- Year 2199: 最终决战，暗影主宰被封印\n- Year 2200: 星辰圣殿建立，和平誓约签署\n\n当前年份：重建纪元 347 年 (世界年 2547)",
+      "summary": "四大纪元划分、千年战争关键节点、当前时间线",
+      "key_entities": [
+        "创世纪元",
+        "繁荣纪元",
+        "千年战争纪元",
+        "重建纪元",
+        "暗影主宰",
+        "五国联盟",
+        "晨曦之战",
+        "永恒熔炉",
+        "圣剑曙光",
+        "和平誓约",
+        "星辰圣殿"
+      ],
+      "chapter_range": "1-100",
+      "priority": 8
+    },
+    "organizations": {
+      "title": "主要势力组织",
+      "doc_type": "organization",
+      "content": "跨国组织：\n1. 星辰骑士团 - 星辰圣殿直属，维护和平誓约，骑士需通过试炼之地考验\n2. 商盟流星商会 - 中立贸易组织，垄断星尘贸易，总部在星光城\n3. 刺客组织幽影 - 暗中操控各国政局，信奉暗影系，基地未知\n4. 探险者公会寻路者 - 探索遗迹、护送商队、收集情报，分部遍布五国\n\n各国特有组织：\n- 霜狼：极冬卫队皇家护卫，符文铸造师协会\n- 炎阳：烈焰军团精锐，沙漠行者商队护卫\n- 青藤：自然守望者德鲁伊圈，织梦者预言师团体\n- 钢铁：深岩工匠行会符文大师，蒸汽军团机械部队\n- 星辰：大祭司议会统治机构，星象仪制造局",
+      "summary": "跨国组织与各国特有势力，职能与特色",
+      "key_entities": [
+        "星辰骑士团",
+        "流星商会",
+        "幽影",
+        "寻路者",
+        "极冬卫队",
+        "符文铸造师协会",
+        "烈焰军团",
+        "沙漠行者",
+        "自然守望者",
+        "织梦者",
+        "深岩工匠行会",
+        "蒸汽军团",
+        "大祭司议会",
+        "星象仪制造局"
+      ],
+      "chapter_range": "1-100",
+      "priority": 7
+    }
+  },
+  "characters": [
+    {
+      "canonical_name": "艾琳·星织",
+      "aliases": [
+        "星织",
+        "艾琳",
+        "织星者"
+      ],
+      "pronouns": {
+        "subject": "她",
+        "object": "她",
+        "possessive": "她的"
+      },
+      "gender": "female",
+      "age": "24",
+      "voice_description": "清冷空灵，带着星尘回响的嗓音，语速适中",
+      "suggested_voice_id": "zh-CN-XiaoxiaoNeural",
+      "personality_traits": [
+        "冷静理智",
+        "责任感强",
+        "隐藏温柔",
+        "厌恶谎言"
+      ],
+      "speech_patterns": [
+        "常用星辰指引作为口头禅",
+        "说话简练不拖泥带水",
+        "称呼同伴用全名或头衔"
+      ],
+      "emotional_baseline": "contemplative",
+      "relationships": {
+        "凯尔·霜誓": "青梅竹马/守护骑士",
+        "赛琳娜·炎心": "竞争对手/不得不合作的盟友",
+        "索恩·深岩": "师兄/技术顾问",
+        "莉拉·青藤": "治愈者/情感支柱"
+      },
+      "backstory": "星辰圣殿孤儿，被大祭司收养。拥有罕见的星象阅读天赋，能通过星象预知片段未来。因预见到新的暗影威胁，踏上寻找圣剑曙光碎片的旅程。",
+      "role": "protagonist",
+      "first_appearance_chapter": 1,
+      "confidence": 1.0
+    },
+    {
+      "canonical_name": "凯尔·霜誓",
+      "aliases": [
+        "霜誓",
+        "凯尔",
+        "冰骑士"
+      ],
+      "pronouns": {
+        "subject": "他",
+        "object": "他",
+        "possessive": "他的"
+      },
+      "gender": "male",
+      "age": "26",
+      "voice_description": "低沉磁性，像冰面裂开的声音，语速偏慢",
+      "suggested_voice_id": "zh-CN-YunjianNeural",
+      "personality_traits": [
+        "忠诚坚定",
+        "不善言辞",
+        "行动派",
+        "内心深情"
+      ],
+      "speech_patterns": [
+        "极少说话，常用动作代替",
+        "发誓时说以霜誓为证",
+        "称呼艾琳为星织而非全名"
+      ],
+      "emotional_baseline": "tense",
+      "relationships": {
+        "艾琳·星织": "守护对象/心上人",
+        "赛琳娜·炎心": "互不信任/战友",
+        "索恩·深岩": "酒友/战友",
+        "莉拉·青藤": "尊重/妹妹般照顾"
+      },
+      "backstory": "霜狼王国极冬卫队前队长，因拒绝执行屠杀平民命令被流放。发誓守护艾琳赎罪。右手佩戴霜誓护腕，能引导冰系魔力。",
+      "role": "deuteragonist",
+      "first_appearance_chapter": 1,
+      "confidence": 1.0
+    },
+    {
+      "canonical_name": "赛琳娜·炎心",
+      "aliases": [
+        "炎心",
+        "赛琳娜",
+        "火舞者"
+      ],
+      "pronouns": {
+        "subject": "她",
+        "object": "她",
+        "possessive": "她的"
+      },
+      "gender": "female",
+      "age": "23",
+      "voice_description": "热烈奔放，像火焰噼啪作响，语速快，音调高",
+      "suggested_voice_id": "zh-CN-XiaoyiNeural",
+      "personality_traits": [
+        "骄傲自信",
+        "冲动鲁莽",
+        "重情重义",
+        "嘴硬心软"
+      ],
+      "speech_patterns": [
+        "常用燃烧吧作为口头禅",
+        "爱用火相关比喻",
+        "生气时称呼全名",
+        "夸赞时说不赖"
+      ],
+      "emotional_baseline": "happy",
+      "relationships": {
+        "艾琳·星织": "竞争对手/暗中敬佩",
+        "凯尔·霜誓": "看不顺眼/实则信任",
+        "索恩·深岩": "损友/常被恶作剧",
+        "莉拉·青藤": "保护对象/像妹妹"
+      },
+      "backstory": "炎阳帝国皇女，因不愿联姻出走。拥有炎心血脉，火系天赋极强但难控制。寻找控制火焰的方法，途中加入队伍。",
+      "role": "tritagonist",
+      "first_appearance_chapter": 3,
+      "confidence": 1.0
+    },
+    {
+      "canonical_name": "索恩·深岩",
+      "aliases": [
+        "深岩",
+        "索恩",
+        "符文大师"
+      ],
+      "pronouns": {
+        "subject": "他",
+        "object": "他",
+        "possessive": "他的"
+      },
+      "gender": "male",
+      "age": "156",
+      "voice_description": "浑厚回响，像敲击金属，带着机械齿轮转动音",
+      "suggested_voice_id": "zh-CN-YunyangNeural",
+      "personality_traits": [
+        "严谨务实",
+        "痴迷研究",
+        "吝啬但大方给朋友",
+        "抱怨多但从不拒绝帮忙"
+      ],
+      "speech_patterns": [
+        "常说按符文逻辑",
+        "抱怨时说我的胡子都要气翘了",
+        "称赞技术说有点意思"
+      ],
+      "emotional_baseline": "contemplative",
+      "relationships": {
+        "艾琳·星织": "师妹/研究对象",
+        "凯尔·霜誓": "酒友/战友",
+        "赛琳娜·炎心": "实验对象/损友",
+        "莉拉·青藤": "尊重自然魔法/求教对象"
+      },
+      "backstory": "钢铁公国深岩工匠行会大师，研究星尘符文被排挤。随队寻找圣剑碎片实为寻找失传的创世符文。机械义肢左臂可变形。",
+      "role": "support",
+      "first_appearance_chapter": 5,
+      "confidence": 1.0
+    },
+    {
+      "canonical_name": "莉拉·青藤",
+      "aliases": [
+        "青藤",
+        "莉拉",
+        "织梦者"
+      ],
+      "pronouns": {
+        "subject": "她",
+        "object": "她",
+        "possessive": "她的"
+      },
+      "gender": "female",
+      "age": "300+",
+      "voice_description": "轻柔如风吹过树叶，带着治愈共鸣，语速极慢",
+      "suggested_voice_id": "zh-CN-XiaoniNeural",
+      "personality_traits": [
+        "温柔包容",
+        "智慧深邃",
+        "不干涉他人选择",
+        "关键时刻果断"
+      ],
+      "speech_patterns": [
+        "常用树语比喻",
+        "劝慰时说根系会指引方向",
+        "从不直接给答案只引导"
+      ],
+      "emotional_baseline": "tender",
+      "relationships": {
+        "艾琳·星织": "引导者/精神导师",
+        "凯尔·霜誓": "治愈者/理解他的痛",
+        "赛琳娜·炎心": "姐姐/教导控制火焰",
+        "索恩·深岩": "朋友/自然与科技的桥梁"
+      },
+      "backstory": "青藤联邦织梦者长老，通过世界之树根系感知大陆命运。预见到新威胁，化身年轻形态随行指引。真实身份仅艾琳知晓。",
+      "role": "mentor",
+      "first_appearance_chapter": 2,
+      "confidence": 1.0
+    }
+  ],
+  "style_guide": {
+    "name": "艾泽拉编年史风格指南",
+    "narrative_voice": "第三人称全知视角，贴近主角艾琳但保留神性距离感",
+    "tone": "史诗感与温情并重，严肃中带一丝希望",
+    "pacing": "前期铺垫缓慢，中后期加速，高潮章节密集",
+    "perspective_rules": [
+      "严禁跳出艾琳视角超过200字",
+      "其他角色内心活动只能通过外在表现暗示",
+      "预言/梦境片段可用斜体单独成段"
+    ],
+    "dialogue_rules": [
+      "对话标签极简化，多用动作代替",
+      "各角色语言风格必须符合 speech_patterns",
+      "古语咒语用《 》包裹，如：《冰封万里》"
+    ],
+    "description_rules": [
+      "环境描写服务情绪，不堆砌华丽辞藻",
+      "魔法施展描写：光效->音效->感官冲击",
+      "战斗描写：动作->魔力流动->后果"
+    ],
+    "forbidden_patterns": [
+      "突然发现/恰好/巧合等懒惰情节推进",
+      "角色OOC：艾琳不说废话，凯尔不卖萌，赛琳娜不示弱",
+      "魔法系设定冲突：火系不能治愈，冰系不能燃烧"
+    ],
+    "required_patterns": [
+      "每章开头需有环境/氛围铺垫（>=50字）",
+      "关键情节节点必须有星象/预言呼应",
+      "角色成长弧光需可追踪"
+    ],
+    "prosody_guidance": {
+      "narrator": {
+        "rate": "1.0",
+        "pitch": "0",
+        "volume": "1.0"
+      },
+      "dialogue": {
+        "rate": "1.05",
+        "pitch": "+1",
+        "volume": "1.1"
+      },
+      "prophecy": {
+        "rate": "0.85",
+        "pitch": "-2",
+        "volume": "0.9"
+      },
+      "combat": {
+        "rate": "1.15",
+        "pitch": "+2",
+        "volume": "1.2"
+      }
+    },
+    "emotion_mapping": {
+      "neutral": "平稳叙述",
+      "happy": "语速略快、音调上扬",
+      "sad": "语速放缓、音调下沉、停顿增加",
+      "angry": "语速加快、音量增大、咬字清晰",
+      "fearful": "语速不稳、气声、颤抖感",
+      "tense": "语速中快、紧绷感、呼吸可闻",
+      "tender": "语速极慢、音量极低、气声",
+      "contemplative": "语速中慢、均匀、留白"
+    },
+    "genre": "epic_fantasy",
+    "source_chapters": [
+      1
+    ]
+  },
+  "proper_nouns": [
+    {
+      "canonical_form": "艾琳·星织",
+      "category": "character",
+      "variants": [
+        "星织",
+        "艾琳",
+        "织星者"
+      ],
+      "definition": "主角，星象阅读者",
+      "first_appearance_chapter": 1
+    },
+    {
+      "canonical_form": "凯尔·霜誓",
+      "category": "character",
+      "variants": [
+        "霜誓",
+        "凯尔",
+        "冰骑士"
+      ],
+      "definition": "守护骑士，极冬卫队前队长",
+      "first_appearance_chapter": 1
+    },
+    {
+      "canonical_form": "赛琳娜·炎心",
+      "category": "character",
+      "variants": [
+        "炎心",
+        "赛琳娜",
+        "火舞者"
+      ],
+      "definition": "炎阳皇女，火系天才",
+      "first_appearance_chapter": 3
+    },
+    {
+      "canonical_form": "索恩·深岩",
+      "category": "character",
+      "variants": [
+        "深岩",
+        "索恩",
+        "符文大师"
+      ],
+      "definition": "符文大师，机械义肢",
+      "first_appearance_chapter": 5
+    },
+    {
+      "canonical_form": "莉拉·青藤",
+      "category": "character",
+      "variants": [
+        "青藤",
+        "莉拉",
+        "织梦者"
+      ],
+      "definition": "织梦者长老，自然守望者",
+      "first_appearance_chapter": 2
+    },
+    {
+      "canonical_form": "艾泽拉大陆",
+      "category": "place",
+      "variants": [
+        "艾泽拉",
+        "大陆"
+      ],
+      "definition": "故事发生的世界",
+      "first_appearance_chapter": 1
+    },
+    {
+      "canonical_form": "冰冠城",
+      "category": "place",
+      "variants": [
+        "霜狼首都"
+      ],
+      "definition": "霜狼王国首都",
+      "first_appearance_chapter": 1
+    },
+    {
+      "canonical_form": "琥珀城",
+      "category": "place",
+      "variants": [
+        "炎阳首都"
+      ],
+      "definition": "炎阳帝国首都",
+      "first_appearance_chapter": 1
+    },
+    {
+      "canonical_form": "翡翠城",
+      "category": "place",
+      "variants": [
+        "青藤首都"
+      ],
+      "definition": "青藤联邦首都",
+      "first_appearance_chapter": 1
+    },
+    {
+      "canonical_form": "深岩城",
+      "category": "place",
+      "variants": [
+        "钢铁首都"
+      ],
+      "definition": "钢铁公国首都",
+      "first_appearance_chapter": 1
+    },
+    {
+      "canonical_form": "星光城",
+      "category": "place",
+      "variants": [
+        "星辰首都"
+      ],
+      "definition": "星辰圣殿首都",
+      "first_appearance_chapter": 1
+    },
+    {
+      "canonical_form": "世界之树",
+      "category": "place",
+      "variants": [
+        "树"
+      ],
+      "definition": "连接物质界与灵界",
+      "first_appearance_chapter": 1
+    },
+    {
+      "canonical_form": "永恒熔炉",
+      "category": "place",
+      "variants": [
+        "熔炉"
+      ],
+      "definition": "钢铁公国核心锻造炉",
+      "first_appearance_chapter": 1
+    },
+    {
+      "canonical_form": "冰封王座",
+      "category": "place",
+      "variants": [
+        "王座"
+      ],
+      "definition": "霜狼王国皇宫",
+      "first_appearance_chapter": 1
+    },
+    {
+      "canonical_form": "星辰观测台",
+      "category": "place",
+      "variants": [
+        "观测台"
+      ],
+      "definition": "星辰圣殿最高塔",
+      "first_appearance_chapter": 1
+    },
+    {
+      "canonical_form": "圣剑曙光",
+      "category": "item",
+      "variants": [
+        "曙光",
+        "圣剑"
+      ],
+      "definition": "永恒熔炉锻造的神器，可斩断暗影",
+      "first_appearance_chapter": 10
+    },
+    {
+      "canonical_form": "霜誓护腕",
+      "category": "item",
+      "variants": [
+        "护腕",
+        "霜誓"
+      ],
+      "definition": "凯尔的信物，引导冰系魔力",
+      "first_appearance_chapter": 1
+    },
+    {
+      "canonical_form": "星尘",
+      "category": "item",
+      "variants": [
+        "魔力源"
+      ],
+      "definition": "魔力来源物质",
+      "first_appearance_chapter": 1
+    },
+    {
+      "canonical_form": "星象阅读",
+      "category": "term",
+      "variants": [
+        "阅读星象",
+        "占星"
+      ],
+      "definition": "艾琳的天赋，预知片段未来",
+      "first_appearance_chapter": 1
+    },
+    {
+      "canonical_form": "魔力反噬",
+      "category": "term",
+      "variants": [
+        "反噬",
+        "走火入魔"
+      ],
+      "definition": "跨系修习或咒语错误导致的后果",
+      "first_appearance_chapter": 1
+    },
+    {
+      "canonical_form": "和平誓约",
+      "category": "term",
+      "variants": [
+        "誓约"
+      ],
+      "definition": "Year 2200 五国签署的和平条约",
+      "first_appearance_chapter": 1
+    },
+    {
+      "canonical_form": "试炼之地",
+      "category": "term",
+      "variants": [
+        "试炼"
+      ],
+      "definition": "星辰骑士团入团考验场所",
+      "first_appearance_chapter": 10
+    },
+    {
+      "canonical_form": "暗影裂隙",
+      "category": "term",
+      "variants": [
+        "裂隙",
+        "虚空裂隙"
+      ],
+      "definition": "虚空生物入侵的通道",
+      "first_appearance_chapter": 1
+    }
+  ],
+  "chapters": [
+    {
+      "chapter_index": 1,
+      "summary": "星辰圣殿预言觉醒，艾琳踏上旅程",
+      "key_events": [
+        "星辰圣殿预言觉醒，艾琳踏上旅程"
+      ],
+      "characters_involved": [
+        "艾琳·星织"
+      ]
+    },
+    {
+      "chapter_index": 2,
+      "summary": "冰冠城重逢凯尔，霜誓护腕觉醒",
+      "key_events": [
+        "冰冠城重逢凯尔，霜誓护腕觉醒"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓"
+      ]
+    },
+    {
+      "chapter_index": 3,
+      "summary": "青藤联邦遇莉拉，织梦者指引",
+      "key_events": [
+        "青藤联邦遇莉拉，织梦者指引"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 4,
+      "summary": "炎阳边境救赛琳娜，火舞者加入",
+      "key_events": [
+        "炎阳边境救赛琳娜，火舞者加入"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "莉拉·青藤",
+        "赛琳娜·炎心"
+      ]
+    },
+    {
+      "chapter_index": 5,
+      "summary": "钢铁公国寻索恩，符文大师入队",
+      "key_events": [
+        "钢铁公国寻索恩，符文大师入队"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "莉拉·青藤",
+        "赛琳娜·炎心",
+        "索恩·深岩"
+      ]
+    },
+    {
+      "chapter_index": 6,
+      "summary": "五人初次合作：击退暗影兽",
+      "key_events": [
+        "五人初次合作：击退暗影兽"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "莉拉·青藤",
+        "赛琳娜·炎心",
+        "索恩·深岩"
+      ]
+    },
+    {
+      "chapter_index": 7,
+      "summary": "流星商会情报：圣剑碎片线索",
+      "key_events": [
+        "流星商会情报：圣剑碎片线索"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "莉拉·青藤",
+        "赛琳娜·炎心",
+        "索恩·深岩"
+      ]
+    },
+    {
+      "chapter_index": 8,
+      "summary": "幽影刺客夜袭，凯尔护主负伤",
+      "key_events": [
+        "幽影刺客夜袭，凯尔护主负伤"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "莉拉·青藤",
+        "赛琳娜·炎心",
+        "索恩·深岩"
+      ]
+    },
+    {
+      "chapter_index": 9,
+      "summary": "星象指引：首个碎片在晨曦遗迹",
+      "key_events": [
+        "星象指引：首个碎片在晨曦遗迹"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "莉拉·青藤",
+        "赛琳娜·炎心",
+        "索恩·深岩"
+      ]
+    },
+    {
+      "chapter_index": 10,
+      "summary": "遗迹探索：解谜、陷阱、守护者",
+      "key_events": [
+        "遗迹探索：解谜、陷阱、守护者"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "莉拉·青藤",
+        "赛琳娜·炎心",
+        "索恩·深岩"
+      ]
+    },
+    {
+      "chapter_index": 11,
+      "summary": "获得碎片一：封印着希望之力",
+      "key_events": [
+        "获得碎片一：封印着希望之力"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "莉拉·青藤",
+        "赛琳娜·炎心",
+        "索恩·深岩"
+      ]
+    },
+    {
+      "chapter_index": 12,
+      "summary": "赛琳娜失控，莉拉教导冥想法",
+      "key_events": [
+        "赛琳娜失控，莉拉教导冥想法"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "莉拉·青藤",
+        "赛琳娜·炎心",
+        "索恩·深岩"
+      ]
+    },
+    {
+      "chapter_index": 13,
+      "summary": "索恩解析碎片：需五碎合一",
+      "key_events": [
+        "索恩解析碎片：需五碎合一"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "莉拉·青藤",
+        "赛琳娜·炎心",
+        "索恩·深岩"
+      ]
+    },
+    {
+      "chapter_index": 14,
+      "summary": "星辰骑士团拦截，误会解除",
+      "key_events": [
+        "星辰骑士团拦截，误会解除"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "莉拉·青藤",
+        "赛琳娜·炎心",
+        "索恩·深岩"
+      ]
+    },
+    {
+      "chapter_index": 15,
+      "summary": "大祭司现身：透露新威胁源头",
+      "key_events": [
+        "大祭司现身：透露新威胁源头"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "莉拉·青藤",
+        "赛琳娜·炎心",
+        "索恩·深岩"
+      ]
+    },
+    {
+      "chapter_index": 16,
+      "summary": "幽影首领现身：暗示内鬼",
+      "key_events": [
+        "幽影首领现身：暗示内鬼"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "莉拉·青藤",
+        "赛琳娜·炎心",
+        "索恩·深岩"
+      ]
+    },
+    {
+      "chapter_index": 17,
+      "summary": "队伍内部信任危机",
+      "key_events": [
+        "队伍内部信任危机"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "莉拉·青藤",
+        "赛琳娜·炎心",
+        "索恩·深岩"
+      ]
+    },
+    {
+      "chapter_index": 18,
+      "summary": "莉拉透露真身份：织梦者长老",
+      "key_events": [
+        "莉拉透露真身份：织梦者长老"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "莉拉·青藤",
+        "赛琳娜·炎心",
+        "索恩·深岩"
+      ]
+    },
+    {
+      "chapter_index": 19,
+      "summary": "前往炎阳帝国：寻找第二碎片",
+      "key_events": [
+        "前往炎阳帝国：寻找第二碎片"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "莉拉·青藤",
+        "赛琳娜·炎心",
+        "索恩·深岩"
+      ]
+    },
+    {
+      "chapter_index": 20,
+      "summary": "沙漠遭遇沙暴，凯尔冰系护队",
+      "key_events": [
+        "沙漠遭遇沙暴，凯尔冰系护队"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "莉拉·青藤",
+        "赛琳娜·炎心",
+        "索恩·深岩"
+      ]
+    },
+    {
+      "chapter_index": 21,
+      "summary": "琥珀城潜入：赛琳娜皇室身份暴露",
+      "key_events": [
+        "琥珀城潜入：赛琳娜皇室身份暴露"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "莉拉·青藤",
+        "赛琳娜·炎心",
+        "索恩·深岩"
+      ]
+    },
+    {
+      "chapter_index": 22,
+      "summary": "烈焰军团追捕，地下水道逃亡",
+      "key_events": [
+        "烈焰军团追捕，地下水道逃亡"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "莉拉·青藤",
+        "赛琳娜·炎心",
+        "索恩·深岩"
+      ]
+    },
+    {
+      "chapter_index": 23,
+      "summary": "遇流星商会分部主事人，交易情报",
+      "key_events": [
+        "遇流星商会分部主事人，交易情报"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "莉拉·青藤",
+        "赛琳娜·炎心",
+        "索恩·深岩"
+      ]
+    },
+    {
+      "chapter_index": 24,
+      "summary": "第二碎片在灼心火山核心",
+      "key_events": [
+        "第二碎片在灼心火山核心"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "莉拉·青藤",
+        "赛琳娜·炎心",
+        "索恩·深岩"
+      ]
+    },
+    {
+      "chapter_index": 25,
+      "summary": "火山试炼：赛琳娜觉醒真正炎心",
+      "key_events": [
+        "火山试炼：赛琳娜觉醒真正炎心"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "莉拉·青藤",
+        "赛琳娜·炎心",
+        "索恩·深岩"
+      ]
+    },
+    {
+      "chapter_index": 26,
+      "summary": "获得碎片二：封印着勇气之力",
+      "key_events": [
+        "获得碎片二：封印着勇气之力"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 27,
+      "summary": "幽影再现：索恩中毒，机械臂受损",
+      "key_events": [
+        "幽影再现：索恩中毒，机械臂受损"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 28,
+      "summary": "深岩城修复：符文铸造师协会助力",
+      "key_events": [
+        "深岩城修复：符文铸造师协会助力"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 29,
+      "summary": "第三碎片线索：世界之树根系深处",
+      "key_events": [
+        "第三碎片线索：世界之树根系深处"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 30,
+      "summary": "青藤联邦审判：莉拉身份引争议",
+      "key_events": [
+        "青藤联邦审判：莉拉身份引争议"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 31,
+      "summary": "自然守望者考验：不杀生原则",
+      "key_events": [
+        "自然守望者考验：不杀生原则"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 32,
+      "summary": "世界之树共鸣：艾琳见到过往纪元",
+      "key_events": [
+        "世界之树共鸣：艾琳见到过往纪元"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 33,
+      "summary": "获得碎片三：封印着智慧之力",
+      "key_events": [
+        "获得碎片三：封印着智慧之力"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 34,
+      "summary": "星象异动：暗影裂隙再次扩大",
+      "key_events": [
+        "星象异动：暗影裂隙再次扩大"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 35,
+      "summary": "星辰圣殿紧急召集：五国会议",
+      "key_events": [
+        "星辰圣殿紧急召集：五国会议"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 36,
+      "summary": "会议上各国利益博弈",
+      "key_events": [
+        "会议上各国利益博弈"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 37,
+      "summary": "流星商会揭露：星尘贸易被操控",
+      "key_events": [
+        "流星商会揭露：星尘贸易被操控"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 38,
+      "summary": "幽影渗透：大祭司疑似被替换",
+      "key_events": [
+        "幽影渗透：大祭司疑似被替换"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 39,
+      "summary": "艾琳星象阅读：真凶是虚空行者",
+      "key_events": [
+        "艾琳星象阅读：真凶是虚空行者"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 40,
+      "summary": "第四碎片在极北冰原",
+      "key_events": [
+        "第四碎片在极北冰原"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 41,
+      "summary": "极北冰原：冰冠城已成废墟",
+      "key_events": [
+        "极北冰原：冰冠城已成废墟"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 42,
+      "summary": "冰封王座下的地下城：第四碎片",
+      "key_events": [
+        "冰封王座下的地下城：第四碎片"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 43,
+      "summary": "面对污染的冰封王座守护者",
+      "key_events": [
+        "面对污染的冰封王座守护者"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 44,
+      "summary": "凯尔献祭霜誓护腕：获得碎片四牺牲",
+      "key_events": [
+        "凯尔献祭霜誓护腕：获得碎片四牺牲"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 45,
+      "summary": "凯尔陷入昏迷，艾琳崩溃边缘",
+      "key_events": [
+        "凯尔陷入昏迷，艾琳崩溃边缘"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 46,
+      "summary": "莉拉耗尽寿元维持凯尔生命",
+      "key_events": [
+        "莉拉耗尽寿元维持凯尔生命"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 47,
+      "summary": "赛琳娜独自闯幽影基地救药材",
+      "key_events": [
+        "赛琳娜独自闯幽影基地救药材"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 48,
+      "summary": "索恩修复机械臂：植入星尘核心",
+      "key_events": [
+        "索恩修复机械臂：植入星尘核心"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 49,
+      "summary": "星辰圣殿内部清洗：大祭司议会重组",
+      "key_events": [
+        "星辰圣殿内部清洗：大祭司议会重组"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 50,
+      "summary": "真相：虚空行者伪装成大祭司千年",
+      "key_events": [
+        "真相：虚空行者伪装成大祭司千年"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 51,
+      "summary": "和平誓约本身就是封印仪式",
+      "key_events": [
+        "和平誓约本身就是封印仪式"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 52,
+      "summary": "第五碎片在星辰观测台顶端",
+      "key_events": [
+        "第五碎片在星辰观测台顶端"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 53,
+      "summary": "全员集结：最后决战准备",
+      "key_events": [
+        "全员集结：最后决战准备"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 54,
+      "summary": "传送门开启：直达观测台",
+      "key_events": [
+        "传送门开启：直达观测台"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 55,
+      "summary": "观测台决战：虚空行者真身",
+      "key_events": [
+        "观测台决战：虚空行者真身"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 56,
+      "summary": "五碎合一：圣剑曙光重铸",
+      "key_events": [
+        "五碎合一：圣剑曙光重铸"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 57,
+      "summary": "艾琳持剑：星象阅读完全觉醒",
+      "key_events": [
+        "艾琳持剑：星象阅读完全觉醒"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 58,
+      "summary": "凯尔苏醒：霜誓化作剑刃",
+      "key_events": [
+        "凯尔苏醒：霜誓化作剑刃"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 59,
+      "summary": "最终一击：封印暗影裂隙",
+      "key_events": [
+        "最终一击：封印暗影裂隙"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 60,
+      "summary": "代价：莉拉化作世界之树养分",
+      "key_events": [
+        "代价：莉拉化作世界之树养分"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 61,
+      "summary": "暗影裂隙封印，世界恢复平静",
+      "key_events": [
+        "暗影裂隙封印，世界恢复平静"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 62,
+      "summary": "五国重签誓约：建立新秩序",
+      "key_events": [
+        "五国重签誓约：建立新秩序"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 63,
+      "summary": "赛琳娜登基：炎阳首位女帝",
+      "key_events": [
+        "赛琳娜登基：炎阳首位女帝"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 64,
+      "summary": "索恩重建深岩工匠行会",
+      "key_events": [
+        "索恩重建深岩工匠行会"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 65,
+      "summary": "凯尔重组极冬卫队：新誓言",
+      "key_events": [
+        "凯尔重组极冬卫队：新誓言"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 66,
+      "summary": "艾琳成为首任星象守望者",
+      "key_events": [
+        "艾琳成为首任星象守望者"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 67,
+      "summary": "星光城重建：星辰圣殿向公众开放",
+      "key_events": [
+        "星光城重建：星辰圣殿向公众开放"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 68,
+      "summary": "流星商会改制：星尘公共资源化",
+      "key_events": [
+        "流星商会改制：星尘公共资源化"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 69,
+      "summary": "幽影残余：新组织曙光成立",
+      "key_events": [
+        "幽影残余：新组织曙光成立"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 70,
+      "summary": "寻路者公会扩张：探索新大陆",
+      "key_events": [
+        "寻路者公会扩张：探索新大陆"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 71,
+      "summary": "十年后：艾琳在观测台教导新生",
+      "key_events": [
+        "十年后：艾琳在观测台教导新生"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 72,
+      "summary": "凯尔与赛琳娜的友谊传为佳话",
+      "key_events": [
+        "凯尔与赛琳娜的友谊传为佳话"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 73,
+      "summary": "索恩的机械义肢成经典教案",
+      "key_events": [
+        "索恩的机械义肢成经典教案"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 74,
+      "summary": "世界之树新芽：莉拉的回响",
+      "key_events": [
+        "世界之树新芽：莉拉的回响"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 75,
+      "summary": "新预言：星辰指向未知彼岸",
+      "key_events": [
+        "新预言：星辰指向未知彼岸"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩"
+      ]
+    },
+    {
+      "chapter_index": 76,
+      "summary": "尾声：新的旅程开始",
+      "key_events": [
+        "尾声：新的旅程开始"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 77,
+      "summary": "番外：各角色视角的同一天",
+      "key_events": [
+        "番外：各角色视角的同一天"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 78,
+      "summary": "番外：普通人的和平日常",
+      "key_events": [
+        "番外：普通人的和平日常"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 79,
+      "summary": "番外：星尘在风中低语",
+      "key_events": [
+        "番外：星尘在风中低语"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 80,
+      "summary": "完结：故事不曾结束，只是继续",
+      "key_events": [
+        "完结：故事不曾结束，只是继续"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 81,
+      "summary": "后记：历史学家记录的传说",
+      "key_events": [
+        "后记：历史学家记录的传说"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 82,
+      "summary": "附录：星象阅读完整手札",
+      "key_events": [
+        "附录：星象阅读完整手札"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 83,
+      "summary": "附录：五大王国地理全志",
+      "key_events": [
+        "附录：五大王国地理全志"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 84,
+      "summary": "附录：魔法体系完整图谱",
+      "key_events": [
+        "附录：魔法体系完整图谱"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 85,
+      "summary": "终章：星辰永恒指引前路",
+      "key_events": [
+        "终章：星辰永恒指引前路"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 86,
+      "summary": "传说延续：新世代冒险者的起点",
+      "key_events": [
+        "传说延续：新世代冒险者的起点"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 87,
+      "summary": "星辰骑士团新团长就职典礼",
+      "key_events": [
+        "星辰骑士团新团长就职典礼"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 88,
+      "summary": "炎阳帝国新政：废除奴隶制",
+      "key_events": [
+        "炎阳帝国新政：废除奴隶制"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 89,
+      "summary": "霜狼王国解冻：春天初现",
+      "key_events": [
+        "霜狼王国解冻：春天初现"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 90,
+      "summary": "青藤联邦世界之树开花",
+      "key_events": [
+        "青藤联邦世界之树开花"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 91,
+      "summary": "钢铁公国蒸汽科技革命",
+      "key_events": [
+        "钢铁公国蒸汽科技革命"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 92,
+      "summary": "流星商会星尘银行成立",
+      "key_events": [
+        "流星商会星尘银行成立"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 93,
+      "summary": "寻路者公会发现新大陆",
+      "key_events": [
+        "寻路者公会发现新大陆"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 94,
+      "summary": "曙光组织首次公开行动",
+      "key_events": [
+        "曙光组织首次公开行动"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 95,
+      "summary": "艾琳收徒：新星象阅读者",
+      "key_events": [
+        "艾琳收徒：新星象阅读者"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 96,
+      "summary": "凯尔授剑：霜誓传承",
+      "key_events": [
+        "凯尔授剑：霜誓传承"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 97,
+      "summary": "赛琳娜巡视：女帝圣驾",
+      "key_events": [
+        "赛琳娜巡视：女帝圣驾"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 98,
+      "summary": "索恩巨著：符文学大全出版",
+      "key_events": [
+        "索恩巨著：符文学大全出版"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 99,
+      "summary": "世界之树新芽长成参天",
+      "key_events": [
+        "世界之树新芽长成参天"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "chapter_index": 100,
+      "summary": "星辰指向：下一个千年预言",
+      "key_events": [
+        "星辰指向：下一个千年预言"
+      ],
+      "characters_involved": [
+        "艾琳·星织",
+        "凯尔·霜誓",
+        "赛琳娜·炎心",
+        "索恩·深岩",
+        "莉拉·青藤"
+      ]
+    }
+  ]
+}

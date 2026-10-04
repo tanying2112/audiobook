@@ -1,0 +1,10 @@
+# Master Module Dependencies
+
+redis>=5.0.0
+boto3>=1.34.0
+tenacity>=8.2.0
+
+# Optional: for audio processing in orchestrator
+soundfile>=0.12.0
+numpy>=1.26.0
+librosa>=0.11.0

@@ -5,15 +5,10 @@ Target coverage: >= 60%.
 """
 
 import os
-import sys
-from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, "src")
-
-from audiobook_studio.pipeline import annotate_paragraph
-from audiobook_studio.pipeline.annotate_paragraph import AnnotateParagraphPipeline
+from audiobook_studio.pipeline.annotate_paragraph import AnnotateParagraphPipeline, annotate_paragraph
 from audiobook_studio.schemas import (
     BookMeta,
     CharacterVoiceBinding,
@@ -28,17 +23,31 @@ class TestAnnotateParagraphPipeline:
 
     def test_init_default(self):
         """Test pipeline initialization with defaults."""
-        os.environ["MOCK_LLM"] = "false"
-        pipeline = AnnotateParagraphPipeline()
-        assert pipeline is not None
-        assert pipeline.mock_mode is False
-        assert pipeline.router is not None
+        old_value = os.environ.get("MOCK_LLM")
+        try:
+            os.environ["MOCK_LLM"] = "false"
+            pipeline = AnnotateParagraphPipeline()
+            assert pipeline is not None
+            assert pipeline.mock_mode is False
+            assert pipeline.router is not None
+        finally:
+            if old_value is None:
+                os.environ.pop("MOCK_LLM", None)
+            else:
+                os.environ["MOCK_LLM"] = old_value
 
     def test_init_mock_mode(self):
         """Test pipeline initialization in mock mode."""
-        os.environ["MOCK_LLM"] = "true"
-        pipeline = AnnotateParagraphPipeline()
-        assert pipeline.mock_mode is True
+        old_value = os.environ.get("MOCK_LLM")
+        try:
+            os.environ["MOCK_LLM"] = "true"
+            pipeline = AnnotateParagraphPipeline()
+            assert pipeline.mock_mode is True
+        finally:
+            if old_value is None:
+                os.environ.pop("MOCK_LLM", None)
+            else:
+                os.environ["MOCK_LLM"] = old_value
 
     def test_init_custom_router(self, mock_router):
         """Test pipeline with custom router."""
@@ -58,9 +67,7 @@ class TestAnnotateParagraphPipeline:
     def test_run_mock_mode_different_index(self):
         """Test mock mode preserves different paragraph index."""
         pipeline = AnnotateParagraphPipeline()
-        input_data = _make_input(
-            paragraph_index=5, paragraph_text="不同索引的测试段落文本，满足长度要求。"
-        )
+        input_data = _make_input(paragraph_index=5, paragraph_text="不同索引的测试段落文本，满足长度要求。")
         result = pipeline.run(input_data)
         assert result.paragraph_index == 5
 

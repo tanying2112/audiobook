@@ -1,0 +1,96 @@
+{
+  "character_retrieval_tests": [
+    {
+      "query": "主角是谁",
+      "expected_character": "艾琳·星织",
+      "expected_aliases": [
+        "星织",
+        "艾琳",
+        "织星者"
+      ],
+      "must_not_confuse_with": [
+        "赛琳娜·炎心",
+        "莉拉·青藤"
+      ]
+    },
+    {
+      "query": "凯尔的誓言道具",
+      "expected_noun": "霜誓护腕",
+      "category": "item"
+    },
+    {
+      "query": "赛琳娜的口头禅",
+      "expected_pattern": "燃烧吧",
+      "character": "赛琳娜·炎心"
+    }
+  ],
+  "world_building_tests": [
+    {
+      "query": "艾泽拉大陆有哪些国家",
+      "expected_entities": [
+        "霜狼王国",
+        "炎阳帝国",
+        "青藤联邦",
+        "钢铁公国",
+        "星辰圣殿"
+      ]
+    },
+    {
+      "query": "魔法系相克关系",
+      "expected": "冰克火，火克风，风克土，土克雷，雷克冰...",
+      "doc_type": "magic_system"
+    },
+    {
+      "query": "千年战争转折点",
+      "expected_event": "晨曦之战",
+      "year": 1500
+    }
+  ],
+  "style_consistency_tests": [
+    {
+      "chapter": 1,
+      "check": "开头环境描写>=50字"
+    },
+    {
+      "chapter": 50,
+      "check": "高潮章节节奏加快"
+    },
+    {
+      "check": "艾琳从不说废话",
+      "character": "艾琳·星织"
+    }
+  ],
+  "proper_noun_drift_tests": [
+    {
+      "canonical": "艾琳·星织",
+      "forbidden_variants": [
+        "艾琳星织",
+        "星织艾琳",
+        "Ailin"
+      ]
+    },
+    {
+      "canonical": "凯尔·霜誓",
+      "forbidden_variants": [
+        "凯尔霜誓",
+        "霜誓凯尔",
+        "Kael"
+      ]
+    },
+    {
+      "canonical": "圣剑曙光",
+      "forbidden_variants": [
+        "曙光剑",
+        "Dawnblade"
+      ]
+    },
+    {
+      "canonical": "霜狼王国",
+      "forbidden_variants": [
+        "狼族王国",
+        "冰狼国",
+        "Frostwolf Kingdom"
+      ]
+    }
+  ]
+}

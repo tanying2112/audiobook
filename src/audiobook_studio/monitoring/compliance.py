@@ -6,12 +6,11 @@ compliance across all pipeline stages. Supports HARNESS §3 evaluation layer.
 
 import json
 import logging
-import time
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-from collections import defaultdict
+from typing import Any, Dict, List, Optional, Union
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +18,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ComplianceRecord:
     """Single compliance check record."""
+
     stage: str
     timestamp: str
     schema_compliance: bool
@@ -32,6 +32,7 @@ class ComplianceRecord:
 @dataclass
 class StageComplianceSummary:
     """Aggregated compliance summary for a pipeline stage."""
+
     stage: str
     total_calls: int = 0
     compliant_calls: int = 0
@@ -155,8 +156,7 @@ class ComplianceMonitor:
 
         for stage, summary in self.stage_summaries.items():
             stage_pass = (
-                summary.compliance_rate >= min_compliance_rate
-                and summary.avg_quality_score >= min_quality_score
+                summary.compliance_rate >= min_compliance_rate and summary.avg_quality_score >= min_quality_score
             )
             if not stage_pass:
                 results["overall_pass"] = False
@@ -173,14 +173,14 @@ class ComplianceMonitor:
 
         return results
 
-    def export_report(self, output_path: Optional[str] = None) -> str:
+    def export_report(self, output_path: Optional[Union[str, Path]] = None) -> str:
         """Export compliance report to JSON file."""
         if output_path is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             output_path = self.storage_path / f"compliance_report_{timestamp}.json"
 
-        output_path = Path(output_path)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path_obj = Path(output_path)
+        output_path_obj.parent.mkdir(parents=True, exist_ok=True)
 
         report = {
             "session_start": self._session_start,
@@ -208,15 +208,16 @@ class ComplianceMonitor:
                     "errors": r.errors,
                     "quality_score": r.quality_score,
                 }
-                for r in self.records[-20:] if not r.schema_compliance
+                for r in self.records[-20:]
+                if not r.schema_compliance
             ],
         }
 
-        with open(output_path, "w", encoding="utf-8") as f:
+        with open(output_path_obj, "w", encoding="utf-8") as f:
             json.dump(report, f, ensure_ascii=False, indent=2)
 
-        logger.info(f"Compliance report exported to {output_path}")
-        return str(output_path)
+        logger.info(f"Compliance report exported to {output_path_obj}")
+        return str(output_path_obj)
 
     def reset(self):
         """Reset all collected data."""
@@ -284,10 +285,10 @@ if __name__ == "__main__":
             errors=["schema_validation_failed"],
         )
 
-    print(f"Overall compliance: {monitor.get_overall_compliance_rate():.1%}")
+    logger.info(f"Overall compliance: {monitor.get_overall_compliance_rate():.1%}")
     thresholds = monitor.check_thresholds()
-    print(f"Thresholds met: {thresholds['overall_pass']}")
-    print(json.dumps(thresholds, ensure_ascii=False, indent=2))
+    logger.info(f"Thresholds met: {thresholds['overall_pass']}")
+    logger.info(json.dumps(thresholds, ensure_ascii=False, indent=2))
 
     report_path = monitor.export_report()
-    print(f"Report saved to: {report_path}")
+    logger.info(f"Report saved to: {report_path}")

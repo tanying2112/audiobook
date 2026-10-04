@@ -3,20 +3,55 @@ __pycache__/
 *.py[cod]
 *.sqlite3
 *.log
-*.md
-*.txt
-*.yml
-*.yaml
-*.json
 *.env
-*.git
-*.gitignore
-*.github
-*.vscode
-*.idea
-*.DS_Store
+.git/
+.github/
+.vscode/
+.idea/
+.DS_Store
 site/
 docs/
 tests/
-scripts/
-*.sh
+node_modules/
+web/dist/
+web/node_modules/
+*.bak
+*.tmp
+
+# Large model weights/assets — never bake into the image (Task 6.1 asset stripping).
+# Mounted at runtime via the /app/models_cache Volume (see Dockerfile + compose).
+*.onnx
+*.pt
+*.pth
+*.ckpt
+*.bin
+*.safetensors
+.cache/
+models/
+audiobook_studio/models/
+
+# ==========================================
+# 🚨 AUDIOBOOK STUDIO MEDIA & VENV PLUGINS (CRITICAL FIX)
+# ==========================================
+*.mp3
+*.wav
+*.m4b
+outputs/
+data/
+.venv/
+venv/
+env/
+
+# Runtime/CI artifacts (pytest/coverage/baseline dumps) — never bake in.
+output/
+baselines/
+reports/
+htmlcov/
+dashboards/
+.mypy_cache/
+
+# ==========================================
+# 🚨 KEEP THESE FOR BUILD TIME (Dockerfile COPY)
+# ==========================================
+!scripts/download_kokoro_model.py
+!entrypoint.sh

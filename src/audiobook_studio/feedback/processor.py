@@ -5,45 +5,56 @@ E2 — 差异分析 Agent
 提取 pattern_tags，生成可操作的改进建议。
 """
 
-import json
 import logging
-import re
-from collections import Counter, defaultdict
-from dataclasses import dataclass, field
+from collections import Counter
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
 from ..models import FeedbackRecord as FeedbackRecordModel
 
+if TYPE_CHECKING:
+    # Avoid runtime circular import; the real import happens lazily inside
+    # _get_llm_analyzer(). Used only for the type annotation below.
+    from .llm_analyzer import LLMFeedbackAnalyzer
+
 logger = logging.getLogger(__name__)
 
 # ── LLM 语义分析器（懒加载，避免循环导入）────────────────────────────────────
-_llm_analyzer = None
+# ``_llm_analyzer`` is None before first attempt and None again if the lazy
+# import failed; ``_llm_analyzer_tried`` distinguishes "not yet tried" from
+# "tried and failed" so we don't retry the (expensive, router-creating) import
+# on every call. The previous code used a ``False`` sentinel which mixed bool
+# with the analyzer type and broke --strict narrowing.
+_llm_analyzer: Optional["LLMFeedbackAnalyzer"] = None
+_llm_analyzer_tried: bool = False
 
 
-def _get_llm_analyzer():
+def _get_llm_analyzer() -> Optional["LLMFeedbackAnalyzer"]:
     """懒加载 LLMFeedbackAnalyzer，避免初始化时强制创建 router."""
-    global _llm_analyzer
-    if _llm_analyzer is None:
+    global _llm_analyzer, _llm_analyzer_tried
+    if _llm_analyzer is None and not _llm_analyzer_tried:
         try:
             from .llm_analyzer import LLMFeedbackAnalyzer
+
             _llm_analyzer = LLMFeedbackAnalyzer()
             logger.info("LLMFeedbackAnalyzer 初始化成功")
         except Exception as e:
             logger.warning(f"LLMFeedbackAnalyzer 初始化失败，将使用关键词匹配降级: {e}")
-            _llm_analyzer = False  # 标记为不可用
-    return _llm_analyzer if _llm_analyzer is not False else None
+        finally:
+            _llm_analyzer_tried = True
+    return _llm_analyzer
+
 
 # ── Known pattern tag taxonomy ────────────────────────────────────────────────
 
 PATTERN_TAXONOMY = {
     # Text editing patterns
     "dialogue_attribution": "错标/漏标对话归属",
-    "emotion_too_mild": "情感强度不足",  
+    "emotion_too_mild": "情感强度不足",
     "emotion_too_strong": "情感强度过高",
     "emotion_wrong": "情感类型错误",
     "speaker_wrong": "说话人识别错误",
@@ -86,7 +97,7 @@ class DiffAnalysisResult:
     analysis_source: str = "keyword"  # "llm" | "keyword"
 
 
-@dataclass 
+@dataclass
 class AggregateAnalysis:
     """聚合多个反馈的统计结果."""
 
@@ -132,9 +143,7 @@ def _extract_key_differences(
                         f"LLM='{llm_val[:60]}...' → 修正='{cor_val[:60]}...'"
                     )
             else:
-                diffs.append(
-                    f"字段 '{key}' 值不同: {llm_val} → {cor_val}"
-                )
+                diffs.append(f"字段 '{key}' 值不同: {llm_val} → {cor_val}")
 
     return diffs
 
@@ -253,9 +262,7 @@ def analyze_single_feedback(
             analysis_source = "llm"
             logger.debug(f"LLM 语义分析成功: {record.feedback_id} → {pattern_tags}")
         except Exception as e:
-            logger.warning(
-                f"LLM 语义分析失败，降级到关键词匹配: {record.feedback_id} — {e}"
-            )
+            logger.warning(f"LLM 语义分析失败，降级到关键词匹配: {record.feedback_id} — {e}")
             pattern_tags = _infer_pattern_tags(
                 stage=record.stage,
                 llm_output=llm_output,
@@ -325,8 +332,8 @@ def analyze_batch(
             generated_at=datetime.now(timezone.utc).isoformat(),
         )
 
-    pattern_counter: Counter = Counter()
-    stage_counter: Counter = Counter()
+    pattern_counter: Counter[str] = Counter()
+    stage_counter: Counter[str] = Counter()
     all_patterns: List[str] = []
 
     for record in records:
@@ -379,16 +386,12 @@ def _generate_recommendations(
 
     for pattern, count in top_patterns[:5]:
         description = PATTERN_TAXONOMY.get(pattern, pattern)
-        recs.append(
-            f"高频模式 [{pattern}] ({count}次): {description}"
-        )
+        recs.append(f"高频模式 [{pattern}] ({count}次): {description}")
 
     # Stage-specific recommendations
     for stage, count in stage_dist.items():
         if count >= 5:
-            recs.append(
-                f"环节 '{stage}' 有 {count} 条反馈，建议优先优化该环节的 Prompt"
-            )
+            recs.append(f"环节 '{stage}' 有 {count} 条反馈，建议优先优化该环节的 Prompt")
 
     return recs
 
@@ -402,21 +405,19 @@ def get_trend_report(
     from datetime import datetime, timedelta, timezone
 
     since = datetime.now(timezone.utc) - timedelta(days=days)
-    query = db.query(FeedbackRecordModel).filter(
-        FeedbackRecordModel.created_at >= since
-    )
+    query = db.query(FeedbackRecordModel).filter(FeedbackRecordModel.created_at >= since)
     if project_id:
         query = query.filter(FeedbackRecordModel.project_id == project_id)
 
     records = query.all()
-    pattern_counter: Counter = Counter()
-    stage_counter: Counter = Counter()
-    source_counter: Counter = Counter()
+    pattern_counter: Counter[str] = Counter()
+    stage_counter: Counter[str] = Counter()
+    source_counter: Counter[str] = Counter()
 
     for r in records:
         stage_counter[r.stage] += 1
         source_counter[r.source] += 1
-        for tag in (r.pattern_tags or []):
+        for tag in r.pattern_tags or []:
             pattern_counter[tag] += 1
 
     return {

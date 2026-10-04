@@ -1,23 +1,56 @@
 """Tests for feedback/processor module."""
+
 import os
+
 os.environ["MOCK_LLM"] = "true"
 
-import pytest
 from unittest.mock import MagicMock, patch
-from datetime import datetime, timezone
 
+import pytest
+
+from src.audiobook_studio.feedback.llm_analyzer import LLMFeedbackAnalyzer
 from src.audiobook_studio.feedback.processor import (
-    PATTERN_TAXONOMY,
-    DiffAnalysisResult,
-    AggregateAnalysis,
     _compute_text_similarity,
     _extract_key_differences,
-    _infer_pattern_tags,
-    analyze_single_feedback,
-    analyze_batch,
     _generate_recommendations,
+    _infer_pattern_tags,
+    analyze_batch,
+    analyze_single_feedback,
     get_trend_report,
 )
+
+
+@pytest.fixture(autouse=True)
+def _fake_llm_analyzer(monkeypatch):
+    """Make feedback analysis deterministic / order-independent.
+
+    analyze_single_feedback prefers the cached LLMFeedbackAnalyzer singleton,
+    which binds its router at construction and depends on the (polluted)
+    MOCK_LLM env when first created. We inject a fake analyzer whose ``analyze``
+    delegates to the deterministic keyword-based ``analyze_mock`` path, so it
+    returns real ``pattern_tags`` AND reports ``analysis_source == "llm"`` —
+    keeping both the tag-asserting and the source-asserting tests green
+    regardless of collection order.
+    """
+
+    def _make():
+        real = LLMFeedbackAnalyzer()
+
+        def _analyze(stage, llm_output, corrected_output, rationale, key_differences=None):
+            return real.analyze_mock(
+                stage=stage,
+                llm_output=llm_output,
+                corrected_output=corrected_output,
+                rationale=rationale,
+                key_differences=key_differences,
+            )
+
+        real.analyze = _analyze
+        return real
+
+    import src.audiobook_studio.feedback.processor as _proc
+
+    monkeypatch.setattr(_proc, "_get_llm_analyzer", _make)
 
 
 class TestComputeTextSimilarity:
@@ -153,9 +186,11 @@ class TestInferPatternTags:
 
     def test_deduplication(self):
         tags = _infer_pattern_tags(
-            "edit_for_tts", {}, {},
+            "edit_for_tts",
+            {},
+            {},
             "对话归属错误，说话人识别错误",  # Both map to same pattern
-            []
+            [],
         )
         # Should not have duplicates
         assert len(tags) == len(set(tags))
@@ -215,7 +250,10 @@ class TestAnalyzeBatch:
 
     def test_no_unprocessed_feedback(self):
         mock_db = MagicMock()
-        with patch("src.audiobook_studio.feedback.collector.list_unprocessed_feedback", return_value=[]):
+        with patch(
+            "src.audiobook_studio.feedback.collector.list_unprocessed_feedback",
+            return_value=[],
+        ):
             result = analyze_batch(mock_db)
 
             assert result.total_analyzed == 0
@@ -242,10 +280,18 @@ class TestAnalyzeBatch:
         mock_record2.corrected_output = {"score": 0.8}
         mock_record2.rationale = "削波失真"
 
-        with patch("src.audiobook_studio.feedback.collector.list_unprocessed_feedback",
-                   return_value=[mock_record1, mock_record2]):
+        with patch(
+            "src.audiobook_studio.feedback.collector.list_unprocessed_feedback",
+            return_value=[mock_record1, mock_record2],
+        ):
             with patch("src.audiobook_studio.feedback.collector.mark_feedback_processed") as mock_mark:
-                result = analyze_batch(mock_db, limit=10)
+                # Force keyword-inference fallback so the result does not depend on
+                # the LLM analyzer's mock wiring (order-dependent singleton cache).
+                with patch(
+                    "src.audiobook_studio.feedback.processor._get_llm_analyzer",
+                    return_value=None,
+                ):
+                    result = analyze_batch(mock_db, limit=10)
 
                 assert result.total_analyzed == 2
                 assert "edit_for_tts" in result.stage_distribution

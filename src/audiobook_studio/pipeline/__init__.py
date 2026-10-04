@@ -16,13 +16,31 @@ from .audio_finalize import AudioFinalizer, finalize_audio
 from .audio_postprocess import AudioPostProcessor
 from .checkpoint import CheckpointManager
 from .edit_for_tts import EditForTtsPipeline, edit_for_tts
-from .feedback_collector import FeedbackCollector, StageCapture, create_feedback_collector
 
 # Also export the pipeline classes for advanced usage
 # Import convenience functions from each pipeline stage
-from .extract import ExtractPipeline, extract_text
-from .orchestrator import run_stage
+from .extract import ExtractMimeType, ExtractPipeline, extract_text
+from .feedback_collector import FeedbackCollector, StageCapture, create_feedback_collector
+from .orchestrator import run_pipeline, run_stage
 from .quality_check import QualityCheckPipeline, quality_check
+from .sop_reflection import (
+    CorrectionCollector,
+    GenreDetector,
+    ReflectionEngine,
+    RuleApplier,
+    SOPBackgroundThread,
+    SOPConfig,
+    apply_learned_rules_on_import,
+    get_correction_collector,
+    get_genre_detector,
+    get_reflection_engine,
+    get_rule_applier,
+    get_sop_config,
+    handle_user_correction_websocket,
+    start_sop_background_thread,
+    stop_sop_background_thread,
+)
+from .stage_registry import StageRegistry
 from .synthesize import SynthesizePipeline, synthesize_paragraphs
 
 __all__ = [
@@ -35,6 +53,7 @@ __all__ = [
     "synthesize_paragraphs",
     "finalize_audio",
     "run_stage",
+    "run_pipeline",
     # Pipeline classes
     "ExtractPipeline",
     "AnalyzeStructurePipeline",
@@ -46,8 +65,27 @@ __all__ = [
     # Orchestration components
     "CheckpointManager",
     "AudioPostProcessor",
+    "StageRegistry",
     # Feedback collection for self-iteration
     "FeedbackCollector",
     "StageCapture",
     "create_feedback_collector",
+    # SOP Reflection (Module 4.2)
+    "SOPConfig",
+    "CorrectionCollector",
+    "ReflectionEngine",
+    "GenreDetector",
+    "RuleApplier",
+    "SOPBackgroundThread",
+    "get_sop_config",
+    "get_correction_collector",
+    "get_reflection_engine",
+    "get_genre_detector",
+    "get_rule_applier",
+    "start_sop_background_thread",
+    "stop_sop_background_thread",
+    "handle_user_correction_websocket",
+    "apply_learned_rules_on_import",
+    # Extract Mime Type
+    "ExtractMimeType",
 ]

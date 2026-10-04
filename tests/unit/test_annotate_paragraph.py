@@ -10,19 +10,17 @@ Tests match the ACTUAL API from src/audiobook_studio/pipeline/annotate_paragraph
 import json
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
-from src.audiobook_studio.pipeline.annotate_paragraph import (
-    AnnotateParagraphPipeline,
-    annotate_paragraph,
-)
+
+from src.audiobook_studio.pipeline.annotate_paragraph import AnnotateParagraphPipeline, annotate_paragraph
 from src.audiobook_studio.schemas import (
-    ParagraphAnnotation,
-    ParagraphAnnotationInput,
     BookMeta,
     CharacterVoiceBinding,
     EmotionSnapshot,
+    ParagraphAnnotation,
+    ParagraphAnnotationInput,
 )
 
 
@@ -37,6 +35,7 @@ class TestAnnotateParagraphPipeline:
     def teardown_method(self):
         """Clean up test fixtures."""
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def create_minimal_input(self, **overrides):
@@ -78,7 +77,8 @@ class TestAnnotateParagraphPipeline:
                 intensity=0.5,
                 notes="平静的开头",
             ),
-            "story_line_summary": "这是一个关于测试的故事，主角经历各种冒险最终成功，并在过程中获得了宝贵的友谊和成长。" * 3,
+            "story_line_summary": "这是一个关于测试的故事，主角经历各种冒险最终成功，并在过程中获得了宝贵的友谊和成长。"
+            * 3,
             "global_style_notes": "文风轻松幽默，适合有声书朗读。",
         }
         defaults.update(overrides)
@@ -86,7 +86,6 @@ class TestAnnotateParagraphPipeline:
 
     def test_init_default(self):
         """Test pipeline initialization with defaults."""
-        from src.audiobook_studio.llm import create_router
 
         pipeline = AnnotateParagraphPipeline()
         assert pipeline.router is not None
@@ -181,8 +180,12 @@ class TestAnnotateParagraphPipeline:
         # ParagraphAnnotationInput requires book_meta, so use minimal valid one
         input_data = self.create_minimal_input(
             book_meta=BookMeta(
-                title="测试", author="作者", genre="小说",
-                difficulty="B", language="zh", era="现代",
+                title="测试",
+                author="作者",
+                genre="小说",
+                difficulty="B",
+                language="zh",
+                era="现代",
                 total_chapters_estimated=10,
             )
         )
@@ -201,7 +204,6 @@ class TestAnnotateParagraphPipeline:
 
     def test_run_real_mode_calls_router(self):
         """Test run() in real mode calls router with correct parameters."""
-        from unittest.mock import MagicMock
 
         mock_router = MagicMock()
         # Router returns a result object with metadata attributes AND .output
@@ -249,16 +251,23 @@ class TestAnnotateParagraphPipeline:
 
     def test_run_real_mode_records_performance_on_success(self):
         """Test run() records performance metrics on success."""
-        from unittest.mock import MagicMock
 
         mock_router = MagicMock()
         mock_result = MagicMock()
         mock_result.output = ParagraphAnnotation(
-            paragraph_index=0, speaker_canonical_name="旁白",
-            is_dialogue=False, emotion="neutral", emotion_intensity=0.5,
-            speech_rate=1.0, pitch_shift_semitones=0,
-            pause_before_ms=300, pause_after_ms=500,
-            confidence=0.9, difficulty="B", needs_sfx=False, sfx_tags=[],
+            paragraph_index=0,
+            speaker_canonical_name="旁白",
+            is_dialogue=False,
+            emotion="neutral",
+            emotion_intensity=0.5,
+            speech_rate=1.0,
+            pitch_shift_semitones=0,
+            pause_before_ms=300,
+            pause_after_ms=500,
+            confidence=0.9,
+            difficulty="B",
+            needs_sfx=False,
+            sfx_tags=[],
             notes="Real annotation",
         )
         mock_result.model = "gpt-4o-mini"
@@ -282,17 +291,17 @@ class TestAnnotateParagraphPipeline:
 
     def test_run_real_mode_records_performance_on_failure(self):
         """Test run() records performance metrics on failure."""
-        from unittest.mock import MagicMock
 
         mock_router = MagicMock()
-        mock_router.call.side_effect = Exception("API Error")
+        # Raise RuntimeError which is caught by the except block
+        mock_router.call.side_effect = RuntimeError("API Error")
 
         # Explicitly set mock_mode=False for real mode test
         with patch("src.audiobook_studio.monitoring.record_stage_performance") as mock_record:
             pipeline = AnnotateParagraphPipeline(router=mock_router, mock_mode=False)
             input_data = self.create_minimal_input()
 
-            with pytest.raises(Exception, match="API Error"):
+            with pytest.raises(RuntimeError, match="API Error"):
                 pipeline.run(input_data)
 
             mock_record.assert_called_once()
@@ -309,6 +318,7 @@ class TestAnnotateParagraphConvenienceFunction:
 
     def teardown_method(self):
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def create_minimal_params(self, **overrides):
@@ -342,7 +352,8 @@ class TestAnnotateParagraphConvenienceFunction:
                 intensity=0.6,
                 notes="回忆往事",
             ),
-            "story_line_summary": "老人回忆年轻时的冒险经历，感慨时光流逝，那些年的风雨与阳光都化作了今日的白发与沧桑，每一道皱纹都藏着一段不为人知的传奇故事。" * 5,
+            "story_line_summary": "老人回忆年轻时的冒险经历，感慨时光流逝，那些年的风雨与阳光都化作了今日的白发与沧桑，每一道皱纹都藏着一段不为人知的传奇故事。"
+            * 5,
             "global_style_notes": "复古文风，韵律优美。",
         }
         defaults.update(overrides)
@@ -402,6 +413,7 @@ class TestAnnotateParagraphEdgeCases:
 
     def teardown_method(self):
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def create_base_input(self, **overrides):
@@ -411,20 +423,32 @@ class TestAnnotateParagraphEdgeCases:
             "paragraph_index": 0,
             "chapter_index": 1,
             "book_meta": BookMeta(
-                title="边界测试", author="作者", genre="小说",
-                difficulty="B", language="zh", era="现代",
+                title="边界测试",
+                author="作者",
+                genre="小说",
+                difficulty="B",
+                language="zh",
+                era="现代",
                 total_chapters_estimated=5,
             ),
             "character_voice_map": [
                 CharacterVoiceBinding(
-                    canonical_name="旁白", aliases=[], gender="neutral",
-                    age_range="adult", suggested_voice_id="v1", sample_quote="样本文本。",
+                    canonical_name="旁白",
+                    aliases=[],
+                    gender="neutral",
+                    age_range="adult",
+                    suggested_voice_id="v1",
+                    sample_quote="样本文本。",
                 ),
             ],
             "emotion_snapshot": EmotionSnapshot(
-                chapter=1, dominant_emotion="neutral", intensity=0.5, notes="",
+                chapter=1,
+                dominant_emotion="neutral",
+                intensity=0.5,
+                notes="",
             ),
-            "story_line_summary": "这是一个足够长的故事摘要，包含了主角的冒险经历、情感纠葛以及最终的成长历程，每一个转折都充满了惊心动魄的瞬间和深刻的人生哲理。" * 2,
+            "story_line_summary": "这是一个足够长的故事摘要，包含了主角的冒险经历、情感纠葛以及最终的成长历程，每一个转折都充满了惊心动魄的瞬间和深刻的人生哲理。"
+            * 2,
             "global_style_notes": "风格备注。",
         }
         defaults.update(overrides)
@@ -454,13 +478,24 @@ class TestAnnotateParagraphEdgeCases:
     def test_all_emotion_types(self):
         """Test annotation handles all emotion types in context."""
         emotions = [
-            "neutral", "happy", "sad", "angry", "fearful",
-            "surprised", "disgusted", "tense", "tender", "contemplative"
+            "neutral",
+            "happy",
+            "sad",
+            "angry",
+            "fearful",
+            "surprised",
+            "disgusted",
+            "tense",
+            "tender",
+            "contemplative",
         ]
         for emotion in emotions:
             input_data = self.create_base_input(
                 emotion_snapshot=EmotionSnapshot(
-                    chapter=1, dominant_emotion=emotion, intensity=0.7, notes=f"{emotion} scene"
+                    chapter=1,
+                    dominant_emotion=emotion,
+                    intensity=0.7,
+                    notes=f"{emotion} scene",
                 )
             )
             result = self.pipeline.run(input_data)
@@ -471,8 +506,12 @@ class TestAnnotateParagraphEdgeCases:
         input_data = self.create_base_input(
             character_voice_map=[
                 CharacterVoiceBinding(
-                    canonical_name="唯一角色", aliases=[], gender="unknown",
-                    age_range="unknown", suggested_voice_id="v1", sample_quote="样本",
+                    canonical_name="唯一角色",
+                    aliases=[],
+                    gender="unknown",
+                    age_range="unknown",
+                    suggested_voice_id="v1",
+                    sample_quote="样本",
                 ),
             ]
         )
@@ -504,8 +543,12 @@ class TestAnnotateParagraphEdgeCases:
         for diff in ["A", "B", "C"]:  # ParagraphAnnotation only accepts A, B, C
             input_data = self.create_base_input(
                 book_meta=BookMeta(
-                    title="测试", author="作者", genre="小说",
-                    difficulty=diff, language="zh", era="现代",
+                    title="测试",
+                    author="作者",
+                    genre="小说",
+                    difficulty=diff,
+                    language="zh",
+                    era="现代",
                     total_chapters_estimated=10,
                 )
             )

@@ -6,16 +6,16 @@ only exposes sub‑modules for convenient access.
 """
 
 # Import submodules to make them available when importing the package
+# Note: config, database, and observability are NOT imported here to avoid
+# circular dependencies. Import them directly from their modules instead.
 from . import (
     api,
-    config,
-    database,
+    audio_quality,
     exceptions,
     feedback,
     llm,
     models,
     monitoring,
-    observability,
     pipeline,
     publish,
     schemas,
@@ -26,15 +26,15 @@ from . import (
 # Export common exception classes for convenient access
 from .exceptions import (
     AudiobookError,
+    CircuitOpenError,
     DomainError,
-    ProviderError,
     InfrastructureError,
     PipelineError,
-    TTSError,
-    ValidationError,
-    SchemaComplianceError,
+    ProviderError,
     QuotaExceededError,
     RateLimitError,
-    CircuitOpenError,
+    SchemaComplianceError,
     StageExecutionError,
+    TTSError,
+    ValidationError,
 )

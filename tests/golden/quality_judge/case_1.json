@@ -1,0 +1,26 @@
+{
+  "id": "quality_judge_case_1",
+  "description": "Mock case 1 for quality_judge",
+  "input": {
+    "segment_id": "seg1",
+    "speaker_clarity": 0.9,
+    "emotion_match": 0.8,
+    "prosody_naturalness": 0.85,
+    "text_audio_alignment": 0.9,
+    "overall_score": 0.86,
+    "issues": [],
+    "fix_suggestions": [],
+    "needs_regeneration": false
+  },
+  "expected_output": {
+    "segment_id": "seg1",
+    "speaker_clarity": 0.9,
+    "emotion_match": 0.8,
+    "prosody_naturalness": 0.85,
+    "text_audio_alignment": 0.9,
+    "overall_score": 0.86,
+    "issues": [],
+    "fix_suggestions": [],
+    "needs_regeneration": false
+  }
+}

@@ -8,12 +8,15 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional, Union, cast
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from ..llm import LLMRouter, create_router
-from ..schemas import BookAnalysisOutput, ParagraphAnnotation, ParagraphAnnotationInput
+from ..pipeline.progress_emitter import emit_stage_enter, emit_stage_exit, emit_stage_progress
+from ..schemas import ParagraphAnnotation, ParagraphAnnotationInput
+from ..schemas.book import BookMeta, CharacterVoiceBinding, EmotionSnapshot
+from .sop_reflection import get_genre_detector, get_rule_applier
 
 logger = logging.getLogger(__name__)
 
@@ -23,22 +26,15 @@ class AnnotateParagraphPipeline:
 
     def __init__(
         self,
-        router=None,
-        prompt_dir=None,
+        router: Optional[LLMRouter] = None,
+        prompt_dir: Optional[Union[str, Path]] = None,
         mock_mode: Optional[bool] = None,
     ):
         self.mock_mode = mock_mode if mock_mode is not None else os.environ.get("MOCK_LLM", "false").lower() == "true"
 
-        # Create router (mock mode controlled by MOCK_LLM env var)
+        # Create router (mock mode passed directly to avoid thread-unsafe env manipulation)
         if router is None:
-            old_mock = os.environ.get("MOCK_LLM")
-            if mock_mode:
-                os.environ["MOCK_LLM"] = "true"
-            self.router = create_router()
-            if old_mock is None:
-                os.environ.pop("MOCK_LLM", None)
-            else:
-                os.environ["MOCK_LLM"] = old_mock
+            self.router = create_router(mock_mode=mock_mode or False)
         else:
             self.router = router
 
@@ -54,7 +50,7 @@ class AnnotateParagraphPipeline:
         )
         self.jinja_env.filters["tojson"] = json.dumps
 
-    def _load_few_shot(self, stage):
+    def _load_few_shot(self, stage: str) -> str:
         examples_path = self.prompt_dir / stage / "few_shot.jsonl"
         if not examples_path.exists():
             return "(暂无示例)"
@@ -66,15 +62,11 @@ class AnnotateParagraphPipeline:
         formatted = []
         for i, ex in enumerate(examples[:3], 1):
             formatted.append(f"### 示例 {i}\n")
-            formatted.append(
-                f"输入：{json.dumps(ex['input'], ensure_ascii=False, indent=2)[:2000]}...\n"
-            )
-            formatted.append(
-                f"期望输出：{json.dumps(ex['expected_output'], ensure_ascii=False, indent=2)[:3000]}...\n"
-            )
+            formatted.append(f"输入：{json.dumps(ex['input'], ensure_ascii=False, indent=2)[:2000]}...\n")
+            formatted.append(f"期望输出：{json.dumps(ex['expected_output'], ensure_ascii=False, indent=2)[:3000]}...\n")
         return "\n".join(formatted)
 
-    def _build_prompt(self, input_data):
+    def _build_prompt(self, input_data: ParagraphAnnotationInput) -> str:
         template = self.jinja_env.get_template("annotate_paragraph/v1.j2")
         schema_json = ParagraphAnnotation.model_json_schema()
         few_shot = self._load_few_shot("annotate_paragraph")
@@ -85,24 +77,49 @@ class AnnotateParagraphPipeline:
             paragraph_index=input_data.paragraph_index,
             chapter_index=input_data.chapter_index,
             book_meta=input_data.book_meta.model_dump(),
-            character_voice_map=[
-                c.model_dump() for c in input_data.character_voice_map
-            ],
+            character_voice_map=[c.model_dump() for c in input_data.character_voice_map],
             emotion_snapshot=input_data.emotion_snapshot.model_dump(),
             story_line_summary=input_data.story_line_summary,
             global_style_notes=input_data.global_style_notes,
             few_shot_examples=few_shot,
         )
 
-    def run(self, input_data):
-        logger.info(
-            f"Annotating paragraph {input_data.paragraph_index} (ch{input_data.chapter_index})"
-        )
+    def run(self, input_data: ParagraphAnnotationInput) -> ParagraphAnnotation:
+        logger.info(f"Annotating paragraph {input_data.paragraph_index} (ch{input_data.chapter_index})")
 
+        # Emit stage enter
+        try:
+            import asyncio
+
+            loop = asyncio.get_running_loop()
+            loop.create_task(
+                emit_stage_enter(
+                    stage="annotate",
+                    project_id=getattr(input_data, "project_id", 0) or 0,
+                    chapter_index=getattr(input_data, "chapter_index", 1),
+                    paragraph_index=getattr(input_data, "paragraph_index", 1),
+                    total_items=1,
+                )
+            )
+        except RuntimeError:
+            pass
+
+        # Module 4.2: Apply learned SOP rules for this genre
+        try:
+            genre_detector = get_genre_detector()
+            genre = genre_detector.detect_from_meta(input_data.book_meta)
+            rule_applier = get_rule_applier()
+            input_data = rule_applier.apply_to_annotation_input(input_data, genre)
+            logger.debug(f"[SOP] Applied learned rules for genre '{genre}' to paragraph {input_data.paragraph_index}")
+        except (ValueError, RuntimeError, OSError, ImportError, AttributeError) as e:  # noqa: B014
+            logger.warning(f"[SOP] Failed to apply learned rules: {e}")
+
+        # MOCK: 待真实实现
         # Mock mode: return simulated annotation
         if self.mock_mode:
             return ParagraphAnnotation(
                 paragraph_index=input_data.paragraph_index,
+                text=input_data.paragraph_text,
                 speaker_canonical_name="旁白",
                 is_dialogue=False,
                 emotion="neutral",
@@ -118,6 +135,25 @@ class AnnotateParagraphPipeline:
                 notes="Mock annotation for testing",
             )
 
+        # Emit stage progress
+        try:
+            import asyncio
+
+            loop = asyncio.get_running_loop()
+            loop.create_task(
+                emit_stage_progress(
+                    stage="annotate",
+                    project_id=getattr(input_data, "project_id", 0) or 0,
+                    chapter_index=getattr(input_data, "chapter_index", 1),
+                    paragraph_index=getattr(input_data, "paragraph_index", 1),
+                    current=1,
+                    total=1,
+                    message="Annotating paragraph...",
+                )
+            )
+        except RuntimeError:
+            pass
+
         prompt = self._build_prompt(input_data)
         messages = [
             {
@@ -132,6 +168,7 @@ class AnnotateParagraphPipeline:
                 stage="annotate",
                 response_model=ParagraphAnnotation,
                 messages=messages,
+                paragraph_index=input_data.paragraph_index,
             )
             logger.info(
                 f"Paragraph annotation completed: schema_compliance={result.schema_compliance}, "
@@ -153,16 +190,51 @@ class AnnotateParagraphPipeline:
                 tokens_out=result.tokens_out,
                 cost_usd=result.cost_usd,
                 success=True,
-                provider=(
-                    result.model.split("/")[0] if "/" in result.model else result.model
-                ),
+                provider=(result.model.split("/")[0] if "/" in result.model else result.model),
                 model=result.model,
                 difficulty=difficulty,
                 schema_compliance=result.schema_compliance,
             )
 
-            return result.output
-        except Exception as e:
+            # ``router.call`` returns ``Any`` (its signature predates generics);
+            # it was invoked with ``response_model=ParagraphAnnotation``, so narrow
+            # the already-validated output to the declared return type.
+            # Emit stage exit (success)
+            try:
+                import asyncio
+
+                loop = asyncio.get_running_loop()
+                loop.create_task(
+                    emit_stage_exit(
+                        stage="annotate",
+                        project_id=getattr(input_data, "project_id", 0) or 0,
+                        chapter_index=getattr(input_data, "chapter_index", 1),
+                        paragraph_index=getattr(input_data, "paragraph_index", 1),
+                        success=True,
+                    )
+                )
+            except RuntimeError:
+                pass
+
+            return cast(ParagraphAnnotation, result.output)
+        except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError) as e:  # noqa: B014
+            # Emit stage exit (error)
+            try:
+                import asyncio
+
+                loop = asyncio.get_running_loop()
+                loop.create_task(
+                    emit_stage_exit(
+                        stage="annotate",
+                        project_id=getattr(input_data, "project_id", 0) or 0,
+                        chapter_index=getattr(input_data, "chapter_index", 1),
+                        paragraph_index=getattr(input_data, "paragraph_index", 1),
+                        success=False,
+                        error_message=str(e),
+                    )
+                )
+            except RuntimeError:
+                pass
             # Record failed performance
             from ..monitoring import record_stage_performance
 
@@ -189,16 +261,16 @@ class AnnotateParagraphPipeline:
 
 
 def annotate_paragraph(
-    paragraph_text,
-    paragraph_index,
-    chapter_index,
-    book_meta,
-    character_voice_map,
-    emotion_snapshot,
-    story_line_summary,
-    global_style_notes,
+    paragraph_text: str,
+    paragraph_index: int,
+    chapter_index: int,
+    book_meta: BookMeta,
+    character_voice_map: list[CharacterVoiceBinding],
+    emotion_snapshot: EmotionSnapshot,
+    story_line_summary: str,
+    global_style_notes: str,
     mock_mode: bool = True,
-):
+) -> ParagraphAnnotation:
     input_data = ParagraphAnnotationInput(
         paragraph_text=paragraph_text,
         paragraph_index=paragraph_index,
@@ -214,7 +286,6 @@ def annotate_paragraph(
 
 
 if __name__ == "__main__":  # pragma: no cover
-    import sys
 
     logging.basicConfig(level=logging.INFO)
-    print("AnnotateParagraphPipeline ready")
+    logger.info("AnnotateParagraphPipeline ready")
