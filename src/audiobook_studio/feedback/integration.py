@@ -15,6 +15,7 @@ The integration provides:
 
 import json
 import logging
+import os
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,7 +24,7 @@ from typing import Any, Callable, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from ..pipeline.feedback_collector import FeedbackCollector, StageCapture, create_feedback_collector
-from .ab_test import ABTestReport, build_ab_samples, run_ab_test
+from .ab_test import ABTestReport, run_ab_test_with_pipeline_rerun
 from .auto_processor import create_auto_processor
 from .deploy import deploy_prompt, promote_candidate
 from .pr_automation import MergeResult, PRResult, create_prompt_upgrade_pr, monitor_and_merge_pr
@@ -32,10 +33,20 @@ from .promotion_gate import PromotionVerdict, _golden_to_pipeline_stage
 from .promotion_gate import _load_golden_examples
 from .promotion_gate import _load_golden_examples as load_golden_for_ab
 from .promotion_gate import _run_stage_with_prompt_version, evaluate_promotion
+from .canary import NON_PROMPT_DRIVEN_STAGES, STAGE_TYPE, check_input_compatibility
+from ..harness.spotcheck import human_preference_score_for, resolve_human_default
 from .prompt_upgrader import _load_current_prompt, batch_upgrade
 from .quality_enhancement import FreeTierHealth, check_semantic_coherence, get_free_tier_health
 
 logger = logging.getLogger(__name__)
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    """环境变量布尔开关：未设置时沿用传入默认值，显式设置时覆盖。"""
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() not in ("false", "0", "no", "off")
 
 
 def _log_self_iteration_event(event_type: str, data: Dict[str, Any]) -> None:
@@ -56,6 +67,51 @@ def _log_self_iteration_event(event_type: str, data: Dict[str, Any]) -> None:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
     except Exception as e:
         logger.error(f"Failed to write self-iteration log: {e}")
+
+
+def _router_blind_judge(stage: str):
+    """A/B 盲评适配器：LLMJudgeEnsemble 默认面板是 openrouter/anthropic/openai
+    三个外部 provider（本机未配置，恒失败 → 恒启发式兜底）。这里把评审客户端换成
+    应用统一 router（读 llm_providers.yaml 的真实 provider 链，如 local_fcc_gateway），
+    rubric/归一逻辑复用 ensemble 本体；router 不可用时回退启发式评分，不中断 A/B。"""
+    from types import SimpleNamespace
+
+    from .ab_test import _score_output
+    from .llm_judge import LLMJudgeEnsemble, RubricScores
+
+    class _RouterJudgeClient:
+        def call(self, prompt, response_model=RubricScores, temperature=0.1, **kw):
+            from ..llm.router import get_llm_router
+
+            result = get_llm_router().call(
+                stage="judge",
+                response_model=response_model,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return SimpleNamespace(output=result)
+
+    ens = LLMJudgeEnsemble(models=["app_router"], client_factory=lambda model: _RouterJudgeClient())
+
+    def judge_fn(input_data, output_a, output_b):
+        try:
+            r = ens.judge(input_data, output_a, output_b, stage=stage)
+            return r.score_a, r.score_b, (r.rationale or "")[:300]
+        except Exception as e:  # noqa: BLE001 - 评审失败回退启发式，勿中断 A/B
+            return _score_output(output_a, stage), _score_output(output_b, stage), f"router judge fallback: {e}"
+
+    return judge_fn
+
+
+# A/B 子采样上限：盲评是 3 模型 ensemble，全量 24 例 ×2 版 ×3 评审过于昂贵；
+# 晋升门禁（格式/金标/质量）仍全量实证，A/B 仅作放行后的独立确认信号。
+AB_TEST_MAX_EXAMPLES = 6
+
+
+def _live_baseline_version(stage: str) -> int:
+    """当前 live 基线版本：deployed.txt 的 served 版本；从未部署过则 v1（原始线上槽）。"""
+    from .deploy import served_version
+
+    return served_version(stage) or 1
 
 
 class SelfIterationLoop:
@@ -92,10 +148,13 @@ class SelfIterationLoop:
         self.db_session_factory = db_session_factory
         self.project_id = project_id
         self.canary_percentage = canary_percentage
-        self.enable_auto_pr = enable_auto_pr
-        self.enable_auto_merge = enable_auto_merge
+        # 环内 PR 运维开关（2026-10 修复后 PR 机制真实可用，故提供不改代码的
+        # 关停/改基线手段）：SELF_ITERATION_AUTO_PR / SELF_ITERATION_AUTO_MERGE
+        # / SELF_ITERATION_PR_BASE，未设置时沿用构造参数默认。
+        self.enable_auto_pr = _env_flag("SELF_ITERATION_AUTO_PR", enable_auto_pr)
+        self.enable_auto_merge = _env_flag("SELF_ITERATION_AUTO_MERGE", enable_auto_merge)
         self.auto_deploy = auto_deploy
-        self.pr_base_branch = pr_base_branch
+        self.pr_base_branch = os.getenv("SELF_ITERATION_PR_BASE") or pr_base_branch
         self.ci_timeout_seconds = ci_timeout_seconds
 
         # Initialize components
@@ -169,6 +228,7 @@ class SelfIterationLoop:
 
     def _handle_new_analysis(self, analysis: AggregateAnalysis) -> None:
         """Process new analysis results: upgrade prompts, validate, promote."""
+        self._iteration_count += 1
         logger.info(f"New analysis received: {analysis.total_analyzed} records, {len(analysis.top_patterns)} patterns")
 
         # 1. Upgrade prompts based on patterns
@@ -198,15 +258,19 @@ class SelfIterationLoop:
         for stage, prompt_path in self._upgraded_prompts.items():
             validation = validation_results.get(stage, {})
 
-            # Get version numbers from prompt files
-            current_content, old_version = _load_current_prompt(stage)
-            new_version = old_version + 1 if old_version > 0 else 1
+            # 版本语义：new = batch_upgrade 刚写的最新候选（最大版本号）；
+            # old = 当前 live 基线（deployed.txt 的 served 版本，未部署过则 v1），
+            # 而非另一个从未晋升的候选 —— 门禁要回答的是「能否替换线上」，
+            # 基线必须是线上正在服务的版本。
+            _, max_version = _load_current_prompt(stage)
+            new_version = max_version
+            old_version = _live_baseline_version(stage)
 
             promotion_result = evaluate_promotion(
                 stage=stage,
                 old_version=old_version,
                 new_version=new_version,
-                human_samples=None,  # Could be populated from validation metrics
+                human_samples=SelfIterationLoop._human_samples_for_gate(stage),
             )
             logger.info(f"Promotion evaluation for {stage}: {promotion_result.summary}")
 
@@ -232,13 +296,14 @@ class SelfIterationLoop:
                 # Deploy to production prompts/ directory if auto_deploy is enabled
                 if self.auto_deploy:
                     try:
+                        gate_scores = {g.name: g.score for g in promotion_result.gates}
                         deploy_decision = promote_candidate(
                             stage=stage,
                             candidate_version=new_version,
-                            golden_dataset_pass_rate=validation.get("golden_pass_rate", 1.0),
-                            quality_score_ratio=validation.get("avg_quality_ratio", 1.0),
-                            format_compliance_rate=validation.get("format_compliance_rate", 1.0),
-                            human_preference_score=validation.get("human_preference_score", 1.0),
+                            golden_dataset_pass_rate=gate_scores.get("黄金数据集通过率", validation.get("golden_pass_rate", 0.0)),
+                            quality_score_ratio=gate_scores.get("质量 ≥ 旧版 102%", validation.get("avg_quality_ratio", 0.0)),
+                            format_compliance_rate=gate_scores.get("格式合规率", validation.get("format_compliance_rate", 1.0)),
+                            human_preference_score=human_preference_score_for(stage, default=resolve_human_default()),
                             prompts_dir=Path("prompts"),  # Production prompts directory
                             auto_deploy=True,
                         )
@@ -323,6 +388,34 @@ class SelfIterationLoop:
             },
         )
 
+    # ── 人工抽样门数据源 ─────────────────────────────────────────────────────
+    # spotcheck 库（harness/spotcheck.py）即为此门禁设计：有真实人工抽检评分时
+    # 逐条换算为通过/不通过（score>=0.8 视为通过）；无记录时与 harness 晋升路径
+    # 保持同一默认策略（default=1.0 放行），其余 3 项硬门（格式/金标/质量）仍
+    # 全量实证校验，绝不因人工缺位而放水技术指标。
+    @staticmethod
+    def _human_samples_for_gate(stage: str) -> List[bool]:
+        from ..harness.spotcheck import human_gate_strict, load_spot_checks
+
+        records = load_spot_checks(stage=stage)
+        if records:
+            samples = [float(r["score"]) >= 0.8 for r in records]
+            logger.info(f"[SelfIteration] {stage}: 使用 {len(samples)} 条真实人工抽检评分入门禁")
+            return samples
+        # 人工缺位：默认策略放行（其余 3 项硬门仍全量实证）；严格模式 fail-closed，
+        # 返回空样本集 → check_human_sample 判不通过并如实标注「尚无人工抽样结果」。
+        if human_gate_strict():
+            logger.warning(
+                f"[SelfIteration] {stage}: 无人工抽检记录且 SELF_ITERATION_HUMAN_GATE_STRICT=true"
+                " —— 人工门 fail-closed（返回空样本集）"
+            )
+            return []
+        logger.info(
+            f"[SelfIteration] {stage}: 无人工抽检记录，人工门按默认策略放行"
+            "（出处：default=1.0；设 SELF_ITERATION_HUMAN_GATE_STRICT=true 可改 fail-closed）"
+        )
+        return [True]
+
     def _run_canary_validation(self) -> Dict[str, Dict[str, Any]]:
         """Run validation on a subset of data with upgraded prompts (canary mode).
 
@@ -351,17 +444,35 @@ class SelfIterationLoop:
             canary_count = max(1, int(len(golden_examples) * self.canary_percentage))
             canary_examples = golden_examples[:canary_count]
 
-            # Get current and new version numbers
-            _, old_version = _load_current_prompt(stage)
-            new_version = old_version + 1 if old_version > 0 else 1
+            # 版本语义与晋升门一致：候选 = 最新编译版本；基线 = 当前 live 版本。
+            _, max_version = _load_current_prompt(stage)
+            new_version = max_version
+            old_version = _live_baseline_version(stage)
 
             # Map stage to pipeline stage
             pipeline_stage = _golden_to_pipeline_stage(stage)
+            stage_type = STAGE_TYPE.get(pipeline_stage, "unknown")
+
+            # 无 prompt 驱动的阶段（quality：ASR/WER 音频质检）结构上无法做
+            # prompt 版本 A/B —— 显式跳过并标记原因，而非硬跑出假指标。
+            if pipeline_stage in NON_PROMPT_DRIVEN_STAGES:
+                results[stage] = {
+                    "skipped": True,
+                    "skipped_reason": (
+                        f"{pipeline_stage} 阶段非 prompt 驱动（音频 ASR/WER 质检），无法做 prompt 版本 A/B"
+                    ),
+                    "canary_examples_tested": 0,
+                    "pass_rate": None,
+                }
+                logger.info(f"[Canary] {stage}: skipped —— {results[stage]['skipped_reason']}")
+                continue
 
             # Run validation for each example
             validation_scores: List[Dict[str, Any]] = []
             passed_count = 0
             failed_details: List[Dict[str, Any]] = []
+            incompatible_count = 0
+            incompat_reason = ""
 
             for i, example in enumerate(canary_examples):
                 if "input" not in example or "expected_output" not in example:
@@ -369,6 +480,14 @@ class SelfIterationLoop:
 
                 input_data = example["input"]
                 expected_output = example["expected_output"]
+
+                # 金标输入与阶段契约不兼容：显式跳过并计数——这是数据/契约
+                # 错配，不是「候选失败」，不得混入 pass_rate（2026-10 披露局限）。
+                compatible, reason = check_input_compatibility(pipeline_stage, input_data)
+                if not compatible:
+                    incompatible_count += 1
+                    incompat_reason = reason
+                    continue
 
                 try:
                     # Run with NEW prompt version (mock_mode=None → SELF_ITERATION_MOCK env, C-01)
@@ -381,17 +500,16 @@ class SelfIterationLoop:
                     if hasattr(old_output, "model_dump"):
                         old_output = old_output.model_dump()
 
-                    # Compare outputs using similarity
-                    from .promotion_gate import _compute_output_similarity
+                    # 结构化相似度（回归信号）+ 复合质量指标（与 Gate3 同源）
+                    from .candidate_eval import example_passes_gate, score_output_vs_expected
+                    from .similarity import _aggregate_quality_score, _compute_text_quality_metrics
 
-                    similarity = _compute_output_similarity(new_output, expected_output)
-                    baseline_similarity = _compute_output_similarity(old_output, expected_output)
+                    similarity = score_output_vs_expected(expected_output, new_output, stage=stage)
+                    baseline_similarity = score_output_vs_expected(expected_output, old_output, stage=stage)
 
-                    # Quality improvement: new should be >= baseline * 1.02
-                    if baseline_similarity > 0:
-                        quality_ratio = similarity / baseline_similarity
-                    else:
-                        quality_ratio = 1.0 if similarity > 0.85 else 0.5
+                    q_new = _aggregate_quality_score(_compute_text_quality_metrics(new_output, expected_output, input_data), stage_type)
+                    q_old = _aggregate_quality_score(_compute_text_quality_metrics(old_output, expected_output, input_data), stage_type)
+                    quality_ratio = (q_new / q_old) if q_old > 0 else (1.0 if q_new > 0 else 0.0)
 
                     validation_scores.append(
                         {
@@ -399,11 +517,11 @@ class SelfIterationLoop:
                             "similarity_to_expected": similarity,
                             "baseline_similarity": baseline_similarity,
                             "quality_ratio": quality_ratio,
-                            "passed": similarity >= 0.85 and quality_ratio >= 1.02,
+                            "passed": example_passes_gate(expected_output, new_output, stage=stage) and quality_ratio >= 1.02,
                         }
                     )
 
-                    if similarity >= 0.85 and quality_ratio >= 1.02:
+                    if example_passes_gate(expected_output, new_output, stage=stage) and quality_ratio >= 1.02:
                         passed_count += 1
                     else:
                         failed_details.append(
@@ -423,6 +541,21 @@ class SelfIterationLoop:
                         }
                     )
 
+            # 全部不兼容：整阶段显式跳过——不能把 0/0 误报成 pass_rate=0
+            # 的「候选失败」，也不能带空内容烧真 LLM 产垃圾分。
+            if not validation_scores and incompatible_count > 0:
+                results[stage] = {
+                    "skipped": True,
+                    "skipped_reason": (
+                        f"金丝雀输入与 {pipeline_stage} 阶段输入契约不兼容"
+                        f"（{incompatible_count}/{len(canary_examples)} 例：{incompat_reason}），无法真实 A/B"
+                    ),
+                    "canary_examples_tested": 0,
+                    "pass_rate": None,
+                }
+                logger.warning(f"[Canary] {stage}: skipped —— {results[stage]['skipped_reason']}")
+                continue
+
             # Aggregate results
             total = len(validation_scores)
             pass_rate = passed_count / total if total > 0 else 0.0
@@ -437,6 +570,7 @@ class SelfIterationLoop:
 
             results[stage] = {
                 "canary_examples_tested": total,
+                "incompatible_examples_skipped": incompatible_count,
                 "passed_count": passed_count,
                 "pass_rate": pass_rate,
                 "avg_quality_ratio": avg_quality_ratio,
@@ -527,9 +661,12 @@ class SelfIterationLoop:
             )
             return None
 
-        # Build A/B test samples from golden dataset
-        samples = build_ab_samples(stage, golden_examples, old_version, new_version)
-        if not samples:
+        # 真实管线重跑式 A/B：旧 build_ab_samples 只回填 example["output"]（金标无此键），
+        # 双臂恒为空 dict → 恒平局 → A/B 永不确认、PR 永不触发（空转缺陷）。
+        # 改用 run_ab_test_with_pipeline_rerun：对每个金标输入真实跑 old/new 两版，
+        # LLMJudgeEnsemble 盲评 + 配对显著性检验。子采样控成本；晋升门禁仍全量实证。
+        ab_examples = golden_examples[:AB_TEST_MAX_EXAMPLES]
+        if not ab_examples:
             logger.warning(f"No samples built for {stage} A/B test")
             _log_self_iteration_event(
                 "ab_test_skipped",
@@ -543,13 +680,17 @@ class SelfIterationLoop:
             )
             return None
 
-        logger.info(f"Running A/B test with {len(samples)} samples for {stage}")
+        logger.info(f"Running A/B test with {len(ab_examples)} samples for {stage}")
 
         # Run A/B test
-        ab_report = run_ab_test(
+        ab_report = run_ab_test_with_pipeline_rerun(
             stage=stage,
-            samples=samples,
+            golden_examples=ab_examples,
+            old_version=old_version,
+            new_version=new_version,
+            judge_fn=_router_blind_judge(stage),
             significance_level=0.05,
+            mock_mode=None,
         )
 
         # Log A/B test results

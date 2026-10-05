@@ -84,7 +84,7 @@ class OfflineJudge:
 
     def score(self, input_data: Any, output: Any, expected: Any, stage: str) -> float:
         """与 M2 评判器同接口：候选输出 vs 期望的确定性相似度（0-1）。"""
-        return score_output_vs_expected(expected, output)
+        return score_output_vs_expected(expected, output, stage=stage)
 
 
 class QualityCompositeJudge:
@@ -105,7 +105,7 @@ class QualityCompositeJudge:
 
         stage_type = STAGE_TYPE.get(stage, "unknown")
         if stage_type == "unknown" or not isinstance(output, dict) or not isinstance(expected, dict):
-            return score_output_vs_expected(expected, output)
+            return score_output_vs_expected(expected, output, stage=stage)
         try:
             out = output.model_dump() if hasattr(output, "model_dump") else output
             exp = expected.model_dump() if hasattr(expected, "model_dump") else expected
@@ -122,7 +122,7 @@ class QualityCompositeJudge:
             return _aggregate_quality_score(metrics, stage_type)
         except Exception as exc:  # noqa: BLE001
             logger.warning("[QualityCompositeJudge] 复合质量计算失败，回退结构化比对: %s", exc)
-            return score_output_vs_expected(expected, output)
+            return score_output_vs_expected(expected, output, stage=stage)
 
 
 def build_judge(online: Optional[Any] = None) -> Any:

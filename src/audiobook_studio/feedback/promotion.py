@@ -151,6 +151,7 @@ def check_golden_dataset(
     passed_count = 0
     failed_details: List[str] = []
     valid_examples = 0
+    incompatible_examples = 0
 
     for i, example in enumerate(examples):
         # Expect golden dataset format: {"input": {...}, "expected_output": {...}}
@@ -161,10 +162,13 @@ def check_golden_dataset(
         input_data = example["input"]
         expected_output = example["expected_output"]
 
-        # Check if input has required fields for this pipeline stage
-        required_fields = promotion_gate._get_required_input_fields(pipeline_stage)
-        if not all(field in input_data for field in required_fields):
-            logger.debug(f"Golden example {i} missing required fields for {pipeline_stage}: {required_fields}")
+        # 输入与阶段契约不兼容（缺核心字段 / 模型转换失败）：显式计数后跳过。
+        # 这是金标数据与阶段契约的错配，不是候选失败；fail-closed 语义不变，
+        # 但 details 必须诚实标注原因，不能把基建错配标成「候选质量差」。
+        compatible, incompat_reason = promotion_gate.check_input_compatibility(pipeline_stage, input_data)
+        if not compatible:
+            incompatible_examples += 1
+            logger.debug(f"Golden example {i} incompatible for {pipeline_stage}: {incompat_reason}")
             continue
 
         valid_examples += 1
@@ -182,11 +186,13 @@ def check_golden_dataset(
             # 不可能逐字复现金标，递归字符相似度对真实输出恒不可达 0.85（mock 时代
             # 的校准），故此门改用与 harness 评判器同源的 score_output_vs_expected，
             # 度量「行为回归」：schema 一致、判分一致、数值校准。
-            from .candidate_eval import score_output_vs_expected
+            from .candidate_eval import example_passes_gate, score_output_vs_expected
 
-            similarity = score_output_vs_expected(expected_output, actual_output)
+            similarity = score_output_vs_expected(expected_output, actual_output, stage=stage)
 
-            if similarity >= 0.85:  # 85% similarity threshold for "pass"
+            # 单例判定：产品文本字段 stage 以文本相似度为准（2026-10 校准后语义），
+            # 综合相似度保留为参考指标记入 failed_details。
+            if example_passes_gate(expected_output, actual_output, stage=stage):
                 passed_count += 1
             else:
                 failed_details.append(f"Example {i}: similarity={similarity:.2f}")
@@ -196,12 +202,19 @@ def check_golden_dataset(
             failed_details.append(f"Example {i}: error={str(e)[:50]}")
 
     if valid_examples == 0:
+        if incompatible_examples > 0:
+            details = (
+                f"金标输入与 {pipeline_stage} 阶段契约不兼容"
+                f"（{incompatible_examples}/{len(examples)} 例），无法实证评测 —— fail-closed"
+            )
+        else:
+            details = f"无有效测试用例 (共 {len(examples)} 个，缺少必需字段)"
         return GateResult(
             name="黄金数据集通过率",
             passed=False,
             score=0.0,
             threshold=threshold,
-            details=f"无有效测试用例 (共 {len(examples)} 个，缺少必需字段)",
+            details=details,
         )
 
     score = passed_count / valid_examples
@@ -215,6 +228,7 @@ def check_golden_dataset(
         details=(
             f"{passed_count}/{valid_examples} 用例通过 ({score * 100:.1f}% ≥ {threshold * 100:.0f}%)"
             + (f" | 失败: {'; '.join(failed_details[:3])}" if failed_details else "")
+            + (f" | 另有 {incompatible_examples} 例输入不兼容已跳过" if incompatible_examples else "")
         ),
     )
 
