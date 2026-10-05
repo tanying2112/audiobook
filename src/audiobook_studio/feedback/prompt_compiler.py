@@ -214,7 +214,10 @@ def write_candidate_prompt(
     root = prompts_root or DEFAULT_PROMPTS_DIR
     target = root / cp.prompt_dir / f"v{cp.version}.j2"
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(cp.prompt_text, encoding="utf-8")
+    # 同 prompt_upgrader：收敛累积追加引入的多余空行，避免机械触发 Gate1。
+    import re as _re
+
+    target.write_text(_re.sub(r"\n{3,}", "\n\n", cp.prompt_text.rstrip()) + "\n", encoding="utf-8")
     logger.info(f"[M3] 候选 prompt 落盘 {target} (base=v{cp.base_version}, 示例={len(cp.exemplars)})")
     return cp
 

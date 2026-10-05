@@ -29,12 +29,11 @@ logger = logging.getLogger(__name__)
 
 from .constitutional_rules import apply_constitutional_rules
 
+# Provider router for status checks
+from .router import LLMRouter, create_router
+
 # LLM semantic cache (lazy-resolved; no-op unless LLM_SEMANTIC_CACHE_ENABLED=true)
-from .semantic_cache import (
-    cached_llm_lookup,
-    cached_llm_store,
-    get_semantic_cache,
-)
+from .semantic_cache import cached_llm_lookup, cached_llm_store, get_semantic_cache
 
 # Import shared validation utilities
 from .utils import LLMParseError, validate_and_parse_llm_response
@@ -87,6 +86,11 @@ class LLMCallResult:
     schema_compliance: bool
     contract_version: int = 1
     raw_response: Any = None
+    # True 表示结果来自语义缓存（未触达真实 provider）——路由器据此跳过
+    # 限流窗口记账与成本累计：缓存命中不消耗上游配额，若照常记账，
+    # 一批瞬时缓存命中会瞬间填满 60s 限流窗口，导致后续真实调用被
+    # "Rate limit near" 误跳过（2026-10 马拉松 r21+ 塌缩根因之一）。
+    from_cache: bool = False
 
 
 @dataclass

@@ -132,7 +132,7 @@ def check_golden_dataset(
             passed=False,
             score=0.0,
             threshold=threshold,
-            details=f"黄金数据集未找到: tests/golden/{stage}/",
+            details=f"黄金数据集未找到: data/golden/train/{stage}/",
         )
 
     # Use original stage name for prompt loading (matches prompts/ dir structure)
@@ -177,8 +177,14 @@ def check_golden_dataset(
             if hasattr(actual_output, "model_dump"):
                 actual_output = actual_output.model_dump()
 
-            # Compare actual vs expected
-            similarity = promotion_gate._compute_output_similarity(actual_output, expected_output)
+            # Compare actual vs expected —— 结构化比较（通过/失败一致性、数值接近度、
+            # 问题标签 Jaccard、键名重叠兜底）。真实 LLM 的自由文本（rationale 等）
+            # 不可能逐字复现金标，递归字符相似度对真实输出恒不可达 0.85（mock 时代
+            # 的校准），故此门改用与 harness 评判器同源的 score_output_vs_expected，
+            # 度量「行为回归」：schema 一致、判分一致、数值校准。
+            from .candidate_eval import score_output_vs_expected
+
+            similarity = score_output_vs_expected(expected_output, actual_output)
 
             if similarity >= 0.85:  # 85% similarity threshold for "pass"
                 passed_count += 1
@@ -246,7 +252,7 @@ def check_quality_improvement(
             passed=False,
             score=0.0,
             threshold=threshold,
-            details=f"黄金数据集未找到: tests/golden/{stage}/",
+            details=f"黄金数据集未找到: data/golden/train/{stage}/",
         )
 
     # Run both versions on golden dataset and compute quality scores

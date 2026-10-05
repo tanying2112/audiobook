@@ -7,7 +7,7 @@ E2 — 差异分析 Agent
 
 import logging
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
@@ -75,6 +75,21 @@ PATTERN_TAXONOMY = {
     "chapter_split_wrong": "章节划分错误",
     "character_missing": "遗漏角色定义",
     "summary_incomplete": "故事概述不完整",
+    # General text/audio patterns
+    "format_issue": "格式不规范",
+    "style_issue": "风格不统一",
+    "emotion_mismatch": "情感不匹配",
+    "pronunciation_fix": "发音修正",
+    "quality_issue": "音质问题",
+    "audio_artifact": "音频伪影",
+    "speech_rate_issue": "语速异常",
+    "low_quality_score": "质量评分过低",
+    "background_noise": "背景噪音",
+    "unclear_pronunciation": "发音不清",
+    "chunk_too_short": "片段过短",
+    "voice_inconsistency": "音色不一致",
+    "truncated_ending": "结尾截断",
+
 }
 
 
@@ -107,6 +122,10 @@ class AggregateAnalysis:
     top_patterns: List[Tuple[str, int]]  # sorted by frequency
     recommendations: List[str]
     generated_at: str
+    # LLM 语义分析产出的可操作改进指令（pipeline stage → 去重指令列表）。
+    # 此前仅用于推荐文案即被丢弃；现随分析结果上行，供 batch_upgrade
+    # 作为「额外优化指令」写进候选 prompt（反馈→语义→prompt 的真实闭环）。
+    stage_instructions: "Dict[str, List[str]]" = field(default_factory=dict)
 
 
 def _compute_text_similarity(a: str, b: str) -> float:
@@ -167,11 +186,13 @@ def _infer_pattern_tags(
             tags.append("emotion_too_mild")
         elif "过度" in rationale_lower or "过强" in rationale_lower or "太强" in rationale_lower:
             tags.append("emotion_too_strong")
+        elif "不匹配" in rationale_lower or "mismatch" in rationale_lower:
+            tags.append("emotion_mismatch")
         else:
             tags.append("emotion_wrong")
     if any(kw in rationale_lower for kw in ["角色", "说话人", "speaker", "旁白"]):
         tags.append("speaker_wrong")
-    if any(kw in rationale_lower for kw in ["停顿", "pause", "停顿"]):
+    if any(kw in rationale_lower for kw in ["停顿", "pause"]):
         if "缺少" in rationale_lower or "加" in rationale_lower or "需要" in rationale_lower:
             tags.append("pause_missing")
         else:
@@ -185,6 +206,32 @@ def _infer_pattern_tags(
         tags.append("prosody_robotic")
     if any(kw in rationale_lower for kw in ["平淡", "flat", "单调"]):
         tags.append("prosody_flat")
+
+    # New patterns
+    if any(kw in rationale_lower for kw in ["格式", "format", "规范"]):
+        tags.append("format_issue")
+    if any(kw in rationale_lower for kw in ["风格", "style", "统一", "一致"]):
+        tags.append("style_issue")
+    if any(kw in rationale_lower for kw in ["发音", "读音", "pronunciation", "拼音"]):
+        tags.append("pronunciation_fix")
+    if any(kw in rationale_lower for kw in ["音质", "quality", "质量"]):
+        tags.append("quality_issue")
+    if any(kw in rationale_lower for kw in ["伪影", "artifact", "爆音", "电流", "金属音"]):
+        tags.append("audio_artifact")
+    if any(kw in rationale_lower for kw in ["语速", "speed", "过快", "过慢", "太快", "太慢"]):
+        tags.append("speech_rate_issue")
+    if any(kw in rationale_lower for kw in ["评分", "score", "低分", "过低"]):
+        tags.append("low_quality_score")
+    if any(kw in rationale_lower for kw in ["背景", "噪音", "noise", "底噪"]):
+        tags.append("background_noise")
+    if any(kw in rationale_lower for kw in ["不清", "模糊", "含糊", "unclear", "听不清"]):
+        tags.append("unclear_pronunciation")
+    if any(kw in rationale_lower for kw in ["过短", "太短", "片段", "chunk", "短小"]):
+        tags.append("chunk_too_short")
+    if any(kw in rationale_lower for kw in ["音色", "voice", "声纹", "一致性", "inconsist"]):
+        tags.append("voice_inconsistency")
+    if any(kw in rationale_lower for kw in ["截断", "truncat", "结尾", "ending", "切断", "未完"]):
+        tags.append("truncated_ending")
 
     # Stage-specific patterns
     if stage in ("edit_for_tts", "annotate", "translate"):
@@ -208,7 +255,6 @@ def _infer_pattern_tags(
 
     # Deduplicate
     return list(set(tags))
-
 
 def analyze_single_feedback(
     record: FeedbackRecordModel,
@@ -335,10 +381,18 @@ def analyze_batch(
     pattern_counter: Counter[str] = Counter()
     stage_counter: Counter[str] = Counter()
     all_patterns: List[str] = []
+    stage_instructions: Dict[str, List[str]] = {}
 
     for record in records:
         result = analyze_single_feedback(record)
         stage_counter[result.stage] += 1
+
+        # 收集 LLM 语义分析的可操作指令（仅真实 LLM 路径，关键词降级无此产物）
+        instr = (result.actionable_instruction or "").strip()
+        if instr and result.analysis_source == "llm":
+            bucket = stage_instructions.setdefault(result.stage, [])
+            if instr[:60] not in [b[:60] for b in bucket]:
+                bucket.append(instr[:400])
 
         for tag in result.pattern_tags:
             pattern_counter[tag] += 1
@@ -371,6 +425,7 @@ def analyze_batch(
         top_patterns=top_patterns,
         recommendations=recommendations,
         generated_at=datetime.now(timezone.utc).isoformat(),
+        stage_instructions=stage_instructions,
     )
 
 

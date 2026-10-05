@@ -213,6 +213,7 @@ def _to_result(payload: Dict[str, Any], response_model: Type[Any], latency_ms: i
         schema_compliance=payload.get("schema_compliance", True),
         contract_version=payload.get("contract_version", 1),
         raw_response=None,
+        from_cache=True,
     )
 
 
