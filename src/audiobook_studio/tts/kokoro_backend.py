@@ -26,6 +26,35 @@ from .engine import (
 
 logger = logging.getLogger(__name__)
 
+# ── Official Kokoro Chinese G2P frontend (misaki[zh]) ──────────────────────
+# Lazy module-level singleton: jieba's dictionary build costs ~0.7s once.
+_ZHG2P_INSTANCE: Any = None
+
+
+def _misaki_zh_phonemes(text: str) -> Optional[str]:
+    """Convert Chinese text to Kokoro's misaki phoneme format.
+
+    Returns None (caller falls back to espeak) when misaki[zh] is not
+    installed or the text yields nothing. Char coverage of the misaki
+    output against kokoro_onnx's vocab was verified at 100% (incl. the
+    tone arrows ↘↗→↓), so the result feeds the model directly.
+    """
+    global _ZHG2P_INSTANCE
+    try:
+        if _ZHG2P_INSTANCE is None:
+            from misaki.zh import ZHG2P
+
+            _ZHG2P_INSTANCE = ZHG2P()
+        phonemes, _ = _ZHG2P_INSTANCE(text)
+        return phonemes or None
+    except ImportError:
+        logger.debug("misaki[zh] not installed; zh falls back to espeak G2P")
+        return None
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"misaki zh G2P failed ({e}); falling back to espeak")
+        return None
+
+
 # Kokoro voice presets (from kokoro-onnx voice list)
 KOKORO_VOICES: Dict[str, Dict[str, str]] = {
     "af": {
@@ -163,11 +192,22 @@ class KokoroBackend(BaseTTSEngine):
         mock_mode: bool = False,
         output_dir: str = "./output",
         max_concurrent: int = 2,
+        zh_g2p: str = "espeak",
+        sentence_pause: float = 0.25,
+        clause_pause: float = 0.1,
         **kwargs: Any,
     ):
         super().__init__(output_dir=output_dir, max_concurrent=max_concurrent)
         self.model_path = model_path
         self.voices_path = voices_path
+        # Chinese G2P frontend: "espeak" (kokoro_onnx default) or "misaki"
+        # (official Kokoro zh frontend; noticeably better tone/prosody).
+        self.zh_g2p = zh_g2p
+        # Prosodic pauses (seconds) kokoro_onnx inserts at sentence/clause
+        # punctuation. Defaults mirror kokoro_onnx's own, so omitting both
+        # leaves behavior unchanged.
+        self.sentence_pause = sentence_pause
+        self.clause_pause = clause_pause
         self.device = device
         self.sample_rate = sample_rate
         self.providers = providers or ["CPUExecutionProvider"]
@@ -634,23 +674,60 @@ class KokoroBackend(BaseTTSEngine):
             chunks.append(current)
         return [c for c in chunks if c]
 
-    def _create_chunked(self, text: str, voice: str, speed: float, lang: str):
+    def _create_chunked(
+        self,
+        text: str,
+        voice: str,
+        speed: float,
+        lang: str,
+    ):
         """Synthesize text, chunking on sentence boundaries when it exceeds
         Kokoro's 510-phoneme context window, and concatenate the audio with
         a short inter-chunk pause."""
         chunks = self._split_text_for_kokoro(text)
         if len(chunks) == 1:
-            return self._kokoro.create(text=chunks[0], voice=voice, speed=speed, lang=lang)
+            return self._create_one(chunks[0], voice, speed, lang)
 
         logger.info(f"Kokoro: splitting {len(text)} chars into {len(chunks)} chunks (510-phoneme limit)")
         audios = []
         sample_rate = self.sample_rate
         for i, chunk in enumerate(chunks):
-            audio, sample_rate = self._kokoro.create(text=chunk, voice=voice, speed=speed, lang=lang)
+            audio, sample_rate = self._create_one(chunk, voice, speed, lang)
             audios.append(audio)
             if i < len(chunks) - 1:
                 audios.append(np.zeros(int(sample_rate * 0.2), dtype=audio.dtype))  # 200ms pause
         return np.concatenate(audios), sample_rate
+
+    def _create_one(self, chunk: str, voice: str, speed: float, lang: str):
+        """Synthesize one chunk, honoring the configured Chinese G2P frontend.
+
+        Kokoro's zh voices were trained on misaki[zh] phonemes (tone-marked
+        IPA). kokoro_onnx's default path phonemizes Chinese through espeak-ng
+        ("cmn"), which drops tone/prosody info — the voices then read a phoneme
+        distribution they never saw in training, audibly degrading quality.
+        With zh_g2p="misaki" the chunk is converted by the official frontend
+        and fed via is_phonemes=True; anything else keeps the espeak path.
+        """
+        if lang == "cmn" and self.zh_g2p == "misaki":
+            phonemes = _misaki_zh_phonemes(chunk)
+            if phonemes:
+                return self._kokoro.create(
+                    text=phonemes,
+                    voice=voice,
+                    speed=speed,
+                    is_phonemes=True,
+                    sentence_pause=self.sentence_pause,
+                    clause_pause=self.clause_pause,
+                )
+            logger.warning("Kokoro: misaki G2P produced no phonemes; falling back to espeak")
+        return self._kokoro.create(
+            text=chunk,
+            voice=voice,
+            speed=speed,
+            lang=lang,
+            sentence_pause=self.sentence_pause,
+            clause_pause=self.clause_pause,
+        )
 
     def _phonemize(self, text: str, voice_id: str):
         """Phonemize text for given voice.
