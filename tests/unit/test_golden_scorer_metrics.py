@@ -78,16 +78,20 @@ def test_asr_wer_empty_hypothesis_is_honest_failure():
 # ── Multilingual auto backend selection ───────────────────────────────────────
 
 
-def test_asr_wer_auto_selects_multilingual_for_non_zh():
+def test_asr_wer_auto_selects_sensevoice_for_all_languages():
     from audiobook_studio.quality.metrics import ASRWerMetric
 
     metric = ASRWerMetric(model_name="auto", mock_mode=True)
     zh_backend = metric._resolve_backend("zh")
     en_backend = metric._resolve_backend("en")
-    assert zh_backend.model_name == "iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch"
+    # SenseVoice-Small judges every language in auto mode: on real-world zh
+    # it beats Paraformer-large (CER 7.81% vs 10.18%, FunASR discussion
+    # #2947) and it won our full-chapter rejudge 13.0% vs 21.9%.
+    assert zh_backend.model_name == "iic/SenseVoiceSmall"
     assert en_backend.model_name == "iic/SenseVoiceSmall"
-    # Same (cached) backend instance returned for the same language.
+    # Same (cached) backend instance returned for the same model.
     assert metric._resolve_backend("ja") is en_backend
+    assert metric._resolve_backend("zh") is zh_backend
 
 
 def test_asr_wer_explicit_model_not_overridden_by_auto():

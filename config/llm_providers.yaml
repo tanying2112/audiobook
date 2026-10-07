@@ -26,7 +26,7 @@ providers:
     api_key_env: FCC_LOCAL_API_KEY
     base_url: http://127.0.0.1:8082
     health_path: /health
-    priority: 1
+    priority: 10
     max_tokens_per_minute: 50000
     max_requests_per_minute: 60
     timeout_seconds: 120
@@ -49,7 +49,7 @@ providers:
     max_requests_per_minute: 30
     timeout_seconds: 120
     stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
-    enabled: true
+    enabled: false
     extra_params:
       extra_headers:
         Authorization: Bearer freecc
@@ -69,7 +69,7 @@ providers:
     max_requests_per_minute: 20
     timeout_seconds: 120
     stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
-    enabled: true
+    enabled: false
     extra_params:
       use_direct_sdk: true
 
@@ -152,10 +152,14 @@ providers:
   # OpenAI-compatible API -> can use direct SDK for lower latency
   - name: kilo
     provider: openai
-    model: minimax/minimax-m3:free
+    # 2026-10-05 实测：minimax/minimax-m3:free 已下线（404 model_not_found），
+    # 无后缀的 minimax/minimax-m3 为付费模型（402 credits required，余额 0）。
+    # 改用网关免费档在线模型（/models 列表 + chat/completions 实测 200 OK）。
+    # 注：仅作 local_fcc_gateway 之后的兜底路由，主流量仍走本地网关。
+    model: nvidia/nemotron-3-super-120b-a12b:free
     api_key_env: KILO_API_KEY
     base_url: https://api.kilo.ai/api/gateway/v1
-    priority: 0
+    priority: 99
     max_tokens_per_minute: 50000
     max_requests_per_minute: 30
     timeout_seconds: 120
@@ -172,12 +176,12 @@ providers:
     provider: ollama
     model: qwen3.5:2b
     base_url: http://localhost:11434
-    priority: 5
+    priority: 0
     max_tokens_per_minute: 100000
     max_requests_per_minute: 200
     timeout_seconds: 0  # 无超时限制
     stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
-    enabled: true
+    enabled: false
     extra_params:
       use_direct_sdk: true
 

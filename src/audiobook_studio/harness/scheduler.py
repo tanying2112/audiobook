@@ -43,6 +43,7 @@ class HarnessScheduler:
         interval: float = 3600.0,
         auto_deploy: bool = False,
         judge: Optional[Any] = None,
+        quality_judge: Optional[Any] = None,
         use_learned: bool = False,
         # 每日 dry-run 冒烟验收（默认关，AUDIOBOOK_HARNESS_SMOKE=1 开启）。
         smoke_test_enabled: bool = False,
@@ -57,6 +58,7 @@ class HarnessScheduler:
         self.interval = interval
         self.auto_deploy = auto_deploy
         self.judge = judge
+        self.quality_judge = quality_judge
         # 学习型候选生成开关：True 时在每轮迭代用 DSPy/GEPA 反思变异覆盖候选 prompt。
         # 默认关，避免在无训练样本/无本地 LLM 时产生无效变异；由环境变量
         # AUDIOBOOK_HARNESS_USE_LEARNED=1 或显式传入开启。
@@ -103,6 +105,7 @@ class HarnessScheduler:
                     baseline_fn=self.baseline_fn,
                     auto_deploy=self.auto_deploy,
                     judge=self.judge,
+                    quality_judge=self.quality_judge,
                     use_learned=effective_learned,
                 )
                 report[stage] = {
@@ -206,6 +209,7 @@ def create_harness_scheduler(
     interval: float = 3600.0,
     auto_deploy: bool = False,
     judge: Optional[Any] = None,
+    quality_judge: Optional[Any] = None,
     use_learned: bool = False,
     smoke_test_enabled: bool = False,
     smoke_test_stage: str = "analyze",
@@ -221,6 +225,7 @@ def create_harness_scheduler(
         interval=interval,
         auto_deploy=auto_deploy,
         judge=judge,
+        quality_judge=quality_judge,
         use_learned=use_learned,
         smoke_test_enabled=smoke_test_enabled,
         smoke_test_stage=smoke_test_stage,

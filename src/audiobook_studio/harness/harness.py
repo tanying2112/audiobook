@@ -25,7 +25,6 @@ from ..harness.config import HARNESS_PROMPTS_DIR, get_harness_settings
 from ..harness.golden import evaluate_on_harness_golden
 from ..harness.models import PipelineStage
 from ..harness.spotcheck import human_preference_score_for
-from ..harness.storage import get_storage
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +88,7 @@ def run_iteration_cycle(
     human_preference_score: float = 1.0,
     candidate_id: Optional[str] = None,
     use_learned: bool = False,
+    quality_judge: Optional[Any] = None,
 ) -> IterationReport:
     """对单个 stage 跑一轮完整的马具迭代（编译→评判→晋升→部署）。
 
@@ -123,8 +123,15 @@ def run_iteration_cycle(
     else:
         cp = write_candidate_prompt(stage, k=k, prompts_root=root)
         candidate_version = cp.version
-        deployed_version = cp.base_version
-        logger.info(f"[harness] {stage}: 编译候选 v{candidate_version}（示例={len(cp.exemplars)}）")
+        # 基线取当前 live（served）版本：门禁回答的是「能否替换线上」，
+        # 而非「比上一个未晋升候选好多少」。从未部署过则用 v1（live 槽原始内容）。
+        from ..feedback.deploy import served_version
+
+        served = served_version(stage, prompts_dir=root)
+        # served>0：基线=当前已部署版本（门禁回答「能否替换线上」）；
+        # 否则退回编译基线 cp.base_version（种子沙箱=live v1；空沙箱=v0 缺失=无基线信号）。
+        deployed_version = served if served > 0 else cp.base_version
+        logger.info(f"[harness] {stage}: 编译候选 v{candidate_version}（示例={len(cp.exemplars)}），基线=v{deployed_version}")
 
     # 候选/基线实证对比：默认 run_fn 跑「编译出的候选版本」，baseline_fn 跑「当前已部署
     # 版本」，均从 prompts_root（默认 prompts/harness）读取对应版本并临时 swap 进 v1.j2
@@ -135,19 +142,31 @@ def run_iteration_cycle(
     # (M2) 在 harness 自有冻结 test 留出集上做 候选 vs 基线 实证评判。
     # 平铺布局 data/golden/harness/test/{stage}.jsonl，harness 自洽，
     # 不借用 feedback 的 run_candidate_on_held_out（读取嵌套布局，无法读 harness 金标）。
+    effective_quality_judge = quality_judge
+    if effective_quality_judge is None:
+        try:
+            from ..feedback.offline_judge import QualityCompositeJudge
+
+            effective_quality_judge = QualityCompositeJudge()
+        except Exception:  # noqa: BLE001
+            effective_quality_judge = None
     eval_result = evaluate_on_harness_golden(
         stage=stage,
         run_fn=effective_run_fn,
         judge=j,
         baseline_fn=effective_baseline_fn,
         split="test",
+        quality_judge=effective_quality_judge,
     )
 
     golden_pass_rate = eval_result["mean_score"]
     baseline_mean = eval_result["baseline_mean"]
-    # 质量比基线：有基线时取 候选/基线，避免除零；无基线则置于 1.0（无退化信号，但
-    # 仍受其余 3 项门禁约束，保守处理）。
-    if baseline_mean is not None and baseline_mean > 0:
+    # 质量比基线：优先用复合质量指标（对候选间差异敏感）；不可用时回退结构化均值比。
+    quality_mean = eval_result.get("quality_mean")
+    quality_baseline_mean = eval_result.get("quality_baseline_mean")
+    if quality_mean is not None and quality_baseline_mean is not None and quality_baseline_mean > 0:
+        quality_ratio = quality_mean / quality_baseline_mean
+    elif baseline_mean is not None and baseline_mean > 0:
         quality_ratio = eval_result["mean_score"] / baseline_mean
     elif baseline_mean is not None and baseline_mean == 0:
         quality_ratio = 1.0 if eval_result["mean_score"] > 0 else 0.0
@@ -271,46 +290,47 @@ async def run_harness_cycle(
 ) -> List[Dict[str, Any]]:
     """运行完整的马具迭代周期（异步版）。
 
-    返回所有 stage 的迭代报告列表。
+    对每个 stage 跑一轮真实的迭代（编译候选 prompt → 在留出集评判 → 晋升门禁 → 部署/回滚），
+    返回所有 stage 的迭代报告字典列表。整轮不触网（默认 OfflineJudge 兜底），可离线复现。
     """
     get_harness_settings()
     stages = stages or [s.value for s in PipelineStage]
 
-    reports = []
+    reports: List[Dict[str, Any]] = []
     for stage in stages:
-        # 这里需要实际的 stage 运行函数
-        # 暂时返回模拟报告
-        reports.append(
-            {
-                "stage": stage,
-                "status": "pending",
-                "message": "待集成真实 stage 运行逻辑",
-            }
+        rep = run_iteration_cycle(
+            stage=stage,
+            run_fn=lambda inp, _s=stage: run_stage(_s, inp),
+            golden_root=golden_root,
+            prompts_root=prompts_root,
+            auto_deploy=auto_deploy,
         )
+        reports.append(rep.to_dict())
 
     return reports
 
 
 def get_harness_status() -> Dict[str, Any]:
-    """获取马具迭代系统整体状态。"""
-    settings = get_harness_settings()
-    get_storage()
+    """获取马具迭代系统整体状态。
 
-    return {
-        "enabled": settings.ENABLED,
-        "self_iteration_llm": settings.SELF_ITERATION_LLM,
-        "batch_size": settings.SELF_ITERATION_BATCH_SIZE,
-        "mock_mode": settings.SELF_ITERATION_MOCK,
-        "golden_root": settings.GOLDEN_ROOT,
-        "prompts_dir": str(HARNESS_PROMPTS_DIR),
-        "golden_stats": {
-            "train": 0,
-            "val": 0,
-            "test": 0,
-        },
-        "active_canaries": 0,
-        "pending_promotions": 0,
-    }
+    金标三集统计 / 活跃金丝雀 / 待晋升计数从真实存储（SQLite）聚合，而非硬编码零值；
+    与 ``harness.dashboard.get_harness_status`` 使用同一真实实现。
+    """
+    from ..harness.dashboard import get_harness_status as _dashboard_status
+
+    settings = get_harness_settings()
+    status = _dashboard_status()
+    status.update(
+        {
+            "enabled": settings.ENABLED,
+            "self_iteration_llm": settings.SELF_ITERATION_LLM,
+            "batch_size": settings.SELF_ITERATION_BATCH_SIZE,
+            "mock_mode": settings.SELF_ITERATION_MOCK,
+            "golden_root": settings.GOLDEN_ROOT,
+            "prompts_dir": str(HARNESS_PROMPTS_DIR),
+        }
+    )
+    return status
 
 
 def trigger_iteration(stage: str, auto_deploy: bool = True) -> IterationReport:

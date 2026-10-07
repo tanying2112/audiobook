@@ -37,12 +37,14 @@ from ..schemas import (
     TtsEditOutput,
 )
 from .circuit_breaker import CircuitBreaker
-from .client import LLMCallResult, LLMClient, create_client
 from .config_loader import LLMProvidersConfig, ProviderConfig, ProviderType, StageName
 from .direct_client import DirectProviderClientConfig, DirectProviderType, create_direct_client
 from .health_probe import HealthProbe
 from .key_pool import KeyPoolManager
 from .quota_registry import QuotaRegistry
+
+# Lazy imports to avoid circular dependency with client.py
+# from .client import LLMCallResult, LLMClient, create_client
 
 if TYPE_CHECKING:
     pass
@@ -493,7 +495,10 @@ class LLMRouter:
                 self._langfuse_enabled_cached = False
         return self._langfuse_enabled_cached
 
-    def get_client(self, provider: ProviderConfig) -> LLMClient:
+    def get_client(self, provider: ProviderConfig):
+        # Lazy import to avoid circular dependency
+        from .client import LLMClient, create_client
+
         key = provider.name
         if key not in self.clients:
             # Initialize Langfuse if not already done
@@ -862,8 +867,11 @@ class LLMRouter:
                             logger.warning(f"Provider {provider.name} returned invalid JSON for stage {stage}: {e}")
                             raise
 
-                    self.rate_limiters[provider.name].record_usage(result.tokens_in + result.tokens_out)
-                    self.cost_tracker.add_cost(provider.name, result.cost_usd)
+                    # 缓存命中未触达 provider：不占限流窗口、不计成本，
+                    # 否则瞬时缓存命中潮会误触发 "Rate limit near" 级联跳过。
+                    if not getattr(result, "from_cache", False):
+                        self.rate_limiters[provider.name].record_usage(result.tokens_in + result.tokens_out)
+                        self.cost_tracker.add_cost(provider.name, result.cost_usd)
 
                     # Record success for circuit breaker
                     if cb:
@@ -953,6 +961,8 @@ class LLMRouter:
             stage, response_model, segment_id=segment_id, paragraph_index=paragraph_index
         )
         if fallback:
+            from .client import LLMCallResult
+
             return LLMCallResult(
                 output=fallback,
                 model="heuristic_fallback",
@@ -1077,6 +1087,8 @@ class LLMRouter:
                 # If we can't create an instance, return None to indicate failure
                 return None
 
+        from .client import LLMCallResult
+
         return LLMCallResult(
             output=mock_output,
             model="mock-model",
@@ -1155,6 +1167,65 @@ class LLMRouter:
 
     def get_cost_status(self):
         return self.cost_tracker.get_status()
+
+    def get_aggregated_status(self) -> Dict[str, Any]:
+        """Get aggregated status of all LLM router components for monitoring endpoint.
+
+        Returns:
+            Dict containing:
+            - providers: Health status of all providers
+            - key_pools: Statistics for all key pools
+            - circuit_breakers: State of all circuit breakers
+            - cost_tracker: Cost tracking status
+            - quota_registry: Quota registry status
+            - free_tier_health: Free tier health assessment
+            - mock_mode: Whether mock mode is enabled
+        """
+        # Providers health from health probe
+        providers_status = {}
+        if self.health_probe:
+            all_statuses = self.health_probe.get_all_statuses()
+            for name, status in all_statuses.items():
+                providers_status[name] = status.to_dict()
+        else:
+            # Fallback: if no health probe, mark all as healthy
+            for provider in self.config.get_all_enabled():
+                providers_status[provider.name] = {
+                    "provider": provider.name,
+                    "is_healthy": True,
+                    "latency_ms": 0.0,
+                    "last_check": None,
+                    "error_message": None,
+                    "quota_remaining": None,
+                    "quota_limit": None,
+                }
+
+        # Key pool stats
+        key_pools = self.key_pool.get_all_stats()
+
+        # Circuit breaker states
+        circuit_breakers = {}
+        for name, cb in self.circuit_breakers.items():
+            circuit_breakers[name] = cb.get_status()
+
+        # Cost tracker status
+        cost_status = self.cost_tracker.get_status()
+
+        # Quota registry status
+        quota_status = self.quota_registry.get_all_statuses()
+
+        # Free tier health
+        free_tier_health = self.get_free_tier_health()
+
+        return {
+            "providers": providers_status,
+            "key_pools": key_pools,
+            "circuit_breakers": circuit_breakers,
+            "cost_tracker": cost_status,
+            "quota_registry": quota_status,
+            "free_tier_health": free_tier_health,
+            "mock_mode": self.mock_mode,
+        }
 
     @property
     def stage_configs(self) -> Dict[str, StageRoutingConfig]:

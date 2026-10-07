@@ -868,6 +868,11 @@ class ASRBackend(ABC):
         pass
 
 
+# 隔离的 FunASR 转写子进程入口。必须以纯文件路径运行（`python -m` 会连带
+# 执行包 __init__ 全图——正是导致本机段错误的组合）。见 FunASRBackend docstring。
+ASR_PROC_PATH = Path(__file__).resolve().parent / "_asr_proc.py"
+
+
 class FunASRBackend(ASRBackend):
     """FunASR 后端 (支持 SenseVoice 和 Paraformer).
 
@@ -880,6 +885,16 @@ class FunASRBackend(ASRBackend):
     - 纯中文识别，准确率高
     - 非自回归，推理快
     - 支持热词、标点预测、时间戳
+
+    裁判选择: SenseVoice-Small 是推荐的中文裁判（真实语料 CER 7.81% vs
+    Paraformer-large 的 10.18%，见 FunASR 讨论 #2947；本项目全章复判 13.0%
+    vs 21.9%）。Paraformer 保留给显式 model_name 与热词场景。
+
+    进程隔离 (torch 2.2.2 / macOS x86_64): funasr generate 与完整 app 导入图
+    （≈5500 模块: torch+onnxruntime+pymupdf+litellm+scipy+pandas+...）共存时必
+    SIGSEGV；funasr 单独进程稳定（探针: scratch/roadmap_p0/probe/）。真实转写因此
+    全部委托给独立子进程 _asr_proc.py（分块 240s/16k、不走 merge_vad），本进程只
+    装配结果；mock 路径不变。
     """
 
     # 预定义模型映射
@@ -987,6 +1002,10 @@ class FunASRBackend(ASRBackend):
             logger.warning(f"16k resample failed ({e}); using original audio (ASR may degrade)")
         return audio_path
 
+    # 真实转写的分块/词时间戳逻辑已移入隔离子进程 _asr_proc.py（见类 docstring）。
+    # 全章 35 min（9×240s 块）在本机约 7–8 min；1800s 超时留足余量。
+    ASR_PROC_TIMEOUT_S = 1800
+
     def _initialize(self) -> None:
         if self._initialized:
             return
@@ -994,24 +1013,16 @@ class FunASRBackend(ASRBackend):
             logger.info(f"FunASR ({self.original_model_name} -> {self.model_name}) running in mock_mode")
             self._initialized = True
             return
-        try:
-            from funasr import AutoModel
+        import importlib.util
 
-            # 确保缓存目录就绪
-            self._ensure_model_cached()
-
-            self._model = AutoModel(
-                model=self.model_name,
-                device=self.device,
-                disable_update=True,
-            )
-            self._initialized = True
-            logger.info(f"FunASR ({self.model_name}) initialized on {self.device}")
-        except ImportError:
+        self._ensure_model_cached()
+        if importlib.util.find_spec("funasr") is None:
             raise RuntimeError("FunASR not installed. Install with: pip install funasr")
-        except Exception as e:
-            logger.error(f"Failed to initialize FunASR ({self.model_name}): {e}")
-            raise
+        if not ASR_PROC_PATH.exists():
+            raise RuntimeError(f"ASR worker script missing: {ASR_PROC_PATH}")
+        self._model = None
+        self._initialized = True
+        logger.info(f"FunASR ({self.model_name}) initialized via isolated worker process")
 
     def transcribe(self, audio_path: Path) -> ASRResult:
         if self.mock_mode:
@@ -1068,76 +1079,14 @@ class FunASRBackend(ASRBackend):
                 duration_ms=3700,
                 success=True,
             )
+        # 真实转写在隔离子进程中执行（见类 docstring 与 _asr_proc.py）。
         self._initialize()
-        try:
-            audio_for_asr = self._resample_to_16k(audio_path)
-            try:
-                result = self._model.generate(
-                    input=str(audio_for_asr),
-                    batch_size_s=300,
-                    merge_vad=True,
-                    merge_length_s=15,
-                )
-            finally:
-                if audio_for_asr != audio_path:
-                    try:
-                        os.remove(audio_for_asr)
-                    except OSError:
-                        pass
+        import json
+        import subprocess
+        import sys
 
-            if not result:
-                return ASRResult(
-                    text="",
-                    words=[],
-                    language="unknown",
-                    confidence=0.0,
-                    duration_ms=0,
-                    success=False,
-                    error="No transcription result",
-                )
-
-            first = result[0]
-            text = first.get("text", "")
-            # An empty hypothesis means the ASR detected no (usable) speech.
-            # Reporting wer=1.0 with success=True would fabricate a measurement;
-            # we fail honestly so the scorer records WER as unavailable.
-            if not text or not text.strip():
-                return ASRResult(
-                    text="",
-                    words=[],
-                    language="unknown",
-                    confidence=0.0,
-                    duration_ms=0,
-                    success=False,
-                    error="empty hypothesis (silence / non-speech / VAD rejected)",
-                )
-
-            words = []
-            if "words" in first:
-                for w in first["words"]:
-                    words.append(
-                        {
-                            "word": w.get("word", w.get("text", "")),
-                            "start_ms": int(w.get("start", 0) * 1000),
-                            "end_ms": int(w.get("end", 0) * 1000),
-                            "confidence": w.get("confidence", 1.0),
-                        }
-                    )
-
-            language = first.get("language", "zh")
-            confidence = first.get("confidence", 1.0) if "confidence" in first else 1.0
-            duration_ms = first.get("duration", 0) * 1000 if "duration" in first else 0
-
-            return ASRResult(
-                text=text,
-                words=words,
-                language=language,
-                confidence=confidence,
-                duration_ms=duration_ms,
-                success=True,
-            )
-        except Exception as e:
-            logger.error(f"FunASR transcription failed: {e}")
+        def _fail(error: str) -> ASRResult:
+            logger.error(f"FunASR transcription failed: {error}")
             return ASRResult(
                 text="",
                 words=[],
@@ -1145,8 +1094,48 @@ class FunASRBackend(ASRBackend):
                 confidence=0.0,
                 duration_ms=0,
                 success=False,
-                error=str(e),
+                error=error,
             )
+
+        try:
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(ASR_PROC_PATH),
+                    str(audio_path),
+                    self.model_name,
+                    self.device,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=self.ASR_PROC_TIMEOUT_S,
+                env={**os.environ, "KMP_DUPLICATE_LIB_OK": "TRUE"},
+            )
+        except subprocess.TimeoutExpired:
+            return _fail(f"ASR worker timeout after {self.ASR_PROC_TIMEOUT_S}s")
+        if proc.returncode != 0:
+            # rc=139 = SIGSEGV 等硬死：worker 已进程隔离，不再连坐本进程。
+            stderr_tail = (proc.stderr or "").strip()[-300:]
+            return _fail(
+                f"ASR worker exited rc={proc.returncode}"
+                + (f": {stderr_tail}" if stderr_tail else "")
+            )
+        stdout = (proc.stdout or "").strip()
+        last_line = stdout.splitlines()[-1] if stdout else ""
+        try:
+            data = json.loads(last_line)
+        except Exception:
+            return _fail(f"bad worker output: {last_line[:200]!r}")
+        if not data.get("success"):
+            return _fail(str(data.get("error", "unknown worker error"))[:500])
+        return ASRResult(
+            text=data.get("text", ""),
+            words=data.get("words", []),
+            language=data.get("language", "zh"),
+            confidence=float(data.get("confidence", 1.0)),
+            duration_ms=int(data.get("duration_ms", 0)),
+            success=True,
+        )
 
     def get_name(self) -> str:
         return f"funasr_{self.original_model_name}"
@@ -1383,9 +1372,11 @@ class ASRWerMetric(QualityMetric):
         self.cache_dir = cache_dir
         self._device = device
         self._auto_backends: Dict[str, ASRBackend] = {}
-        # model_name == "auto" defers backend creation until compute(), where the
-        # audio language selects a multilingual (SenseVoice) vs Chinese (Paraformer)
-        # model. An explicit model name builds the backend eagerly.
+        # model_name == "auto" defers backend creation until compute(); every
+        # language resolves to SenseVoice-Small, the more accurate zh judge
+        # (real-world CER 7.81% vs Paraformer-large 10.18%, FunASR #2947;
+        # chapter rejudge 13.0% vs 21.9%). An explicit model name builds the
+        # backend eagerly.
         if model_name == "auto":
             self._backend: Optional[ASRBackend] = None
         else:
@@ -1421,17 +1412,15 @@ class ASRWerMetric(QualityMetric):
     def _resolve_backend(self, language: Optional[str] = None) -> ASRBackend:
         """Return the ASR backend to use for ``language``.
 
-        In ``auto`` mode, non-Chinese audio uses the multilingual SenseVoice
-        model (zh/en/ja/ko/fr/de/es…) while Chinese audio uses the faster,
-        more accurate Paraformer-ZH. An explicit ``model_name`` returns that
-        backend unchanged.
+        In ``auto`` mode every language resolves to SenseVoice-Small: on
+        real-world zh it is the more accurate judge (CER 7.81% vs
+        Paraformer-large's 10.18%, FunASR discussion #2947) and it won our
+        own full-chapter rejudge 13.0% vs 21.9%. An explicit ``model_name``
+        returns that backend unchanged.
         """
         if self._backend is not None:
             return self._backend
-        if language and language != "zh":
-            model = "sensevoice_small"
-        else:
-            model = "paraformer-zh"
+        model = "sensevoice_small"
         if model not in self._auto_backends:
             self._auto_backends[model] = FunASRBackend(
                 model_name=model,

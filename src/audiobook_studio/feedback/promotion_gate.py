@@ -31,11 +31,13 @@ from .anti_hack import (
 # canary (imported second, provides _load_golden_examples, _load_prompt_version, etc.)
 from .canary import (
     GOLDEN_TO_PIPELINE_STAGE,
+    NON_PROMPT_DRIVEN_STAGES,
     PIPELINE_STAGE_TO_PROMPT_DIR,
     SELF_ITERATION_MOCK_ENV,
     STAGE_TYPE,
     _convert_input_to_model,
     _get_required_input_fields,
+    check_input_compatibility,
     _golden_to_pipeline_stage,
     _load_golden_examples,
     _load_prompt_version,

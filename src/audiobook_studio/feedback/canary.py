@@ -114,6 +114,41 @@ def _get_required_input_fields(pipeline_stage: str) -> List[str]:
         return []
 
 
+def check_input_compatibility(pipeline_stage: str, input_data: Any) -> "tuple[bool, str]":
+    """检查 golden 输入能否真实驱动该 pipeline 阶段（核心字段齐全 + 模型可转换）。
+
+    返回 (compatible, reason)。不兼容的例子必须显式跳过而非：
+    (a) 以 ValidationError 计入 failed_details —— 把「金标数据格式与阶段契约
+    不匹配」误标成「候选失败」；
+    (b) 带空内容跑真 LLM —— 既烧配额又产出垃圾比较分。
+    典型不兼容（2026-10 披露）：quality 金标 input={text} 而契约是
+    {audio_path, expected_text}；annotate 金标 story_line_summary 过短违反
+    schema；analyze/extract 金标缺 book_text/text。
+    """
+    if pipeline_stage in NON_PROMPT_DRIVEN_STAGES:
+        # 质检真实契约为 (audio_path, ParagraphAnnotation, TtsRoutingDecision,
+        # reference_text) 元组（QualityCheckPipeline.run），dict 金标输入无法
+        # 驱动；且该阶段为 ASR/WER 音频规则驱动，prompt A/B 实证无意义 ——
+        # 与 integration._run_canary_validation 的整阶段跳过同源判定。
+        return False, "非 prompt 驱动阶段（音频 ASR/WER 质检），金标 dict 输入无法驱动元组契约，无法做 prompt A/B 实证"
+    if not isinstance(input_data, dict):
+        return False, f"input 不是 dict 而是 {type(input_data).__name__}"
+    missing = [f for f in _get_required_input_fields(pipeline_stage) if f not in input_data]
+    if missing:
+        return False, f"缺少阶段必需字段 {missing}"
+    try:
+        _convert_input_to_model(pipeline_stage, dict(input_data))
+    except Exception as e:  # noqa: BLE001
+        first = str(e).splitlines()[0] if str(e) else type(e).__name__
+        return False, f"输入模型转换失败: {first[:120]}"
+    return True, ""
+
+
+# 无 prompt 可换的阶段：quality 是 ASR/WER 音频质检（模型判分，非模板驱动），
+# 对它做「换 prompt 版本 A/B」在结构上不成立，须整体跳过而非硬跑。
+NON_PROMPT_DRIVEN_STAGES = frozenset({"quality"})
+
+
 # ── Self-iteration mock mode ───────────────────────────────────────────────────
 
 SELF_ITERATION_MOCK_ENV = "SELF_ITERATION_MOCK"

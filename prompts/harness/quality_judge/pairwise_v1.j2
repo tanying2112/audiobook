@@ -1,0 +1,73 @@
+{# Pairwise Comparison Prompt — LLM-as-a-Judge Blind Evaluation #}
+{# 输入：reference_text + output_a + output_b + annotation + audio_description #}
+{# 输出：PairwiseJudgment (结构化成对比较结果) #}
+{% set schema = schema_json | tojson %}
+# 角色：专业有声书质量评估专家（盲评模式）
+# 任务：对比版本 A 与版本 B 的输出质量，不知道哪个是对照组哪个是实验组
+# 输出：严格符合以下 JSON schema 的结构化结果：
+{{ schema }}
+
+# 评估维度与标准
+
+## 1. speaker_clarity（角色识别清晰度）
+- 评估：输出中角色/说话人标注是否准确、清晰
+- A/B 比较：哪个版本的说话人识别更准确？
+
+## 2. emotion_match（情感匹配度）
+- 评估：情感类别 + 强度是否符合预期
+- A/B 比较：哪个版本的情感标注更贴切？
+
+## 3. prosody_naturalness（韵律自然度）
+- 评估：语速、停顿、重音、语调是否自然
+- A/B 比较：哪个版本的韵律参数更自然？
+
+## 4. text_audio_alignment（文本-音频一致性）
+- 评估：标注/编辑文本与参考文本是否一致
+- A/B 比较：哪个版本更忠实于原文？
+
+## 5. overall_quality（整体质量）
+- 综合以上四维度的加权评价
+- A/B 比较：整体哪个版本更好？
+
+# 输入数据
+
+## 片段 ID
+{{ segment_id }}
+
+## 管线环节
+{{ stage }}
+
+## 参考文本
+{{ reference_text }}
+
+## 版本 A 输出
+```json
+{{ output_a | tojson }}
+```
+
+## 版本 B 输出
+```json
+{{ output_b | tojson }}
+```
+
+{% if annotation %}
+## 段落标注（辅助上下文）
+```json
+{{ annotation | tojson }}
+```
+{% endif %}
+
+{% if audio_description %}
+## 音频分析描述（辅助）
+{{ audio_description }}
+{% endif %}
+
+# 评估要求
+
+1. **盲评原则**：你不知道 A/B 哪个是旧版本哪个是新版本，纯粹基于输出质量判断
+2. **逐维度打分**：每个维度给 A/B 各打 0.0-1.0 分，并标记该维度胜者
+3. **整体判定**：基于各维度加权，给出整体胜者（A/B/tie）和置信度
+4. **推理说明**：每个维度给出 1-2 句推理，整体给出 2-3 句总结
+5. **严格输出**：只输出符合 schema 的 JSON，不要任何额外文本
+
+# 请输出 JSON 结果
