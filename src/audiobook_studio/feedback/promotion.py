@@ -435,6 +435,7 @@ def evaluate_promotion(
     human_samples: Optional[List[bool]] = None,
     regression_fn: Optional[Callable[..., Tuple[bool, Any]]] = None,
     candidate_id: Optional[str] = None,
+    audio_gate: Optional["GateResult"] = None,
 ) -> PromotionVerdict:
     """主入口: 评估是否允许 Prompt 版本晋升.
 
@@ -471,6 +472,10 @@ def evaluate_promotion(
     # Add regression suite check if provided
     if regression_fn is not None and candidate_id is not None:
         gates.append(promotion_gate.check_regression_suite(stage, candidate_id, regression_fn))
+
+    # Add audio quality gate if provided (Batch 2.1)
+    if audio_gate is not None:
+        gates.append(audio_gate)
 
     all_passed = all(g.passed for g in gates)
     pass_rate = sum(1 for g in gates if g.passed) / len(gates)

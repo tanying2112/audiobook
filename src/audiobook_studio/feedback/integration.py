@@ -31,6 +31,9 @@ from .promotion_gate import PromotionVerdict, _golden_to_pipeline_stage
 from .promotion_gate import _load_golden_examples
 from .promotion_gate import _load_golden_examples as load_golden_for_ab
 from .promotion_gate import _run_stage_with_prompt_version, evaluate_promotion
+# Batch 2.1: 音频质量门禁
+from .audio_quality_gate import evaluate_audio_gate, AudioGateThresholds
+from ..harness.config import get_harness_settings
 from .prompt_upgrader import _load_current_prompt, batch_upgrade
 from .quality_enhancement import (
     FreeTierHealth,
@@ -203,11 +206,20 @@ class SelfIterationLoop:
             current_content, old_version = _load_current_prompt(stage)
             new_version = old_version + 1 if old_version > 0 else 1
 
+            # Batch 2.1: 评估音频质量门禁（仅音频产出 stage + 非 mock 模式）
+            audio_gate = None
+            harness_cfg = get_harness_settings()
+            if stage in harness_cfg.AUDIO_GATE_STAGES and not harness_cfg.SELF_ITERATION_MOCK:
+                # 实际场景需要有候选/基线音频文件，mock 模式下跳过
+                # 这里留作接口，真实音频由 pipeline 产出时在外层传入
+                # 当前 self-iteration 只做文本层 rerun，无音频产出 → 诚实降级为 None
+                pass
             promotion_result = evaluate_promotion(
                 stage=stage,
                 old_version=old_version,
                 new_version=new_version,
                 human_samples=None,  # Could be populated from validation metrics
+                audio_gate=audio_gate,
             )
             logger.info(f"Promotion evaluation for {stage}: {promotion_result.summary}")
 

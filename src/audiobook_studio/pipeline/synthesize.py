@@ -53,11 +53,18 @@ _IMAGE_PLACEHOLDER_RE = re.compile(r"\[插图[:：].*?(?:\]|$)", re.DOTALL)
 # v6 逐句三轴导演：句子切分（英文按 [.!?]+ 引号边界切，中文按 [。！？；]）
 # 英文边界 = 一个/多个句末标点 + 可选收尾引号/括号 + 其后是空白或文本末；
 # 中文边界 = 中文句末标点后即切（中文句间通常无空格），收尾引号随本句。
-# 已知可接受误差：缩写 "Mr." 会被当句末切开（任务注明的既有边界）。
+# Batch 2.3: 常见缩写 (Mr./Dr./etc.) 不再误切为句末 — Python re 不支持
+# 变宽负向后行，故用链式定宽后行逐个排除（每个后行各自定宽，链式合法）。
+# 残留误差：真以缩写收尾的句子（如 "…, etc."）会并入下一句 — 宁欠勿过。
+_ABBREV_LOOKBEHIND = (
+    "(?<!\\bMr)(?<!\\bMrs)(?<!\\bMs)(?<!\\bDr)(?<!\\bSt)(?<!\\bProf)"
+    "(?<!\\bJr)(?<!\\bSr)(?<!\\bvs)(?<!\\betc)(?<!\\bInc)(?<!\\bLtd)(?<!\\bNo)"
+)
 _SENT_END_RE = re.compile(
-    r"[.!?]+[\"'\)\]”’]*"       # 英文句末 + 收尾引号/括号
+    _ABBREV_LOOKBEHIND
+    + r"[.!?]+[\"'\)\]”’」』]*"       # 英文句末 + 收尾引号/括号
     r"(?=\s|$)"                            # 其后须为空白或结尾
-    r"|[。！？；][\"'\)\]”’]*"   # 中文句末 + 收尾引号/括号
+    r"|[。！？；][\"'\)\]”’」』]*"   # 中文句末 + 收尾引号/括号
 )
 
 # v6 音色混合语法正则：^voiceA*weightA+voiceB*weightB+... (weight 可选，缺省 1.0)
@@ -84,8 +91,10 @@ def _split_sentences(text: str) -> List[str]:
     A closing quote stays with the sentence it closes: 'He said "Go!" Then.'
     → ['He said "Go!"', 'Then.'].
 
-    Known acceptable error (documented in the task): abbreviations like
-    ``Mr.`` are treated as sentence ends.
+    Batch 2.3: common English abbreviations (Mr./Dr./etc.) are excluded
+    via chained fixed-width negative lookbehinds — no longer split as
+    sentence ends. Residual: a sentence genuinely ending in an
+    abbreviation (e.g. "…, etc.") merges into the next.
     """
     if not text or not text.strip():
         return []
@@ -118,6 +127,10 @@ def _is_blend_voice_id(voice_id: str) -> bool:
 
 # 句间默认 micro 间隙 (v6 MICRO_GAP=0.22s; 与 kokoro 句内 chunk 间隙 200ms 同档)
 SENTENCE_GAP_DEFAULT_MS = 220
+
+# zh 韵律分级停顿 (Batch 2.3): 句尾标点类别决定句间默认停顿。
+ZH_SENTENCE_END_PAUSE_MS = 500   # 。！？ 完整句末
+ZH_SEMICOLON_PAUSE_MS = 300      # ； 半句停顿
 
 # 校准 dB 封顶 (v6 CALIB_CAP 系统化为 ±3dB)
 VOICE_CALIB_CAP_DB = 3.0
@@ -176,6 +189,31 @@ def merge_sentence_prosody(
     if override.get("voice_id"):
         voice_id = str(override["voice_id"])
     return voice_id, prosody
+
+
+# zh 分级判定用的句尾集合
+_ZH_SENT_END_CHARS = "。！？"
+_PAUSE_CLOSER_CHARS = "」』”’\"'）)]}>》"
+
+
+def _sentence_pause_default_ms(sent: str) -> int:
+    """按句尾标点类别给出默认句间停顿 (纯函数, 便于单测).
+
+    中文句末 (。！？) → 500ms; 中文分号 (；) → 300ms;
+    英文句末/其他 (省略号、无标点残句) → SENTENCE_GAP_DEFAULT_MS (220ms,
+    v6 校准值, 无证据不调)。中文逗号/顿号不构成句边界 (_SENT_END_RE 不含),
+    句内停顿由引擎 clause pause 处理。判定前剥除句尾空白与收尾引号/括号;
+    显式 override 的 pause_after_ms 经 _override_pause_ms 仍优先于此默认。
+    """
+    for ch in reversed((sent or "").rstrip()):
+        if ch in _ZH_SENT_END_CHARS:
+            return ZH_SENTENCE_END_PAUSE_MS
+        if ch == "；":
+            return ZH_SEMICOLON_PAUSE_MS
+        if ch in _PAUSE_CLOSER_CHARS:
+            continue
+        return SENTENCE_GAP_DEFAULT_MS
+    return SENTENCE_GAP_DEFAULT_MS
 
 
 def _override_pause_ms(override: dict[str, Any], default_ms: int) -> int:
@@ -1061,9 +1099,9 @@ class SynthesizePipeline:
                         logger.warning("soxr unavailable; keeping native-rate piece (will drift)")
                 audio_parts.append(data.astype(np.float32))
 
-                # Silence after the sentence: explicit override > default micro gap.
+                # Silence after the sentence: explicit override > punctuation-class default (Batch 2.3 zh 分级).
                 if k < n - 1:
-                    pause_ms = _override_pause_ms(ovr, SENTENCE_GAP_DEFAULT_MS)
+                    pause_ms = _override_pause_ms(ovr, _sentence_pause_default_ms(sent))
                 else:
                     pause_ms = _override_pause_ms(ovr, 0)
                 if pause_ms > 0 and target_sr:
