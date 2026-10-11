@@ -1,25 +1,29 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from '../i18n'
-import { fetchProject } from '../api'
-import type { Project } from '../types'
-import api from '../api'
+import { useProjectStore } from '../stores/projects'
 import { Icon } from '@iconify/vue'
+import api from '../api'
+import { fetchExportFiles, downloadExportFile } from '../api'
+import type { ExportFileInfo } from '../api'
+import '../views/ExportView.css'
 
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
+const projectStore = useProjectStore()
 
 const projectId = Number(route.params.projectId || route.params.id)
-const project = ref<Project | null>(null)
-const availableFormats = ref([
+
+const availableFormats = [
   { value: 'm4b', label: t('export.format_m4b'), description: t('export.format_m4b_desc') },
   { value: 'srt', label: t('export.format_srt'), description: t('export.format_srt_desc') },
   { value: 'vtt', label: t('export.format_vtt'), description: t('export.format_vtt_desc') },
   { value: 'm4b_srt', label: t('export.format_m4b_srt'), description: t('export.format_m4b_srt_desc') },
   { value: 'all', label: t('export.format_all'), description: t('export.format_all_desc') },
-])
+]
+
 const selectedFormats = ref<string[]>(['m4b_srt'])
 const exportOptions = ref({
   normalize: true,
@@ -28,19 +32,21 @@ const exportOptions = ref({
 })
 const exporting = ref(false)
 const exportResult = ref<any>(null)
+const exportFiles = ref<ExportFileInfo[]>([])
+const downloadingPath = ref<string | null>(null)
+const downloadError = ref<string | null>(null)
 
 onMounted(async () => {
-  try {
-    project.value = await fetchProject(projectId)
-  } catch (e) {
-    console.error('Failed to load project:', e)
+  if (!projectStore.currentProject || projectStore.currentProject.id !== projectId) {
+    await projectStore.loadProject(projectId)
   }
 })
 
 async function startExport() {
   exporting.value = true
   exportResult.value = null
-
+  exportFiles.value = []
+  downloadError.value = null
   try {
     const { data } = await api.post(`/api/projects/${projectId}/export/`, {
       formats: selectedFormats.value,
@@ -49,6 +55,13 @@ async function startExport() {
       max_chars_per_line: exportOptions.value.max_chars_per_line,
     })
     exportResult.value = data
+    // Poll until terminal state (queued/running/pending → complete/completed/failed)
+    if (data.status === 'queued' || data.status === 'running' || data.status === 'pending') {
+      await pollExportStatus()
+    }
+    if (isTerminalComplete(exportResult.value?.status)) {
+      await refreshExportFiles()
+    }
   } catch (e: any) {
     exportResult.value = {
       status: 'failed',
@@ -56,6 +69,80 @@ async function startExport() {
     }
   } finally {
     exporting.value = false
+  }
+}
+
+function isTerminalComplete(status: string): boolean {
+  return status === 'completed' || status === 'complete'
+}
+
+async function pollExportStatus() {
+  const maxAttempts = 120 // ~4 minutes at 2s interval
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise((r) => setTimeout(r, 2000))
+    try {
+      const status = await api.getExportStatus(projectId)
+      exportResult.value = status
+      if (isTerminalComplete(status.status) || status.status === 'failed') return
+    } catch (e) {
+      // Transient error — keep polling
+    }
+  }
+  // Timeout — keep whatever state we have
+}
+
+async function refreshExportFiles() {
+  try {
+    const res = await fetchExportFiles(projectId)
+    exportFiles.value = res.files || []
+  } catch (e: any) {
+    // Non-fatal: the output paths list still shows server-side paths.
+    console.warn('[ExportView] 加载导出产物清单失败:', e?.message || e)
+  }
+}
+
+/** Derive the artifact filename from a server-side output path. */
+function basenameOf(path: string): string {
+  if (!path) return ''
+  const parts = path.replace(/\\/g, '/').split('/')
+  return parts[parts.length - 1] || ''
+}
+
+/** Find the file entry matching an output path (by basename). */
+function fileForPath(path: string): ExportFileInfo | undefined {
+  const name = basenameOf(path)
+  return exportFiles.value.find((f) => f.filename === name)
+}
+
+function formatSize(bytes: number): string {
+  // Number() coercion: guards against the backend's ISO-timestamp middleware
+  // stringifying very large (>1GB) numeric values in edge cases.
+  const n = Number(bytes)
+  if (!Number.isFinite(n)) return ''
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
+
+async function downloadPath(path: string) {
+  const rel = fileForPath(path)?.rel_path || basenameOf(path)
+  if (!rel) return
+  downloadingPath.value = rel
+  downloadError.value = null
+  try {
+    const blob = await downloadExportFile(projectId, rel)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = basenameOf(path) || rel
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  } catch (e: any) {
+    downloadError.value = e?.message || String(e)
+  } finally {
+    downloadingPath.value = null
   }
 }
 
@@ -72,6 +159,15 @@ function getStatusClass(status: string): string {
   }
   return map[status?.toLowerCase()] || 'badge-muted'
 }
+
+function toggleFormat(fmtValue: string) {
+  const idx = selectedFormats.value.indexOf(fmtValue)
+  if (idx >= 0) {
+    selectedFormats.value.splice(idx, 1)
+  } else {
+    selectedFormats.value.push(fmtValue)
+  }
+}
 </script>
 
 <template>
@@ -81,20 +177,25 @@ function getStatusClass(status: string): string {
         <Icon icon="mdi:arrow-left" width="18" height="18" />
         <span class="hidden-mobile">{{ t('common.back') }}</span>
       </button>
-      <div class="flex-1">
+      <div class="header-text">
         <h1>{{ t('export.title') }}</h1>
         <p class="page-subtitle">{{ t('export.subtitle') }}</p>
       </div>
     </header>
 
     <!-- Project Info -->
-    <section v-if="project" class="card card-hover section">
-      <div class="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h2 class="card-title">{{ project.title }}</h2>
-          <div class="flex items-center gap-3 mt-2 text-secondary">
-            <span v-if="project.author"><Icon icon="mdi:account" width="16" height="16" class="gap-2" />{{ project.author }}</span>
-            <span :class="getStatusClass(project.status || 'pending')">{{ t('common.' + (project.status || 'pending')) }}</span>
+    <section v-if="projectStore.currentProject" class="card card-hover section">
+      <div class="project-info-row">
+        <div class="project-info-text">
+          <h2 class="card-title">{{ projectStore.currentProject.title }}</h2>
+          <div class="project-meta">
+            <span v-if="projectStore.currentProject.author" class="meta-item">
+              <Icon icon="mdi:account" width="16" height="16" />
+              {{ projectStore.currentProject.author }}
+            </span>
+            <span :class="getStatusClass(projectStore.currentProject.status || 'pending')">
+              {{ t('common.' + (projectStore.currentProject.status || 'pending')) }}
+            </span>
           </div>
         </div>
       </div>
@@ -104,56 +205,66 @@ function getStatusClass(status: string): string {
     <section class="card card-hover section">
       <h2 class="card-title">{{ t('export.configuration') }}</h2>
 
-      <div class="form-group mb-4">
+      <div class="form-group">
         <label class="form-label">{{ t('export.formats') }}</label>
-        <div class="format-options grid gap-3" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
-          <label v-for="fmt in availableFormats" :key="fmt.value" class="checkbox-label card p-3 cursor-pointer flex flex-col gap-2" :class="{ 'border-primary bg-primary-soft': selectedFormats.includes(fmt.value) }" @click.stop="selectedFormats.includes(fmt.value) ? selectedFormats.splice(selectedFormats.indexOf(fmt.value), 1) : selectedFormats.push(fmt.value)">
-            <div class="flex items-center gap-2">
-              <input type="checkbox" :value="fmt.value" v-model="selectedFormats" class="checkbox" style="accent-color: var(--color-primary); width: 18px; height: 18px;" />
-              <span class="format-name font-medium">{{ fmt.label }}</span>
+        <div class="format-grid">
+          <label
+            v-for="fmt in availableFormats"
+            :key="fmt.value"
+            class="format-card"
+            :class="{ 'format-card-selected': selectedFormats.includes(fmt.value) }"
+            @click.stop="toggleFormat(fmt.value)"
+          >
+            <div class="format-card-row">
+              <input
+                type="checkbox"
+                :value="fmt.value"
+                v-model="selectedFormats"
+                class="format-checkbox"
+              />
+              <span class="format-name">{{ fmt.label }}</span>
             </div>
-            <span class="format-desc text-muted text-sm">{{ fmt.description }}</span>
+            <span class="format-desc">{{ fmt.description }}</span>
           </label>
         </div>
       </div>
 
-      <div class="form-group mb-4">
+      <div class="form-group">
         <label class="form-label">{{ t('export.options') }}</label>
-        <div class="flex flex-wrap gap-4">
-          <label class="checkbox-label flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" v-model="exportOptions.normalize" class="checkbox" style="accent-color: var(--color-primary); width: 18px; height: 18px;" />
-            {{ t('export.normalize') }}
+        <div class="option-checks">
+          <label class="option-check">
+            <input type="checkbox" v-model="exportOptions.normalize" class="format-checkbox" />
+            <span>{{ t('export.normalize') }}</span>
           </label>
-          <label class="checkbox-label flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" v-model="exportOptions.include_cover" class="checkbox" style="accent-color: var(--color-primary); width: 18px; height: 18px;" />
-            {{ t('export.includeCover') }}
+          <label class="option-check">
+            <input type="checkbox" v-model="exportOptions.include_cover" class="format-checkbox" />
+            <span>{{ t('export.includeCover') }}</span>
           </label>
         </div>
       </div>
 
-      <div class="form-group mb-4">
+      <div class="form-group">
         <label class="form-label">{{ t('export.maxCharsPerLine') }}</label>
         <input
           type="number"
           v-model.number="exportOptions.max_chars_per_line"
           min="20"
           max="80"
-          class="form-control"
-          style="max-width: 120px;"
+          class="form-control max-w-input"
         />
       </div>
     </section>
 
     <!-- Export Actions -->
     <section class="card card-hover section">
-      <div class="flex justify-end gap-2 mb-4">
+      <div class="export-actions">
         <button
           class="btn btn-primary btn-lg"
           @click="startExport"
           :disabled="selectedFormats.length === 0 || exporting"
         >
-          <Icon v-if="exporting" icon="mdi:loading" width="18" height="18" class="spinner gap-2" style="border-color: rgba(255,255,255,.35); border-top-color: #fff" />
-          <Icon v-else icon="mdi:export" width="18" height="18" class="gap-2" />
+          <Icon v-if="exporting" icon="mdi:loading" width="18" height="18" class="spinner" />
+          <Icon v-else icon="mdi:export" width="18" height="18" />
           {{ exporting ? t('export.exporting') : t('export.startExport') }}
         </button>
       </div>
@@ -165,31 +276,63 @@ function getStatusClass(status: string): string {
           <span>{{ t('export.exporting') }}...</span>
         </div>
 
-        <div v-else-if="exportResult" class="card" :class="exportResult.status === 'completed' ? 'border-success' : exportResult.status === 'failed' ? 'border-danger' : 'border-warning'">
-          <div class="p-4">
-            <div v-if="exportResult.status === 'completed'" class="flex items-center gap-3 text-success">
+        <div v-else-if="exportResult" class="export-result-card" :class="`result-${exportResult.status}`">
+          <!-- Completed -->
+          <div v-if="isTerminalComplete(exportResult.status)" class="result-body">
+            <div class="result-header text-success">
               <Icon icon="mdi:check-circle" width="24" height="24" />
               <div>
-                <h3 class="font-medium">{{ t('export.success') }}</h3>
-                <div v-if="exportResult.output_paths" class="output-paths mt-3 space-y-2">
-                  <div v-for="(path, format) in exportResult.output_paths" :key="format" class="path-item flex items-center gap-2 p-2" style="background: var(--color-bg-tertiary); border-radius: var(--radius);">
+                <h3 class="result-title">{{ t('export.success') }}</h3>
+                <div v-if="exportResult.output_paths" class="output-paths">
+                  <div
+                    v-for="(path, format) in exportResult.output_paths"
+                    :key="format"
+                    class="path-item download-row"
+                  >
                     <span class="badge badge-primary">{{ String(format).toUpperCase() }}</span>
-                    <span class="path font-mono text-sm truncate" style="flex: 1;">{{ path }}</span>
+                    <span class="path-text">{{ basenameOf(String(path)) || path }}</span>
+                    <span v-if="fileForPath(String(path))" class="file-size text-muted">
+                      {{ formatSize(fileForPath(String(path))!.size_bytes) }}
+                    </span>
+                    <button
+                      class="btn btn-primary btn-sm touch-target"
+                      :disabled="downloadingPath === (fileForPath(String(path))?.rel_path || basenameOf(String(path)))"
+                      @click="downloadPath(String(path))"
+                    >
+                      <Icon
+                        :icon="downloadingPath === (fileForPath(String(path))?.rel_path || basenameOf(String(path))) ? 'mdi:loading' : 'mdi:download'"
+                        width="16"
+                        height="16"
+                        :class="{ spinner: downloadingPath === (fileForPath(String(path))?.rel_path || basenameOf(String(path))) }"
+                      />
+                      {{ downloadingPath === (fileForPath(String(path))?.rel_path || basenameOf(String(path)))
+                        ? t('common.loading')
+                        : t('common.download') }}
+                    </button>
                   </div>
                 </div>
+                <p v-if="downloadError" class="result-detail text-danger">{{ downloadError }}</p>
               </div>
             </div>
-            <div v-else-if="exportResult.status === 'failed'" class="flex items-center gap-3 text-danger">
+          </div>
+
+          <!-- Failed -->
+          <div v-else-if="exportResult.status === 'failed'" class="result-body">
+            <div class="result-header text-danger">
               <Icon icon="mdi:alert-circle" width="24" height="24" />
               <div>
-                <h3 class="font-medium">{{ t('export.failed') }}</h3>
-                <p class="mt-1">{{ exportResult.error }}</p>
+                <h3 class="result-title">{{ t('export.failed') }}</h3>
+                <p class="result-detail">{{ exportResult.error }}</p>
               </div>
             </div>
-            <div v-else class="flex items-center gap-3 text-warning">
+          </div>
+
+          <!-- Other status -->
+          <div v-else class="result-body">
+            <div class="result-header text-warning">
               <Icon icon="mdi:clock-outline" width="24" height="24" />
               <div>
-                <h3 class="font-medium">{{ t('export.status') }}: {{ exportResult.status }}</h3>
+                <h3 class="result-title">{{ t('export.status') }}: {{ exportResult.status }}</h3>
               </div>
             </div>
           </div>
@@ -198,57 +341,3 @@ function getStatusClass(status: string): string {
     </section>
   </div>
 </template>
-
-<style scoped>
-.export-view {
-  max-width: 800px;
-}
-
-.format-options {
-  display: grid;
-  gap: 12px;
-}
-
-.checkbox-label {
-  transition: all var(--transition);
-  cursor: pointer;
-}
-
-.checkbox-label:hover {
-  background: var(--color-bg-tertiary);
-}
-
-.checkbox-label:has(input:checked) {
-  border-color: var(--color-primary);
-  background: var(--color-primary-soft);
-}
-
-.format-name {
-  font-weight: 500;
-}
-
-.format-desc {
-  color: var(--color-text-muted);
-  font-size: 12px;
-}
-
-.path-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.path {
-  font-family: monospace;
-  font-size: 13px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-@media (max-width: 767px) {
-  .format-options {
-    grid-template-columns: 1fr;
-  }
-}
-</style>

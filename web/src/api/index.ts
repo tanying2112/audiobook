@@ -375,6 +375,44 @@ export async function getExportStatus(projectId: number): Promise<ExportStatusRe
   return data
 }
 
+// ── Export artifacts (P0 HTTP download closure) ───────────────────────────
+
+export interface ExportFileInfo {
+  filename: string
+  format: string
+  size_bytes: number
+  /** ISO 8601 modification time */
+  mtime: string
+  rel_path: string
+}
+
+export interface ExportFilesResponse {
+  project_id: number
+  export_dir: string
+  files: ExportFileInfo[]
+}
+
+export async function fetchExportFiles(projectId: number): Promise<ExportFilesResponse> {
+  const { data } = await api.get(`/api/projects/${projectId}/export/files`)
+  return data
+}
+
+/**
+ * Download an export artifact as a Blob via the shared axios client (so the
+ * Authorization header and refresh interceptor apply), then hand it to the
+ * browser as an object URL for saving.
+ */
+export async function downloadExportFile(projectId: number, relPath: string): Promise<Blob> {
+  const response = await api.get(`/api/projects/${projectId}/export/download`, {
+    params: { path: relPath },
+    responseType: 'blob',
+    // The response is a binary file; do not let the interceptor's JSON error
+    // normalization treat blob bodies as text.
+    timeout: 120000,
+  })
+  return response.data as Blob
+}
+
 // ── Characters ──────────────────────────────────────────────────────────
 
 export async function fetchCharacters(projectId: number): Promise<Character[]> {
@@ -392,7 +430,8 @@ export async function updateCharacter(
   characterId: number,
   payload: Partial<Character>,
 ): Promise<Character> {
-  const { data } = await api.put(`/api/projects/${projectId}/characters/${characterId}`, payload)
+  // Backend exposes PATCH (not PUT) on /characters/{id}; PUT would 405.
+  const { data } = await api.patch(`/api/projects/${projectId}/characters/${characterId}`, payload)
   return data
 }
 

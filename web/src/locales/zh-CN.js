@@ -1906,5 +1906,10 @@ publish: {
     includeCover: '包含封面图片',
     maxCharsPerLine: '每行字幕最大字符数',
     startExport: '开始导出',
+    exporting: '正在导出',
+    success: '导出成功',
+    failed: '导出失败',
+    status: '导出状态',
+    download: '下载',
   },
 }

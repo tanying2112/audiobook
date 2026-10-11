@@ -111,10 +111,14 @@ describe('CharacterManager.vue — SOP 纠错投喂 (P0.1)', () => {
     ;(wrapper.findAll('button').find((b) => b.text().includes('common.save')) as any)?.trigger('click')
     await flushPromises()
 
-    // updateCharacter 被调用（主路径）：voice 未改 → 携带原 voice-A
+    // updateCharacter 被调用（主路径）：voice 未改 → 携带原 voice-A；
+    // P3b: emotion/speech_rate/pitch_shift_semitones 也进 payload（原死 UI 修复）
     expect(updateCharacterMock).toHaveBeenCalledWith(7, 1, {
       canonical_name: '林教头',
       suggested_voice_id: 'voice-A',
+      emotion: 'neutral',
+      speech_rate: 1.0,
+      pitch_shift_semitones: 0,
     } as any)
 
     // ① 投喂：改名 → speaker_canonical_name（声音未变 → 不投喂 suggested_voice_id）
