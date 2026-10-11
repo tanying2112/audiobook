@@ -82,6 +82,12 @@ class Paragraph(Base):
     manual_voice_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     manual_engine: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
+    # v6 逐句三轴导演：可选的逐句韵律覆盖数组
+    # 每项: {"idx": 0, "gain_db": 4.0, "speed": 0.86, "pitch_st": 1.0,
+    #        "voice_id": "am_onyx+am_fenrir*0.55", "pause_after_ms": 350}
+    # 字段全部可选，缺省继承段落级设置。
+    sentence_overrides: Mapped[Optional[list[dict]]] = mapped_column(JSON, nullable=True)
+
     # 环节⑥质检
     quality_speaker_clarity: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     quality_emotion_match: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
@@ -188,6 +194,8 @@ class Paragraph(Base):
             # 人工终审覆盖
             "manual_voice_id": self.manual_voice_id,
             "manual_engine": self.manual_engine,
+            # v6 逐句导演
+            "sentence_overrides": self.sentence_overrides,
             # 环节⑥质检
             "quality_overall_score": self.quality_overall_score,
             "quality_needs_regeneration": self.quality_needs_regeneration,

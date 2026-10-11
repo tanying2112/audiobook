@@ -85,6 +85,9 @@ class ReviewParagraphPatch(BaseModel):
     confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     notes: Optional[str] = None
     note: Optional[str] = Field(default=None, description="追加备注（未显式给 notes 时附加到现有 notes）")
+    # v6 逐句三轴导演覆盖
+    sentence_overrides: Optional[List[Dict[str, Any]]] = None
+    clear_sentence_overrides: bool = False
     # 客户最终控制：逐段强制引擎/音色（NULL=不覆盖，走自动路由）
     manual_engine: Optional[str] = None
     manual_voice_id: Optional[str] = None
@@ -490,10 +493,13 @@ async def patch_review_paragraph(
     if payload.clear_manual_voice_id and para.manual_voice_id is not None:
         para.manual_voice_id = None
         changes_made.append("manual_voice_id")
+    if payload.clear_sentence_overrides and para.sentence_overrides is not None:
+        para.sentence_overrides = None
+        changes_made.append("sentence_overrides")
 
     old_edited_text = para.edited_text
     for field, value in data.items():
-        if field in ("clear_manual_engine", "clear_manual_voice_id", "note"):
+        if field in ("clear_manual_engine", "clear_manual_voice_id", "clear_sentence_overrides", "note"):
             continue
         if getattr(para, field) != value:
             setattr(para, field, value)

@@ -86,6 +86,10 @@ class TtsRoutingInput(BaseModel):
     enable_cloning: bool = Field(default=False, description="启用零样本克隆 (需 sample_quote)")
     # v0.5 新增: RAG 检索上下文 (用于韵律/声音一致性)
     rag_context: Optional[str] = Field(default=None, description="RAG 检索上下文，用于韵律/声音一致性")
+    # v6 新增: 逐句三轴导演覆盖 (sentence_overrides)
+    # 每项: {"idx": 0, "gain_db": 4.0, "speed": 0.86, "pitch_st": 1.0,
+    #        "voice_id": "am_onyx+am_fenrir*0.55", "pause_after_ms": 350}
+    sentence_overrides: Optional[list[dict]] = Field(default=None, description="逐句韵律覆盖数组")
     # 人工终审覆盖 (Manual Review Gate)：客户在合成前逐段强制指定的
     # voice/engine，优先于角色绑定与能力路由 (NULL=自动决策)
     manual_voice_id: Optional[str] = Field(default=None, description="人工覆盖音色 ID (终审门)")

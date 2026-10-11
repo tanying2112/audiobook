@@ -15,6 +15,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import math
 import os
 import re
 import time
@@ -49,6 +50,20 @@ logger = logging.getLogger(__name__)
 _IMAGE_PLACEHOLDER_RE = re.compile(r"\[插图[:：].*?(?:\]|$)", re.DOTALL)
 
 
+# v6 逐句三轴导演：句子切分（英文按 [.!?]+ 引号边界切，中文按 [。！？；]）
+# 英文边界 = 一个/多个句末标点 + 可选收尾引号/括号 + 其后是空白或文本末；
+# 中文边界 = 中文句末标点后即切（中文句间通常无空格），收尾引号随本句。
+# 已知可接受误差：缩写 "Mr." 会被当句末切开（任务注明的既有边界）。
+_SENT_END_RE = re.compile(
+    r"[.!?]+[\"'\)\]”’]*"       # 英文句末 + 收尾引号/括号
+    r"(?=\s|$)"                            # 其后须为空白或结尾
+    r"|[。！？；][\"'\)\]”’]*"   # 中文句末 + 收尾引号/括号
+)
+
+# v6 音色混合语法正则：^voiceA*weightA+voiceB*weightB+... (weight 可选，缺省 1.0)
+_BLEND_RE = re.compile(r"^[A-Za-z0-9_]+(?:\*[0-9.]+)?(?:\+[A-Za-z0-9_]+(?:\*[0-9.]+)?)*$")
+
+
 def _strip_image_placeholders(text: str) -> str:
     """Remove ``[插图: ...]`` image-understanding blocks from paragraph text
     before TTS. Returns the remaining speakable text (whitespace-normalized);
@@ -57,6 +72,122 @@ def _strip_image_placeholders(text: str) -> str:
         return ""
     cleaned = _IMAGE_PLACEHOLDER_RE.sub(" ", text)
     return " ".join(cleaned.split())
+
+
+def _split_sentences(text: str) -> List[str]:
+    """Split paragraph text into sentences (v6 逐句导演的切句规则).
+
+    English: boundary at ``[.!?]+`` + optional closing quotes/brackets,
+    only when followed by whitespace or end-of-text (mirrors v6's
+    split_sentences quote-boundary behaviour).
+    Chinese: boundary right after ``[。！？；]`` + optional closing quotes.
+    A closing quote stays with the sentence it closes: 'He said "Go!" Then.'
+    → ['He said "Go!"', 'Then.'].
+
+    Known acceptable error (documented in the task): abbreviations like
+    ``Mr.`` are treated as sentence ends.
+    """
+    if not text or not text.strip():
+        return []
+    sentences: List[str] = []
+    start = 0
+    for m in _SENT_END_RE.finditer(text):
+        end = m.end()
+        # 英文边界：吞掉句后的空白（v6 同款），中文边界不吞（句间无空白）
+        if m.group() and m.group()[0] in ".!?":
+            j = end
+            while j < len(text) and text[j] in " \t":
+                j += 1
+            end = j
+        seg = text[start:end].strip()
+        if seg:
+            sentences.append(seg)
+        start = end
+    tail = text[start:].strip()
+    if tail:
+        sentences.append(tail)
+    return sentences
+
+
+def _is_blend_voice_id(voice_id: str) -> bool:
+    """Check if voice_id uses v6 blend syntax (e.g., 'am_onyx+am_fenrir*0.55')."""
+    return bool(_BLEND_RE.match(voice_id))
+
+
+# ── v6 收编: 逐句三轴导演 + per-voice 响度校准 (纯函数, 便于单测) ─────────
+
+# 句间默认 micro 间隙 (v6 MICRO_GAP=0.22s; 与 kokoro 句内 chunk 间隙 200ms 同档)
+SENTENCE_GAP_DEFAULT_MS = 220
+
+# 校准 dB 封顶 (v6 CALIB_CAP 系统化为 ±3dB)
+VOICE_CALIB_CAP_DB = 3.0
+
+
+def _CALIB_TARGET_LUFS() -> float:
+    """Target integrated loudness — utils/loudness.py audiobook 档的 I (EBU R128)."""
+    from ..utils.loudness import resolve_loudness
+
+    return resolve_loudness("audiobook")[0]
+
+
+def compute_voice_calib_db(
+    measured_lufs: Optional[float],
+    target_lufs: Optional[float] = None,
+    cap_db: float = VOICE_CALIB_CAP_DB,
+) -> float:
+    """Per-voice calibration: calib_db = clamp(TARGET_LUFS - measured, -cap, +cap).
+
+    v6 语义: 实测偏响 (measured > target) → 负值压低; 实测偏轻 → 正值抬升;
+    首件实测 -inf / None (mock 离线静音 / 测量失败) → 0 (只对真实引擎生效)。
+    """
+    if measured_lufs is None:
+        return 0.0
+    if math.isinf(measured_lufs) or math.isnan(measured_lufs):
+        return 0.0
+    target = target_lufs if target_lufs is not None else _CALIB_TARGET_LUFS()
+    return float(max(-cap_db, min(cap_db, target - measured_lufs)))
+
+
+def merge_sentence_prosody(
+    paragraph_voice_id: str,
+    paragraph_prosody: dict[str, Any],
+    override: dict[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    """Merge a sentence-level director override onto the paragraph prosody.
+
+    Field semantics (v6 逐句三轴):
+      - ``gain_db``: delta ADDED onto the paragraph volume (dB)
+      - ``speed``: REPLACES the paragraph rate
+      - ``pitch_st``: REPLACES the paragraph pitch (semitones)
+      - ``voice_id``: REPLACES the sentence voice
+    Missing/None fields inherit the paragraph-level value untouched.
+
+    Returns (effective_voice_id, effective_prosody); the input dicts are not
+    mutated (a copy is returned).
+    """
+    prosody = dict(paragraph_prosody)
+    if override.get("speed") is not None:
+        prosody["rate"] = float(override["speed"])
+    if override.get("pitch_st") is not None:
+        prosody["pitch"] = float(override["pitch_st"])
+    if override.get("gain_db") is not None:
+        prosody["volume"] = float(prosody.get("volume") or 0.0) + float(override["gain_db"])
+    voice_id = paragraph_voice_id
+    if override.get("voice_id"):
+        voice_id = str(override["voice_id"])
+    return voice_id, prosody
+
+
+def _override_pause_ms(override: dict[str, Any], default_ms: int) -> int:
+    """Explicit pause_after_ms from an override, else the default (None-safe)."""
+    raw = override.get("pause_after_ms")
+    if raw is None:
+        return int(default_ms)
+    try:
+        val = int(float(raw))
+    except (TypeError, ValueError):
+        return int(default_ms)
+    return max(0, val)
 
 
 # Edge-TTS voice ID -> Kokoro voice ID mapping
@@ -128,6 +259,13 @@ def _normalize_voice_id(voice_id: str, engine_choice: str, *, strict: bool = Fal
         if engine_choice == "piper":
             return "zh_CN-huayan-medium"
         return "zh-CN-XiaoxiaoNeural"
+    # v6 blend syntax (e.g. "am_onyx+am_fenrir*0.55") — explicit caller intent
+    # (multi-timbre weighted mix). Pass through untouched for any engine and
+    # strictness: the engine owns the honest accept/reject (kokoro_backend
+    # resolves blends via parse_blend_voice; other engines fail loudly rather
+    # than silently swapping in the narrator default).
+    if _is_blend_voice_id(voice_id) and "+" in voice_id:
+        return voice_id
     if engine_choice == "kokoro":
         # Map Edge voice_id to Kokoro equivalent; pass through if it's already a
         # Kokoro ID, else default to ``zf_xiaoxiao``.
@@ -310,6 +448,10 @@ class SynthesizePipeline:
         # Track existing segments for incremental synthesis
         self.existing_segments: dict[str, AudioSegment] = {}
         self._mock_segment_counter = 0
+        # P2a: per-voice loudness calibration (run-level cache, voice_id → calib dB).
+        # 首件实测 ebur128 → clamp ±3dB → 后续该音色 volume += calib_db;
+        # 落盘 self.output_dir / voice_calibration.json 便于观测。
+        self._voice_calib: Dict[str, float] = {}
 
         logger.info(f"SynthesizePipeline initialized with mock_mode={self.mock_mode}, crossfade_ms={self.crossfade_ms}")
 
@@ -429,6 +571,7 @@ class SynthesizePipeline:
         prosody: dict[str, Any],
         output_path: Path,
         segment_id: str,
+        voice_strict: bool = False,
     ) -> tuple[int, str]:
         """Synthesize text to audio via RemoteTTSPort.
 
@@ -440,6 +583,9 @@ class SynthesizePipeline:
             prosody: Prosody parameters.
             output_path: Local path to save audio.
             segment_id: Unique segment identifier for task tracking.
+            voice_strict: Pass caller-named voice IDs through engine
+                normalization untouched (sentence-level director overrides
+                name a voice explicitly; the engine owns accept/reject).
 
         Returns:
             Tuple of (duration_ms, engine_name).
@@ -455,7 +601,7 @@ class SynthesizePipeline:
         # the port's real engine so we never feed an Edge voice_id to
         # Kokoro (or vice versa). See ADR-005 / fallback-chain.
         actual_engine = _port_engine_name(port)
-        voice_id = _normalize_voice_id(voice_id, actual_engine)
+        voice_id = _normalize_voice_id(voice_id, actual_engine, strict=voice_strict)
         payload = self._build_payload(text, voice_id, prosody)
 
         # Check audio semantic cache first (Tier 1: exact, Tier 2: semantic)
@@ -728,6 +874,216 @@ class SynthesizePipeline:
             logger.info("Falling back to port synthesis")
             return await self._synthesize_via_port(text, voice_id, prosody, output_path, segment_id)
 
+    # ── P2a: per-voice loudness calibration (v6 收编) ─────────────────────
+    # 每音色首件实测 ebur128 integrated loudness → 校准 dB (cap ±3dB) →
+    # run 级缓存 → 后续该音色件 volume += calib_db → 落盘 voice_calibration.json。
+
+    async def _measure_integrated_lufs(self, audio_path: Path) -> Optional[float]:
+        """Measure EBU R128 integrated loudness (LUFS) via ffmpeg ebur128.
+
+        Returns None when ffmpeg is unavailable / fails / no parsable summary
+        (mock-offline silence yields ``-inf`` which IS returned as-is; callers
+        treat it via compute_voice_calib_db → 0).
+        """
+        if not audio_path.exists():
+            return None
+        cmd = [
+            "ffmpeg",
+            "-hide_banner",
+            "-nostats",
+            "-i",
+            str(audio_path),
+            "-af",
+            "ebur128=peak=true",
+            "-f",
+            "null",
+            "-",
+        ]
+        cmd = safe_subprocess_args(cmd)
+        try:
+            result = await run_ffmpeg(cmd, timeout=30, capture_output=True)
+        except Exception as e:
+            logger.warning("ebur128 measurement failed for %s: %s", audio_path, e)
+            return None
+        if result.returncode != 0:
+            logger.warning("ebur128 returned rc=%s for %s", result.returncode, audio_path)
+            return None
+        stderr_text = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
+        summary_at = stderr_text.find("Summary:")
+        if summary_at < 0:
+            return None
+        summary = stderr_text[summary_at:]
+        m = re.search(r"I:\s*(-?\d+(?:\.\d+)?|-inf)\s*LUFS", summary)
+        if not m:
+            return None
+        raw = m.group(1)
+        return float("-inf") if raw == "-inf" else float(raw)
+
+    async def _probe_voice_calibration(self, voice_id: str, audio_path: Path) -> float:
+        """First successful synthesis of a voice → measure → cache calib_db.
+
+        Measured loudness of -inf/None (mock/offline silence, empty audio)
+        → calib 0 (calibration only kicks in for real engines).
+        """
+        measured = await self._measure_integrated_lufs(audio_path)
+        calib = compute_voice_calib_db(measured)
+        self._voice_calib[voice_id] = calib
+        logger.info(
+            "P2a voice calibration: voice=%s measured=%s LUFS → calib=%+.2f dB (target %.1f LUFS)",
+            voice_id,
+            measured,
+            calib,
+            _CALIB_TARGET_LUFS(),
+        )
+        self._persist_voice_calibration()
+        return calib
+
+    def _persist_voice_calibration(self) -> None:
+        """Write the run-level calibration table to voice_calibration.json (observability)."""
+        payload = {
+            "target_lufs": _CALIB_TARGET_LUFS(),
+            "cap_db": VOICE_CALIB_CAP_DB,
+            "voices": {k: round(v, 3) for k, v in sorted(self._voice_calib.items())},
+        }
+        try:
+            (self.output_dir / "voice_calibration.json").write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+        except OSError as exc:
+            logger.warning("Unable to persist voice_calibration.json: %s", exc)
+
+    def _apply_voice_calibration(self, voice_id: str, prosody: dict[str, Any]) -> dict[str, Any]:
+        """Return a prosody copy with the cached per-voice calib added to volume."""
+        calib = self._voice_calib.get(voice_id, 0.0)
+        if not calib:
+            return prosody
+        merged = dict(prosody)
+        merged["volume"] = float(prosody.get("volume") or 0.0) + calib
+        logger.debug("P2a calib applied: voice=%s volume %+.1f → %+.1f dB",
+                     voice_id, float(prosody.get("volume") or 0.0), merged["volume"])
+        return merged
+
+    # ── v6 逐句三轴导演: sentence-level synthesis path ─────────────────────
+
+    async def _synthesize_paragraph_with_overrides(
+        self,
+        text: str,
+        paragraph_voice_id: str,
+        paragraph_prosody: dict[str, Any],
+        sentence_overrides: List[dict[str, Any]],
+        output_path: Path,
+        segment_id: str,
+    ) -> tuple[int, str]:
+        """Synthesize a paragraph sentence-by-sentence per the v6 director table.
+
+        Prosody merge (per sentence): paragraph-level prosody, fields replaced
+        by the sentence override — speed→rate, pitch_st→pitch, voice_id→voice,
+        gain_db is a delta added onto volume, pause_after_ms is silence after
+        the sentence (default: 220ms between sentences, 0 after the last).
+
+        Each sentence synthesizes via the Port (per-sentence semantic cache
+        applies); the pieces are read back, silence is inserted, numpy
+        concatenated and written as the single paragraph WAV so the downstream
+        chapter stitch is unchanged.
+
+        Sentence-level voice overrides use strict normalization (the caller
+        named a voice; the engine owns the honest accept/reject), and each
+        newly seen voice gets its own per-voice calibration probe (P2a).
+        """
+        sentences = _split_sentences(text)
+        if not sentences:
+            # Degenerate (no speakable sentence) → whole-paragraph fallback.
+            return await self._synthesize_via_port(
+                text, paragraph_voice_id, paragraph_prosody, output_path, segment_id
+            )
+
+        ovr_by_idx: Dict[int, dict[str, Any]] = {}
+        for ovr in sentence_overrides or []:
+            if not isinstance(ovr, dict):
+                continue
+            try:
+                ovr_by_idx[int(ovr.get("idx"))] = ovr
+            except (TypeError, ValueError):
+                logger.warning("Skipping malformed sentence override (bad idx) for %s", segment_id)
+        out_of_range = [i for i in ovr_by_idx if i < 0 or i >= len(sentences)]
+        if out_of_range:
+            logger.warning(
+                "Sentence overrides %s out of range (%d sentences) for %s; ignored",
+                out_of_range, len(sentences), segment_id,
+            )
+
+        import shutil
+
+        import numpy as np
+        import soundfile as sf
+
+        piece_dir = self.output_dir / f"{segment_id}_sentences"
+        piece_dir.mkdir(parents=True, exist_ok=True)
+
+        audio_parts: List[Any] = []
+        target_sr: Optional[int] = None
+        engine_name = ""
+        n = len(sentences)
+        try:
+            for k, sent in enumerate(sentences):
+                ovr = ovr_by_idx.get(k, {})
+                voice_id, prosody = merge_sentence_prosody(
+                    paragraph_voice_id, paragraph_prosody, ovr
+                )
+                # P2a: per-voice calibration on the effective sentence voice
+                prosody = self._apply_voice_calibration(voice_id, prosody)
+
+                piece_path = piece_dir / f"s{k:03d}.wav"
+                _, piece_engine = await self._synthesize_via_port(
+                    sent, voice_id, prosody, piece_path, f"{segment_id}_s{k}", voice_strict=True
+                )
+                engine_name = engine_name or piece_engine
+
+                # P2a: first synthesis of this voice → calibration probe on the piece
+                if voice_id not in self._voice_calib:
+                    await self._probe_voice_calibration(voice_id, piece_path)
+
+                data, sr = sf.read(str(piece_path), dtype="float32", always_2d=False)
+                if data.ndim > 1:
+                    data = data.mean(axis=1)
+                if target_sr is None:
+                    target_sr = int(sr)
+                elif int(sr) != target_sr:
+                    logger.warning(
+                        "Sentence %d of %s at %dHz != paragraph %dHz; resampling",
+                        k, segment_id, sr, target_sr,
+                    )
+                    try:
+                        import soxr
+
+                        data = soxr.resample(data, sr, target_sr)
+                    except ImportError:
+                        logger.warning("soxr unavailable; keeping native-rate piece (will drift)")
+                audio_parts.append(data.astype(np.float32))
+
+                # Silence after the sentence: explicit override > default micro gap.
+                if k < n - 1:
+                    pause_ms = _override_pause_ms(ovr, SENTENCE_GAP_DEFAULT_MS)
+                else:
+                    pause_ms = _override_pause_ms(ovr, 0)
+                if pause_ms > 0 and target_sr:
+                    audio_parts.append(np.zeros(int(target_sr * pause_ms / 1000.0), dtype=np.float32))
+
+            if not audio_parts or target_sr is None:
+                raise RuntimeError(f"Sentence synthesis produced no audio for {segment_id}")
+
+            merged = np.concatenate(audio_parts)
+            sf.write(str(output_path), merged, target_sr)
+            duration_ms = int(len(merged) / target_sr * 1000)
+        finally:
+            shutil.rmtree(piece_dir, ignore_errors=True)
+
+        logger.info(
+            "Sentence-directed synthesis for %s: %d sentences → %dms",
+            segment_id, n, duration_ms,
+        )
+        return duration_ms, engine_name
+
     @trace_function(name="pipeline.synthesize.run", stage="synthesize")  # type: ignore[untyped-decorator]  # trace_function (monitoring/) returns Callable[...,Any] w/o preserving the wrapped signature; fix lives outside this file's scope.
     async def run(self, inputs: List[TtsRoutingInput]) -> List[AudioSegment]:
         """Synthesize multiple paragraphs incrementally with quality gate.
@@ -776,8 +1132,20 @@ class SynthesizePipeline:
             # 实际合成文本幂等一致; 无条目原样透传, 不破主路径)。就地改 inp.text 局部副本安全。
             inp.text = apply_pronunciation_dict(inp.text, pronunciation_registry)
 
-            # Check if regeneration needed (text changed)
-            text_hash = self._text_hash(inp.text)
+            # v6 逐句三轴导演：非空 sentence_overrides → 走逐句合成路径。
+            # 过滤非 dict 项；idx 越界在句路径内 warn 忽略。
+            sentence_overrides = [
+                o for o in (getattr(inp, "sentence_overrides", None) or []) if isinstance(o, dict)
+            ]
+
+            # Check if regeneration needed (text changed).
+            # 逐句路径把 overrides 序列化掺入缓存键 —— override 改了 → hash 变 →
+            # 重合成；文本与 overrides 均未变 → 照常跳过（增量缓存语义不变）。
+            if sentence_overrides:
+                overrides_blob = json.dumps(sentence_overrides, ensure_ascii=False, sort_keys=True)
+                text_hash = self._text_hash(inp.text + "\x00sov\x00" + overrides_blob)
+            else:
+                text_hash = self._text_hash(inp.text)
             segment_id = decision.segment_id
 
             # Emit stage progress for each paragraph
@@ -868,12 +1236,30 @@ class SynthesizePipeline:
                 # Check if streaming TTS is enabled for first-byte latency optimization
                 enable_streaming = os.getenv("ENABLE_STREAMING_TTS", "false").lower() == "true"
 
-                if enable_streaming:
+                # P2a: 该音色已有校准缓存 → volume += calib_db（首件即探针件本身，
+                # 不回改；-inf/None → 0 已在探针内保护）。复制 prosody 避免污染
+                # decision（同一 decision 对象可能被 quality 重试复用）。
+                effective_prosody = self._apply_voice_calibration(
+                    decision.voice_id, dict(decision.prosody_overrides or {})
+                )
+
+                if sentence_overrides:
+                    # v6 逐句三轴导演路径：逐句合成 → 句间静音 → 单一段落文件。
+                    # 逐句需要逐件韵律/音色，流式引擎不支持 → 覆盖流式优先。
+                    duration, engine = await self._synthesize_paragraph_with_overrides(
+                        inp.text,
+                        decision.voice_id,
+                        effective_prosody,
+                        sentence_overrides,
+                        output_path,
+                        segment_id,
+                    )
+                elif enable_streaming:
                     # Run streaming synthesis with WebSocket progress
                     duration, engine = await self._synthesize_streaming(
                         inp.text,
                         decision.voice_id,
-                        decision.prosody_overrides or {},
+                        effective_prosody,
                         output_path,
                         segment_id,
                         project_id=inputs[0].book_id if inputs else 0,
@@ -885,13 +1271,18 @@ class SynthesizePipeline:
                     duration, engine = await self._synthesize_via_port(
                         inp.text,
                         decision.voice_id,
-                        decision.prosody_overrides or {},
+                        effective_prosody,
                         output_path,
                         segment_id,
                     )
 
                 synthesis_latency_ms = (time.time() - start_time) * 1000
                 success = True
+
+                # P2a: 该音色 run 内首次成功合成 → ebur128 实测 → 校准缓存。
+                # 仅段落级路径在此探针（逐句路径已按句件探针）；静音/-inf → 0。
+                if success and not sentence_overrides and decision.voice_id not in self._voice_calib:
+                    await self._probe_voice_calibration(decision.voice_id, Path(output_path))
 
                 # P2.13: 首段注册锚 — 角色在本章首次成功合成, 用本段真实音频作该章
                 # 参考音频 (VoiceAnchor.register_character 拷贝到 anchor 目录持久化)。
@@ -1036,13 +1427,31 @@ class SynthesizePipeline:
 
                 try:
                     logger.info(f"Retrying synthesis for {seg_id} (attempt {attempt})")
-                    retry_duration, retry_engine = await self._synthesize_via_port(
-                        seg_input.text,
-                        decision.voice_id,
-                        decision.prosody_overrides or {},
-                        retry_output,
-                        f"{seg_id}_retry{attempt}",
+                    # 与主路径同款 P2a 校准 + v6 逐句导演（重试保持逐件韵律一致性）
+                    retry_prosody = self._apply_voice_calibration(
+                        decision.voice_id, dict(decision.prosody_overrides or {})
                     )
+                    retry_overrides = [
+                        o for o in (getattr(seg_input, "sentence_overrides", None) or [])
+                        if isinstance(o, dict)
+                    ]
+                    if retry_overrides:
+                        retry_duration, retry_engine = await self._synthesize_paragraph_with_overrides(
+                            seg_input.text,
+                            decision.voice_id,
+                            retry_prosody,
+                            retry_overrides,
+                            retry_output,
+                            f"{seg_id}_retry{attempt}",
+                        )
+                    else:
+                        retry_duration, retry_engine = await self._synthesize_via_port(
+                            seg_input.text,
+                            decision.voice_id,
+                            retry_prosody,
+                            retry_output,
+                            f"{seg_id}_retry{attempt}",
+                        )
                     # Record retry telemetry
                     record_tts_retry(fallback_from=decision.engine_choice)
 
@@ -1194,7 +1603,7 @@ class SynthesizePipeline:
 
             logger.info(f"Crossfade stitching {len(valid_segments)} segments with {crossfade_ms}ms crossfade")
             # Run under global semaphore with timeout
-            result = await run_ffmpeg(cmd, timeout=120)
+            result = await run_ffmpeg(cmd, timeout=120, capture_output=True)
 
             if result.returncode != 0:
                 stderr_text = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
@@ -1262,7 +1671,7 @@ class SynthesizePipeline:
                 cmd = safe_subprocess_args(cmd)
 
                 # Run under global semaphore with timeout
-                result = await run_ffmpeg(cmd, timeout=60)
+                result = await run_ffmpeg(cmd, timeout=60, capture_output=True)
                 result.check_returncode()
 
             duration = get_duration_sync(output_path)
@@ -1390,7 +1799,7 @@ class SynthesizePipeline:
             logger.info(
                 f"Crossfade replacing segment {segment_index} in {chapter_audio_path.name} with {crossfade_ms}ms crossfade"
             )
-            result = await run_ffmpeg(cmd, timeout=120)
+            result = await run_ffmpeg(cmd, timeout=120, capture_output=True)
             result.check_returncode()
 
             duration = get_duration_sync(output_path)
@@ -1762,6 +2171,8 @@ def build_routing_input(
         # 段落对象无此属性时不覆盖，走自动决策。
         manual_voice_id=(getattr(para, "manual_voice_id", None) if para else None),
         manual_engine=(getattr(para, "manual_engine", None) if para else None),
+        # v6 逐句三轴导演覆盖
+        sentence_overrides=(getattr(para, "sentence_overrides", None) if para else None),
         contract_version=1,
     )
 

@@ -40,6 +40,21 @@ export interface Chapter {
   review_status?: string | null
 }
 
+/** v6 逐句三轴导演：单句韵律覆盖（字段全可选，缺省继承段落级；idx 为句序号从 0 起） */
+export interface SentenceOverride {
+  idx: number
+  /** 句级增益 delta (dB)，加在段落级 volume 上 */
+  gain_db?: number
+  /** 替换段落级 rate */
+  speed?: number
+  /** 替换段落级 pitch (semitones) */
+  pitch_st?: number
+  /** 替换该句音色（支持 blend 语法 am_onyx+am_fenrir*0.55） */
+  voice_id?: string
+  /** 该句后静音毫秒（缺省段落级 micro 间隙 220ms，末句缺省 0） */
+  pause_after_ms?: number
+}
+
 export interface Paragraph {
   id: number
   project_id: number
@@ -66,6 +81,8 @@ export interface Paragraph {
   /** 人工终审覆盖：客户在合成前逐段强制指定（null=自动决策） */
   manual_voice_id?: string | null
   manual_engine?: string | null
+  /** v6 逐句三轴导演：逐句韵律覆盖数组（null=无覆盖） */
+  sentence_overrides?: SentenceOverride[] | null
   // Phase 5: Extended fields for detail view
   tts_edit_history?: any[]
   quality_records?: any[]
@@ -94,6 +111,10 @@ export interface Character {
   age_range?: string
   suggested_voice_id?: string
   sample_quote?: string
+  /** P3b: per-character TTS prosody defaults */
+  emotion?: string
+  speech_rate?: number
+  pitch_shift_semitones?: number
 }
 
 export interface QualityResult {
