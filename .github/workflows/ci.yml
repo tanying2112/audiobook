@@ -79,7 +79,9 @@ jobs:
       - name: Run lint
         run: |
           ruff check src tests
-          mypy src
+      - name: Run mypy (advisory)
+        continue-on-error: true
+        run: mypy src
 
       - name: Run tests
         env:

@@ -48,18 +48,1874 @@
 # 模式修复 [dialogue_attribution]:
 特别注意：必须准确识别并标注每个段落的对话归属关系。如果是对话内容，在文本前加上说话人名称用方括号标注，如 '[李明] 你好！'。不要遗漏任何对话标记。
 
+# 自迭代编译的参考样例 (train 金标 top-0)
 
 # 自迭代编译的参考样例 (train 金标 top-0)
 
-
+# 自迭代编译的参考样例 (train 金标 top-0)
 
 # 自迭代编译的参考样例 (train 金标 top-0)
 
-
+# 自迭代编译的参考样例 (train 金标 top-0)
 
 # 自迭代编译的参考样例 (train 金标 top-0)
 
-
+# 自迭代编译的参考样例 (train 金标 top-0)
 
 # 自迭代编译的参考样例 (train 金标 top-0)
 
+# 自迭代编译的参考样例 (train 金标 top-0)
+
+# 自迭代编译的参考样例 (train 金标 top-0)
+
+# 自迭代编译的参考样例 (train 金标 top-0)
+
+# 自迭代编译的参考样例 (train 金标 top-0)
+
+# 自迭代编译的参考样例 (train 金标 top-0)
+
+# 自迭代编译的参考样例 (train 金标 top-0)
+
+# 自迭代编译的参考样例 (train 金标 top-0)
+
+# 自迭代编译的参考样例 (train 金标 top-0)
+
+# 自迭代编译的参考样例 (train 金标 top-0)
+
+# 自迭代编译的参考样例 (train 金标 top-0)
+
+# 自迭代编译的参考样例 (train 金标 top-0)
+
+# 自迭代编译的参考样例 (train 金标 top-0)
+
+# 自迭代编译的参考样例 (train 金标 top-0)
+
+# 自迭代编译的参考样例 (train 金标 top-0)
+
+# 自迭代编译的参考样例 (train 金标 top-0)
+
+# 自迭代编译的参考样例 (train 金标 top-0)
+
+# 自迭代编译的参考样例 (train 金标 top-0)
+
+# 自迭代编译的参考样例 (train 金标 top-0)
+
+# 自迭代编译的参考样例 (train 金标 top-3)
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 31。",
+  "paragraph_annotation": {
+    "paragraph_index": 0,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "sad",
+    "emotion_intensity": 0.5,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "C",
+  "forbid_edit": true
+}
+输出:
+{
+  "edited_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 31。",
+  "changes_made": [
+    "保持原文"
+  ],
+  "forbidden_content_removed": [
+    "版权声明",
+    "页码"
+  ],
+  "confidence": 0.85,
+  "rationale": "难度 C 级处理：禁止编辑"
+}
+
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 21。",
+  "paragraph_annotation": {
+    "paragraph_index": 0,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "neutral",
+    "emotion_intensity": 0.5,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "A",
+  "forbid_edit": true
+}
+输出:
+{
+  "edited_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 21。",
+  "changes_made": [
+    "保持原文"
+  ],
+  "forbidden_content_removed": [
+    "版权声明",
+    "页码"
+  ],
+  "confidence": 0.9,
+  "rationale": "难度 A 级处理：禁止编辑"
+}
+
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 17。",
+  "paragraph_annotation": {
+    "paragraph_index": 6,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "neutral",
+    "emotion_intensity": 0.6,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "A",
+  "forbid_edit": false
+}
+输出:
+{
+  "edited_text": "这是一个测试段落。编号 17。",
+  "changes_made": [
+    "标点调整"
+  ],
+  "forbidden_content_removed": [],
+  "confidence": 0.86,
+  "rationale": "难度 A 级处理：拆分长句以适配TTS"
+}
+
+# 自迭代编译的参考样例 (train 金标 top-3)
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 31。",
+  "paragraph_annotation": {
+    "paragraph_index": 0,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "sad",
+    "emotion_intensity": 0.5,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "C",
+  "forbid_edit": true
+}
+输出:
+{
+  "edited_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 31。",
+  "changes_made": [
+    "保持原文"
+  ],
+  "forbidden_content_removed": [
+    "版权声明",
+    "页码"
+  ],
+  "confidence": 0.85,
+  "rationale": "难度 C 级处理：禁止编辑"
+}
+
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 21。",
+  "paragraph_annotation": {
+    "paragraph_index": 0,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "neutral",
+    "emotion_intensity": 0.5,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "A",
+  "forbid_edit": true
+}
+输出:
+{
+  "edited_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 21。",
+  "changes_made": [
+    "保持原文"
+  ],
+  "forbidden_content_removed": [
+    "版权声明",
+    "页码"
+  ],
+  "confidence": 0.9,
+  "rationale": "难度 A 级处理：禁止编辑"
+}
+
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 17。",
+  "paragraph_annotation": {
+    "paragraph_index": 6,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "neutral",
+    "emotion_intensity": 0.6,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "A",
+  "forbid_edit": false
+}
+输出:
+{
+  "edited_text": "这是一个测试段落。编号 17。",
+  "changes_made": [
+    "标点调整"
+  ],
+  "forbidden_content_removed": [],
+  "confidence": 0.86,
+  "rationale": "难度 A 级处理：拆分长句以适配TTS"
+}
+
+# 自迭代编译的参考样例 (train 金标 top-3)
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 31。",
+  "paragraph_annotation": {
+    "paragraph_index": 0,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "sad",
+    "emotion_intensity": 0.5,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "C",
+  "forbid_edit": true
+}
+输出:
+{
+  "edited_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 31。",
+  "changes_made": [
+    "保持原文"
+  ],
+  "forbidden_content_removed": [
+    "版权声明",
+    "页码"
+  ],
+  "confidence": 0.85,
+  "rationale": "难度 C 级处理：禁止编辑"
+}
+
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 21。",
+  "paragraph_annotation": {
+    "paragraph_index": 0,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "neutral",
+    "emotion_intensity": 0.5,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "A",
+  "forbid_edit": true
+}
+输出:
+{
+  "edited_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 21。",
+  "changes_made": [
+    "保持原文"
+  ],
+  "forbidden_content_removed": [
+    "版权声明",
+    "页码"
+  ],
+  "confidence": 0.9,
+  "rationale": "难度 A 级处理：禁止编辑"
+}
+
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 17。",
+  "paragraph_annotation": {
+    "paragraph_index": 6,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "neutral",
+    "emotion_intensity": 0.6,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "A",
+  "forbid_edit": false
+}
+输出:
+{
+  "edited_text": "这是一个测试段落。编号 17。",
+  "changes_made": [
+    "标点调整"
+  ],
+  "forbidden_content_removed": [],
+  "confidence": 0.86,
+  "rationale": "难度 A 级处理：拆分长句以适配TTS"
+}
+
+# 自迭代编译的参考样例 (train 金标 top-3)
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 31。",
+  "paragraph_annotation": {
+    "paragraph_index": 0,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "sad",
+    "emotion_intensity": 0.5,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "C",
+  "forbid_edit": true
+}
+输出:
+{
+  "edited_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 31。",
+  "changes_made": [
+    "保持原文"
+  ],
+  "forbidden_content_removed": [
+    "版权声明",
+    "页码"
+  ],
+  "confidence": 0.85,
+  "rationale": "难度 C 级处理：禁止编辑"
+}
+
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 21。",
+  "paragraph_annotation": {
+    "paragraph_index": 0,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "neutral",
+    "emotion_intensity": 0.5,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "A",
+  "forbid_edit": true
+}
+输出:
+{
+  "edited_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 21。",
+  "changes_made": [
+    "保持原文"
+  ],
+  "forbidden_content_removed": [
+    "版权声明",
+    "页码"
+  ],
+  "confidence": 0.9,
+  "rationale": "难度 A 级处理：禁止编辑"
+}
+
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 17。",
+  "paragraph_annotation": {
+    "paragraph_index": 6,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "neutral",
+    "emotion_intensity": 0.6,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "A",
+  "forbid_edit": false
+}
+输出:
+{
+  "edited_text": "这是一个测试段落。编号 17。",
+  "changes_made": [
+    "标点调整"
+  ],
+  "forbidden_content_removed": [],
+  "confidence": 0.86,
+  "rationale": "难度 A 级处理：拆分长句以适配TTS"
+}
+
+# 自迭代编译的参考样例 (train 金标 top-3)
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 31。",
+  "paragraph_annotation": {
+    "paragraph_index": 0,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "sad",
+    "emotion_intensity": 0.5,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "C",
+  "forbid_edit": true
+}
+输出:
+{
+  "edited_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 31。",
+  "changes_made": [
+    "保持原文"
+  ],
+  "forbidden_content_removed": [
+    "版权声明",
+    "页码"
+  ],
+  "confidence": 0.85,
+  "rationale": "难度 C 级处理：禁止编辑"
+}
+
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 21。",
+  "paragraph_annotation": {
+    "paragraph_index": 0,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "neutral",
+    "emotion_intensity": 0.5,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "A",
+  "forbid_edit": true
+}
+输出:
+{
+  "edited_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 21。",
+  "changes_made": [
+    "保持原文"
+  ],
+  "forbidden_content_removed": [
+    "版权声明",
+    "页码"
+  ],
+  "confidence": 0.9,
+  "rationale": "难度 A 级处理：禁止编辑"
+}
+
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 17。",
+  "paragraph_annotation": {
+    "paragraph_index": 6,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "neutral",
+    "emotion_intensity": 0.6,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "A",
+  "forbid_edit": false
+}
+输出:
+{
+  "edited_text": "这是一个测试段落。编号 17。",
+  "changes_made": [
+    "标点调整"
+  ],
+  "forbidden_content_removed": [],
+  "confidence": 0.86,
+  "rationale": "难度 A 级处理：拆分长句以适配TTS"
+}
+
+# 自迭代编译的参考样例 (train 金标 top-3)
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 31。",
+  "paragraph_annotation": {
+    "paragraph_index": 0,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "sad",
+    "emotion_intensity": 0.5,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "C",
+  "forbid_edit": true
+}
+输出:
+{
+  "edited_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 31。",
+  "changes_made": [
+    "保持原文"
+  ],
+  "forbidden_content_removed": [
+    "版权声明",
+    "页码"
+  ],
+  "confidence": 0.85,
+  "rationale": "难度 C 级处理：禁止编辑"
+}
+
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 21。",
+  "paragraph_annotation": {
+    "paragraph_index": 0,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "neutral",
+    "emotion_intensity": 0.5,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "A",
+  "forbid_edit": true
+}
+输出:
+{
+  "edited_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 21。",
+  "changes_made": [
+    "保持原文"
+  ],
+  "forbidden_content_removed": [
+    "版权声明",
+    "页码"
+  ],
+  "confidence": 0.9,
+  "rationale": "难度 A 级处理：禁止编辑"
+}
+
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 17。",
+  "paragraph_annotation": {
+    "paragraph_index": 6,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "neutral",
+    "emotion_intensity": 0.6,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "A",
+  "forbid_edit": false
+}
+输出:
+{
+  "edited_text": "这是一个测试段落。编号 17。",
+  "changes_made": [
+    "标点调整"
+  ],
+  "forbidden_content_removed": [],
+  "confidence": 0.86,
+  "rationale": "难度 A 级处理：拆分长句以适配TTS"
+}
+
+# 自迭代编译的参考样例 (train 金标 top-3)
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 31。",
+  "paragraph_annotation": {
+    "paragraph_index": 0,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "sad",
+    "emotion_intensity": 0.5,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "C",
+  "forbid_edit": true
+}
+输出:
+{
+  "edited_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 31。",
+  "changes_made": [
+    "保持原文"
+  ],
+  "forbidden_content_removed": [
+    "版权声明",
+    "页码"
+  ],
+  "confidence": 0.85,
+  "rationale": "难度 C 级处理：禁止编辑"
+}
+
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 21。",
+  "paragraph_annotation": {
+    "paragraph_index": 0,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "neutral",
+    "emotion_intensity": 0.5,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "A",
+  "forbid_edit": true
+}
+输出:
+{
+  "edited_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 21。",
+  "changes_made": [
+    "保持原文"
+  ],
+  "forbidden_content_removed": [
+    "版权声明",
+    "页码"
+  ],
+  "confidence": 0.9,
+  "rationale": "难度 A 级处理：禁止编辑"
+}
+
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 17。",
+  "paragraph_annotation": {
+    "paragraph_index": 6,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "neutral",
+    "emotion_intensity": 0.6,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "A",
+  "forbid_edit": false
+}
+输出:
+{
+  "edited_text": "这是一个测试段落。编号 17。",
+  "changes_made": [
+    "标点调整"
+  ],
+  "forbidden_content_removed": [],
+  "confidence": 0.86,
+  "rationale": "难度 A 级处理：拆分长句以适配TTS"
+}
+
+# 自迭代编译的参考样例 (train 金标 top-3)
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 31。",
+  "paragraph_annotation": {
+    "paragraph_index": 0,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "sad",
+    "emotion_intensity": 0.5,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "C",
+  "forbid_edit": true
+}
+输出:
+{
+  "edited_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 31。",
+  "changes_made": [
+    "保持原文"
+  ],
+  "forbidden_content_removed": [
+    "版权声明",
+    "页码"
+  ],
+  "confidence": 0.85,
+  "rationale": "难度 C 级处理：禁止编辑"
+}
+
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 21。",
+  "paragraph_annotation": {
+    "paragraph_index": 0,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "neutral",
+    "emotion_intensity": 0.5,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "A",
+  "forbid_edit": true
+}
+输出:
+{
+  "edited_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 21。",
+  "changes_made": [
+    "保持原文"
+  ],
+  "forbidden_content_removed": [
+    "版权声明",
+    "页码"
+  ],
+  "confidence": 0.9,
+  "rationale": "难度 A 级处理：禁止编辑"
+}
+
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 17。",
+  "paragraph_annotation": {
+    "paragraph_index": 6,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "neutral",
+    "emotion_intensity": 0.6,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "A",
+  "forbid_edit": false
+}
+输出:
+{
+  "edited_text": "这是一个测试段落。编号 17。",
+  "changes_made": [
+    "标点调整"
+  ],
+  "forbidden_content_removed": [],
+  "confidence": 0.86,
+  "rationale": "难度 A 级处理：拆分长句以适配TTS"
+}
+
+# 自迭代编译的参考样例 (train 金标 top-3)
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 31。",
+  "paragraph_annotation": {
+    "paragraph_index": 0,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "sad",
+    "emotion_intensity": 0.5,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "C",
+  "forbid_edit": true
+}
+输出:
+{
+  "edited_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 31。",
+  "changes_made": [
+    "保持原文"
+  ],
+  "forbidden_content_removed": [
+    "版权声明",
+    "页码"
+  ],
+  "confidence": 0.85,
+  "rationale": "难度 C 级处理：禁止编辑"
+}
+
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 21。",
+  "paragraph_annotation": {
+    "paragraph_index": 0,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "neutral",
+    "emotion_intensity": 0.5,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "A",
+  "forbid_edit": true
+}
+输出:
+{
+  "edited_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 21。",
+  "changes_made": [
+    "保持原文"
+  ],
+  "forbidden_content_removed": [
+    "版权声明",
+    "页码"
+  ],
+  "confidence": 0.9,
+  "rationale": "难度 A 级处理：禁止编辑"
+}
+
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 17。",
+  "paragraph_annotation": {
+    "paragraph_index": 6,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "neutral",
+    "emotion_intensity": 0.6,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "A",
+  "forbid_edit": false
+}
+输出:
+{
+  "edited_text": "这是一个测试段落。编号 17。",
+  "changes_made": [
+    "标点调整"
+  ],
+  "forbidden_content_removed": [],
+  "confidence": 0.86,
+  "rationale": "难度 A 级处理：拆分长句以适配TTS"
+}
+
+# 自迭代编译的参考样例 (train 金标 top-3)
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 31。",
+  "paragraph_annotation": {
+    "paragraph_index": 0,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "sad",
+    "emotion_intensity": 0.5,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "C",
+  "forbid_edit": true
+}
+输出:
+{
+  "edited_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 31。",
+  "changes_made": [
+    "保持原文"
+  ],
+  "forbidden_content_removed": [
+    "版权声明",
+    "页码"
+  ],
+  "confidence": 0.85,
+  "rationale": "难度 C 级处理：禁止编辑"
+}
+
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 21。",
+  "paragraph_annotation": {
+    "paragraph_index": 0,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "neutral",
+    "emotion_intensity": 0.5,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "A",
+  "forbid_edit": true
+}
+输出:
+{
+  "edited_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 21。",
+  "changes_made": [
+    "保持原文"
+  ],
+  "forbidden_content_removed": [
+    "版权声明",
+    "页码"
+  ],
+  "confidence": 0.9,
+  "rationale": "难度 A 级处理：禁止编辑"
+}
+
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 17。",
+  "paragraph_annotation": {
+    "paragraph_index": 6,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "neutral",
+    "emotion_intensity": 0.6,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "A",
+  "forbid_edit": false
+}
+输出:
+{
+  "edited_text": "这是一个测试段落。编号 17。",
+  "changes_made": [
+    "标点调整"
+  ],
+  "forbidden_content_removed": [],
+  "confidence": 0.86,
+  "rationale": "难度 A 级处理：拆分长句以适配TTS"
+}
+
+# 模式修复 [pronunciation_fix]:
+注意生僻字、多音字的正确读音标注。使用拼音或 IPA 标注特殊读音。人名、地名、专有名词需额外标注读音。
+
+# 模式修复 [pause_too_long]:
+减少停顿时长，保持叙述流畅。常规段落切换 pause_before_ms=200-300 即可。仅在章节切换或重大情节转折处使用 pause_before_ms=500+。
+
+# 模式修复 [emotion_wrong]:
+请更仔细地分析上下文来推断角色的情感状态。综合考虑：① 剧情冲突程度 ② 角色间关系 ③ 事件严重性 ④ 角色性格特征。不要仅凭对话字面意思判断情感。
+
+# 模式修复 [unclear_pronunciation]:
+发音必须清晰可辨。多音字、歧义词需在文本预处理阶段消歧。连读、弱读处理要符合自然语流。
+
+# 模式修复 [style_issue]:
+保持文本风格的统一性。同一作品内用词、语气、格式需前后一致。避免在同一章节中混用不同风格的表达。
+
+# 模式修复 [pause_missing]:
+在需要强调、转折或情感转换的位置添加停顿标记。① 段落切换时添加 pause_before_ms=500 ② 情感转折处 pause_before_ms=800 ③ 重要陈述前 pause_before_ms=1000。
+
+# 自迭代编译的参考样例 (train 金标 top-3)
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 31。",
+  "paragraph_annotation": {
+    "paragraph_index": 0,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "sad",
+    "emotion_intensity": 0.5,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "C",
+  "forbid_edit": true
+}
+输出:
+{
+  "edited_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 31。",
+  "changes_made": [
+    "保持原文"
+  ],
+  "forbidden_content_removed": [
+    "版权声明",
+    "页码"
+  ],
+  "confidence": 0.85,
+  "rationale": "难度 C 级处理：禁止编辑"
+}
+
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 21。",
+  "paragraph_annotation": {
+    "paragraph_index": 0,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "neutral",
+    "emotion_intensity": 0.5,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "A",
+  "forbid_edit": true
+}
+输出:
+{
+  "edited_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 21。",
+  "changes_made": [
+    "保持原文"
+  ],
+  "forbidden_content_removed": [
+    "版权声明",
+    "页码"
+  ],
+  "confidence": 0.9,
+  "rationale": "难度 A 级处理：禁止编辑"
+}
+
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 17。",
+  "paragraph_annotation": {
+    "paragraph_index": 6,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "neutral",
+    "emotion_intensity": 0.6,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "A",
+  "forbid_edit": false
+}
+输出:
+{
+  "edited_text": "这是一个测试段落。编号 17。",
+  "changes_made": [
+    "标点调整"
+  ],
+  "forbidden_content_removed": [],
+  "confidence": 0.86,
+  "rationale": "难度 A 级处理：拆分长句以适配TTS"
+}
+
+# 自迭代编译的参考样例 (train 金标 top-3)
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 31。",
+  "paragraph_annotation": {
+    "paragraph_index": 0,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "sad",
+    "emotion_intensity": 0.5,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "C",
+  "forbid_edit": true
+}
+输出:
+{
+  "edited_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 31。",
+  "changes_made": [
+    "保持原文"
+  ],
+  "forbidden_content_removed": [
+    "版权声明",
+    "页码"
+  ],
+  "confidence": 0.85,
+  "rationale": "难度 C 级处理：禁止编辑"
+}
+
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 21。",
+  "paragraph_annotation": {
+    "paragraph_index": 0,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "neutral",
+    "emotion_intensity": 0.5,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "A",
+  "forbid_edit": true
+}
+输出:
+{
+  "edited_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 21。",
+  "changes_made": [
+    "保持原文"
+  ],
+  "forbidden_content_removed": [
+    "版权声明",
+    "页码"
+  ],
+  "confidence": 0.9,
+  "rationale": "难度 A 级处理：禁止编辑"
+}
+
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 17。",
+  "paragraph_annotation": {
+    "paragraph_index": 6,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "neutral",
+    "emotion_intensity": 0.6,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "A",
+  "forbid_edit": false
+}
+输出:
+{
+  "edited_text": "这是一个测试段落。编号 17。",
+  "changes_made": [
+    "标点调整"
+  ],
+  "forbidden_content_removed": [],
+  "confidence": 0.86,
+  "rationale": "难度 A 级处理：拆分长句以适配TTS"
+}
+
+# 自迭代编译的参考样例 (train 金标 top-3)
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 31。",
+  "paragraph_annotation": {
+    "paragraph_index": 0,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "sad",
+    "emotion_intensity": 0.5,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "C",
+  "forbid_edit": true
+}
+输出:
+{
+  "edited_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 31。",
+  "changes_made": [
+    "保持原文"
+  ],
+  "forbidden_content_removed": [
+    "版权声明",
+    "页码"
+  ],
+  "confidence": 0.85,
+  "rationale": "难度 C 级处理：禁止编辑"
+}
+
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 21。",
+  "paragraph_annotation": {
+    "paragraph_index": 0,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "neutral",
+    "emotion_intensity": 0.5,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "A",
+  "forbid_edit": true
+}
+输出:
+{
+  "edited_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 21。",
+  "changes_made": [
+    "保持原文"
+  ],
+  "forbidden_content_removed": [
+    "版权声明",
+    "页码"
+  ],
+  "confidence": 0.9,
+  "rationale": "难度 A 级处理：禁止编辑"
+}
+
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 17。",
+  "paragraph_annotation": {
+    "paragraph_index": 6,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "neutral",
+    "emotion_intensity": 0.6,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "A",
+  "forbid_edit": false
+}
+输出:
+{
+  "edited_text": "这是一个测试段落。编号 17。",
+  "changes_made": [
+    "标点调整"
+  ],
+  "forbidden_content_removed": [],
+  "confidence": 0.86,
+  "rationale": "难度 A 级处理：拆分长句以适配TTS"
+}
+
+# 自迭代编译的参考样例 (train 金标 top-3)
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 31。",
+  "paragraph_annotation": {
+    "paragraph_index": 0,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "sad",
+    "emotion_intensity": 0.5,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "C",
+  "forbid_edit": true
+}
+输出:
+{
+  "edited_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 31。",
+  "changes_made": [
+    "保持原文"
+  ],
+  "forbidden_content_removed": [
+    "版权声明",
+    "页码"
+  ],
+  "confidence": 0.85,
+  "rationale": "难度 C 级处理：禁止编辑"
+}
+
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 21。",
+  "paragraph_annotation": {
+    "paragraph_index": 0,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "neutral",
+    "emotion_intensity": 0.5,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "A",
+  "forbid_edit": true
+}
+输出:
+{
+  "edited_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 21。",
+  "changes_made": [
+    "保持原文"
+  ],
+  "forbidden_content_removed": [
+    "版权声明",
+    "页码"
+  ],
+  "confidence": 0.9,
+  "rationale": "难度 A 级处理：禁止编辑"
+}
+
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 17。",
+  "paragraph_annotation": {
+    "paragraph_index": 6,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "neutral",
+    "emotion_intensity": 0.6,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "A",
+  "forbid_edit": false
+}
+输出:
+{
+  "edited_text": "这是一个测试段落。编号 17。",
+  "changes_made": [
+    "标点调整"
+  ],
+  "forbidden_content_removed": [],
+  "confidence": 0.86,
+  "rationale": "难度 A 级处理：拆分长句以适配TTS"
+}
+
+# 自迭代编译的参考样例 (train 金标 top-3)
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 31。",
+  "paragraph_annotation": {
+    "paragraph_index": 0,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "sad",
+    "emotion_intensity": 0.5,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "C",
+  "forbid_edit": true
+}
+输出:
+{
+  "edited_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 31。",
+  "changes_made": [
+    "保持原文"
+  ],
+  "forbidden_content_removed": [
+    "版权声明",
+    "页码"
+  ],
+  "confidence": 0.85,
+  "rationale": "难度 C 级处理：禁止编辑"
+}
+
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 21。",
+  "paragraph_annotation": {
+    "paragraph_index": 0,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "neutral",
+    "emotion_intensity": 0.5,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "A",
+  "forbid_edit": true
+}
+输出:
+{
+  "edited_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 21。",
+  "changes_made": [
+    "保持原文"
+  ],
+  "forbidden_content_removed": [
+    "版权声明",
+    "页码"
+  ],
+  "confidence": 0.9,
+  "rationale": "难度 A 级处理：禁止编辑"
+}
+
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 17。",
+  "paragraph_annotation": {
+    "paragraph_index": 6,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "neutral",
+    "emotion_intensity": 0.6,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "A",
+  "forbid_edit": false
+}
+输出:
+{
+  "edited_text": "这是一个测试段落。编号 17。",
+  "changes_made": [
+    "标点调整"
+  ],
+  "forbidden_content_removed": [],
+  "confidence": 0.86,
+  "rationale": "难度 A 级处理：拆分长句以适配TTS"
+}
+
+# 自迭代编译的参考样例 (train 金标 top-3)
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 31。",
+  "paragraph_annotation": {
+    "paragraph_index": 0,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "sad",
+    "emotion_intensity": 0.5,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "C",
+  "forbid_edit": true
+}
+输出:
+{
+  "edited_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 31。",
+  "changes_made": [
+    "保持原文"
+  ],
+  "forbidden_content_removed": [
+    "版权声明",
+    "页码"
+  ],
+  "confidence": 0.85,
+  "rationale": "难度 C 级处理：禁止编辑"
+}
+
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 21。",
+  "paragraph_annotation": {
+    "paragraph_index": 0,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "neutral",
+    "emotion_intensity": 0.5,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "A",
+  "forbid_edit": true
+}
+输出:
+{
+  "edited_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 21。",
+  "changes_made": [
+    "保持原文"
+  ],
+  "forbidden_content_removed": [
+    "版权声明",
+    "页码"
+  ],
+  "confidence": 0.9,
+  "rationale": "难度 A 级处理：禁止编辑"
+}
+
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 17。",
+  "paragraph_annotation": {
+    "paragraph_index": 6,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "neutral",
+    "emotion_intensity": 0.6,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "A",
+  "forbid_edit": false
+}
+输出:
+{
+  "edited_text": "这是一个测试段落。编号 17。",
+  "changes_made": [
+    "标点调整"
+  ],
+  "forbidden_content_removed": [],
+  "confidence": 0.86,
+  "rationale": "难度 A 级处理：拆分长句以适配TTS"
+}
+
+# 自迭代编译的参考样例 (train 金标 top-3)
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 31。",
+  "paragraph_annotation": {
+    "paragraph_index": 0,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "sad",
+    "emotion_intensity": 0.5,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "C",
+  "forbid_edit": true
+}
+输出:
+{
+  "edited_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 31。",
+  "changes_made": [
+    "保持原文"
+  ],
+  "forbidden_content_removed": [
+    "版权声明",
+    "页码"
+  ],
+  "confidence": 0.85,
+  "rationale": "难度 C 级处理：禁止编辑"
+}
+
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 21。",
+  "paragraph_annotation": {
+    "paragraph_index": 0,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "neutral",
+    "emotion_intensity": 0.5,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "A",
+  "forbid_edit": true
+}
+输出:
+{
+  "edited_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 21。",
+  "changes_made": [
+    "保持原文"
+  ],
+  "forbidden_content_removed": [
+    "版权声明",
+    "页码"
+  ],
+  "confidence": 0.9,
+  "rationale": "难度 A 级处理：禁止编辑"
+}
+
+### 样例
+输入:
+{
+  "paragraph_text": "这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。这是一个很长的测试段落，包含多个句子。 编号 17。",
+  "paragraph_annotation": {
+    "paragraph_index": 6,
+    "speaker_canonical_name": "旁白",
+    "is_dialogue": false,
+    "emotion": "neutral",
+    "emotion_intensity": 0.6,
+    "speech_rate": 1.0,
+    "pitch_shift_semitones": 0,
+    "needs_sfx": false,
+    "sfx_tags": [],
+    "pause_before_ms": 300,
+    "pause_after_ms": 500,
+    "confidence": 0.9,
+    "notes": "测试标注"
+  },
+  "difficulty": "A",
+  "forbid_edit": false
+}
+输出:
+{
+  "edited_text": "这是一个测试段落。编号 17。",
+  "changes_made": [
+    "标点调整"
+  ],
+  "forbidden_content_removed": [],
+  "confidence": 0.86,
+  "rationale": "难度 A 级处理：拆分长句以适配TTS"
+}
