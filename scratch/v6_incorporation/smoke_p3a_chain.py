@@ -19,6 +19,14 @@
      TP-2→0.7943; alimiter 紧跟 loudnorm; aresample 收尾; 无 PLACEHOLDER;
      afade :curve= 语法)。
 
+P1/P2 回归门 (2026-10-11 第二轮修复):
+  - P1: ducking BGM 路径 BGM 在场 — 旧 [0:a][bgm]sidechaincompress 人声当主轨,
+    输出仅含被压缩人声 (BGM 丢失); 修复: BGM 主轨+人声侧链+asplit+amix 混回。
+    功能性验证: 人声间隙窗口 BGM 床能量 (旧 bug 为数字静音)。
+  - P2: finalize 链尾 aresample 收回输入 SR (loudnorm 恒 192k; 旧 wav 直出
+    192k、mp3/m4b 编码器自动协商 48k); m4b.py 三处硬编码 -ar 44100 已对齐
+    MasteringConfig.sample_rate (与 soxr 探测 filtergraph 尾一致)。
+
 附带修复 (审计发现, 均为"主路径整链 rc!=0 静默回退纯拷贝"类阻断项):
   - finalize 淡出 st=PLACEHOLDER 未解析 → 按实测时长计算;
   - finalize fade ":{shape}" 裸位置参数非法 → ":curve={shape}";
@@ -238,22 +246,30 @@ check("ducking 无 BGM 链: loudnorm→alimiter→fade→aresample 同款构造 
       < af_chain.index("afade") < af_chain.index("aresample"),
       af_chain)
 
-# 3b') ducking BGM 链 (与模块同款构造)
+# 3b') ducking BGM 链 (与模块同款构造; P1 修复后: BGM 作主轨、人声作侧链,
+# asplit 分路人声喂侧链+混音, amix 混回干净人声)
 filter_complex = (
     f"[1:a]loudnorm=I=-20:LRA=7:TP=-2,"
     f"volume={cfg.bgm_volume_db}dB[bgm];"
-    f"[0:a][bgm]sidechaincompress="
+    f"[0:a]asplit=2[voice][sc];"
+    f"[bgm][sc]sidechaincompress="
     f"threshold={cfg.duck_threshold_db}dB:"
     f"ratio={cfg.duck_ratio}:"
     f"attack={cfg.duck_attack_ms}:"
     f"release={cfg.duck_release_ms}:"
-    f"makeup=2dB[mixed];"
+    f"makeup=2dB[ducked];"
+    f"[voice][ducked]amix=inputs=2:duration=first:normalize=0[mixed];"
     f"[mixed]loudnorm=I={mix_i}:LRA={mix_lra}:TP={mix_tp},"
     f"alimiter=limit={tp_limit:.4f}:attack=5:release=100:level=disabled,"
     f"afade=t=in:ss=0:d=0.5,"
     f"afade=t=out:st={speech_duration_s - 0.5}:d=0.5,"
     f"{aresample_filter(44100)}[out]"
 )
+check("ducking BGM 链: BGM 作主轨+人声作侧链 (P1: 旧 [0:a][bgm] 人声当主轨丢 BGM)",
+      "[0:a]asplit=2[voice][sc];" in filter_complex
+      and "[bgm][sc]sidechaincompress=" in filter_complex
+      and "[voice][ducked]amix=inputs=2:duration=first:normalize=0[mixed];" in filter_complex,
+      filter_complex)
 check("ducking BGM 链: 收口 loudnorm→alimiter→fade→aresample 同款构造",
       "[mixed]loudnorm=I=-23.0:LRA=7.0:TP=-3.0," in filter_complex
       and f"alimiter=limit={tp_limit:.4f}:attack=5:release=100:level=disabled," in filter_complex
@@ -331,7 +347,12 @@ def run_finalize(input_wav: Path, out: Path, p, label: str,
     filters.insert(1, f"alimiter=limit={tp_lin:.4f}:attack=5:release=100:level=disabled")
     if p.apply_fade:
         filters.append(fin._build_fade_filter(p, dur_ms))
+    # P2: 与模块同款, 链尾 aresample 收回输入 SR (loudnorm 恒 192k)
+    in_sr = fin._get_sample_rate(input_wav)
+    filters.append(aresample_filter(in_sr))
     chain = ",".join(filters)
+    check(f"{label}: 链尾 aresample 收回输入 SR (P2, SR={in_sr})",
+          chain.endswith(aresample_filter(in_sr)), chain[-50:])
     check(f"{label}: 链含 alimiter=0.7079 紧跟 loudnorm, 无 PLACEHOLDER",
           ALIMITER_A in chain and chain.index("loudnorm") < chain.index("alimiter")
           and "PLACEHOLDER" not in chain)
@@ -349,24 +370,23 @@ def run_finalize(input_wav: Path, out: Path, p, label: str,
     verify_output(label, out, p.loudnorm_target_i, p.loudnorm_target_tp, gate_i, want_sr)
 
 
-# E1: 脉冲输入, 无 fade (纯 loudnorm+alimiter 链; 动态回退 192k → wav 容纳)
+# E1: 脉冲输入, 无 fade (纯 loudnorm+alimiter+aresample 链; 脉冲致动态回退)
 run_finalize(speech, workdir / "finalize_pulse.wav", ab_params(apply_fade=False,
-             output_format="wav"), "E1 finalize 脉冲无fade", gate_i=4.0)
+             output_format="wav"), "E1 finalize 脉冲无fade", gate_i=4.0, want_sr="24000")
 print("  [info] E1 脉冲致 linear 不可行 → 动态回退, integrated 收敛欠冲属预期 (对照 E1b 紧门)")
 
-# E1b: 干净对照, 无 fade (linear → 精确命中 -23)。审计注记: loudnorm 恒输出
-# 192kHz (linear 模式亦然, 实测 normalization_type=linear 且输出流 192000Hz),
-# finalize 链无 aresample 尾 (任务范围: finalize 仅收编 alimiter) → wav 出 192k、
-# mp3/m4b 由编码器自动协商到 48k — 既有行为, 已在报告中记为跟进建议。
+# E1b: 干净对照, 无 fade (linear → 精确命中 -23)。P2 修复后: loudnorm 恒输出
+# 192kHz (linear 模式亦然), 链尾 aresample 收回输入 SR → wav 出 24k (输入即 24k),
+# mp3/m4b 不再被编码器自动协商到 48k。采样率契约: 输出 SR = 输入 SR。
 run_finalize(speech_clean, workdir / "finalize_clean_nofade.wav",
              ab_params(apply_fade=False, output_format="wav"),
-             "E1b finalize 干净无fade", gate_i=1.0)
-print("  [info] E1b 输出采样率为 loudnorm 的 192kHz (见上审计注记, 属既有行为)")
+             "E1b finalize 干净无fade", gate_i=1.0, want_sr="24000")
+print("  [info] E1b 输出采样率 24k = 输入采样率 (P2: loudnorm 192k 已被链尾 aresample 收回)")
 
 # E2: 干净对照, 默认参数 (fade on + mp3 默认输出格式端到端; 2s 短片 fade 拉低 ~1.3 LU)
 run_finalize(speech_clean, workdir / "finalize_default.mp3",
              ab_params(output_format="mp3"), "E2 finalize 默认fade(mp3)",
-             gate_i=2.5, want_sr="48000")
+             gate_i=2.5, want_sr="24000")
 
 # ── 4b) mastering 端到端 (真实 master_audio) ──────────────────────────────
 from audiobook_studio.export.mastering import master_audio  # noqa: E402
@@ -408,6 +428,66 @@ verify_output("D2 ducking BGM 脉冲", workdir / "duck_bgm_pulse.m4a", -23.0, -3
 mix_with_ducking(speech_clean, workdir / "duck_bgm_clean.m4a", bgm_path=str(bgm))
 verify_output("D2b ducking BGM 干净", workdir / "duck_bgm_clean.m4a", -23.0, -3.0,
               gate_i=2.0, want_sr="44100")
+
+# D2c: P1 回归门 — BGM 在场 (功能性): 旧 bug 下 sidechaincompress 把人声当主轨,
+# 输出仅含被压缩人声 → 人声间隙窗口为数字静音 (~-91dB); 修复后间隙窗口应含
+# BGM 床 (~-43dB)。素材: 0.8s 440Hz + 0.9s 静音 + 0.8s 440Hz (2.5s), BGM=3000Hz。
+
+
+def gen_wav_gaps(path: Path, freq: float, amp: float, dur: float, spans: list) -> None:
+    """分段正弦 (spans=[(start_s, end_s), ...], 其余静音), 24kHz mono s16。"""
+    n = int(SR * dur)
+    frames = bytearray(n * 2)
+    for s0, s1 in spans:
+        i0 = int(s0 * SR)
+        for i in range(i0, min(int(s1 * SR), n)):
+            v = max(-1.0, min(1.0, amp * math.sin(2.0 * math.pi * freq * (i - i0) / SR)))
+            frames[i * 2:i * 2 + 2] = struct.pack("<h", int(round(v * 32767.0)))
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(SR)
+        w.writeframes(bytes(frames))
+
+
+def window_mean_db(path: Path, start_s: float, dur_s: float, extra_af: str = "") -> float:
+    """volumedetect 窗口均值电平 (-i 后 -ss 输出端精确定位)。"""
+    af = f"{extra_af},volumedetect" if extra_af else "volumedetect"
+    p2 = sh(["ffmpeg", "-hide_banner", "-nostats", "-i", str(path),
+             "-ss", f"{start_s}", "-t", f"{dur_s}",
+             "-af", af, "-f", "null", "-"])
+    m = re.search(r"mean_volume:\s*(-?\d+\.?\d*)\s*dB", p2.stderr)
+    return float(m.group(1)) if m else -999.0
+
+
+voice_gaps = workdir / "voice_gaps.wav"
+bgm_3k = workdir / "bgm_3k.wav"
+out_gaps = workdir / "duck_bgm_gaps.m4a"
+gen_wav_gaps(voice_gaps, 440.0, 0.125, 2.5, [(0.0, 0.8), (1.7, 2.5)])
+gen_wav(bgm_3k, 3000.0, 0.05, 2.5)
+try:
+    mix_with_ducking(voice_gaps, out_gaps, bgm_path=str(bgm_3k))
+    mix_ok = True
+except Exception as e:  # noqa: BLE001
+    mix_ok = False
+    print(f"  [D2c] mix_with_ducking 异常: {e}")
+check("D2c BGM ducking: P1 新图实跑 rc=0", mix_ok and out_gaps.exists())
+if mix_ok:
+    dur_gaps = float(sh(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                         "-of", "csv=p=0", str(out_gaps)]).stdout.strip())
+    check("D2c BGM ducking: 输出时长=人声时长 (amix duration=first, BGM 循环更长被截)",
+          2.3 <= dur_gaps <= 2.8, f"(dur={dur_gaps:.2f}s, 人声 2.5s)")
+    check("D2c BGM ducking: 输出采样率 44100 (链尾 aresample)",
+          ffprobe_sr(out_gaps) == "44100", ffprobe_sr(out_gaps))
+    gap_db = window_mean_db(out_gaps, 0.9, 0.7)
+    check("D2c BGM 在场: 人声间隙窗口含 BGM 床 (>-55dB; 旧 bug 数字静音 ~-91dB)",
+          gap_db > -55.0, f"(gap window mean={gap_db:.1f} dB)")
+    gap_bp = window_mean_db(out_gaps, 0.9, 0.7, "bandpass=f=3000:width_type=h:w=400")
+    check("D2c BGM 在场: 间隙窗口 3kHz 带通能量证实是 BGM (>-60dB)",
+          gap_bp > -60.0, f"(bandpass mean={gap_bp:.1f} dB)")
+    voice_db = window_mean_db(out_gaps, 0.55, 0.2)
+    check("D2c 人声在场: 语音窗口电平正常 (>-35dB)", voice_db > -35.0,
+          f"(voice window mean={voice_db:.1f} dB)")
 
 # D3: SFX 混音 (脉冲 + 干净对照)
 seg3 = SFXSegment(start_ms=500, end_ms=1500, scene_tag="test", sfx_file=sfx,

@@ -184,7 +184,11 @@ def mix_with_ducking(
     ]
 
     # Build ffmpeg filter for sidechain compression (auto-ducking)
-    # sidechaincompress: when speech detected, BGM volume reduces by duck_gain_db
+    # P1 修复 (2026-10-11): sidechaincompress 只输出"主轨被侧链电平压缩"的结果。
+    # 旧写法 [0:a][bgm] 把人声当主轨 → 输出仅含被压缩人声, BGM 从未进入输出流
+    # (ducking BGM 路径实为纯人声后处理)。正确语义: BGM 作主轨、人声作侧链 →
+    # [ducked] 是被压低的 BGM, 再 amix 混回干净人声; 人声需同时喂侧链与混音
+    # 两路, 用 asplit 分流。
     threshold_db = cfg.duck_threshold_db
     # v6 链: 最终 loudnorm 后串 TP 限幅器 (level=disabled 防自动 makeup);
     # aresample 走 soxr 探测 (有则用, 无则 swr)
@@ -192,12 +196,14 @@ def mix_with_ducking(
     filter_complex = (
         f"[1:a]loudnorm=I=-20:LRA=7:TP=-2,"
         f"volume={cfg.bgm_volume_db}dB[bgm];"
-        f"[0:a][bgm]sidechaincompress="
+        f"[0:a]asplit=2[voice][sc];"
+        f"[bgm][sc]sidechaincompress="
         f"threshold={threshold_db}dB:"
         f"ratio={cfg.duck_ratio}:"
         f"attack={cfg.duck_attack_ms}:"
         f"release={cfg.duck_release_ms}:"
-        f"makeup=2dB[mixed];"
+        f"makeup=2dB[ducked];"
+        f"[voice][ducked]amix=inputs=2:duration=first:normalize=0[mixed];"
         f"[mixed]loudnorm=I={mix_i}:LRA={mix_lra}:TP={mix_tp},"
         f"alimiter=limit={tp_limit:.4f}:attack=5:release=100:level=disabled,"
         f"afade=t=in:ss=0:d=0.5,"

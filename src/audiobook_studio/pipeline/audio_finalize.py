@@ -24,7 +24,7 @@ from ..export.pool import run_ffmpeg
 from ..schemas.audio_finalize import AudioFinalizeParams, AudioFinalizeResult
 from ..security import safe_subprocess_args
 from ..utils.async_utils import run_async_safe
-from ..utils.loudness import resolve_loudness
+from ..utils.loudness import aresample_filter, resolve_loudness
 
 logger = logging.getLogger(__name__)
 
@@ -161,6 +161,11 @@ class AudioFinalizer:
                 "loudnorm_target_tp": ptp,
             })
 
+        # P2 修复 (2026-10-11): loudnorm 内部升采样恒输出 192kHz (linear 模式亦然),
+        # 链尾 aresample 收回输入采样率 — 保住 "输出 SR = 输入 SR" 契约。
+        # 之前 wav 直出 192k、mp3/m4b 由编码器自动协商到 48k。
+        input_sr = self._get_sample_rate(input_path)
+
         # 两遍线性 loudnorm: 先测输入响度, linear=true 纯增益 (无动态泵动)
         measured_pre = None
         if params.apply_loudnorm and params.loudnorm_two_pass:
@@ -234,6 +239,8 @@ class AudioFinalizer:
             tp_limit = 10 ** (params.loudnorm_target_tp / 20.0)
             # loudnorm 构建时必为 filters[0] (见上方 "must be first" 注释), 插到其后
             filters.insert(1, f"alimiter=limit={tp_limit:.4f}:attack=5:release=100:level=disabled")
+            # aresample 收尾 (P2): loudnorm 恒输出 192k, 收回输入 SR
+            filters.append(aresample_filter(input_sr))
             filter_complex = ",".join(filters) if filters else "anull"
         if mix_used:
             sfx_applied = True
@@ -244,7 +251,8 @@ class AudioFinalizer:
             filter_complex = (
                 f"[0:a]{filter_complex}[main];" + ";".join(mix_labels) + ";"
                 f"[main]{ov_refs}amix=inputs={1 + len(mix_labels)}:duration=first:normalize=0,"
-                f"alimiter=limit={tp_limit:.4f}:attack=5:release=100:level=disabled[aout]"
+                f"alimiter=limit={tp_limit:.4f}:attack=5:release=100:level=disabled,"
+                f"{aresample_filter(input_sr)}[aout]"
             )
         else:
             # P3a 修复: -filter_complex 的无标注链在 "-map 0:a" 消费输入流后无法
@@ -543,6 +551,36 @@ class AudioFinalizer:
         except Exception as e:
             logger.warning(f"Failed to get duration: {e}")
             return 0
+
+    def _get_sample_rate(self, audio_path: Path) -> int:
+        """Get audio sample rate via ffprobe (P2: aresample 收尾的目标采样率)."""
+        if not audio_path.exists():
+            return 44100
+
+        cmd = [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "stream=sample_rate",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(audio_path),
+        ]
+
+        try:
+            # Validate command args for security
+            cmd = safe_subprocess_args(cmd)
+            # Run under global semaphore with timeout
+            result = run_async_safe(run_ffmpeg(cmd, timeout=10, capture_output=True))
+            m = re.search(r"\d+", str(result.stdout))
+            if m:
+                return int(m.group(0))
+            logger.warning(f"No sample_rate in ffprobe output for {audio_path}")
+        except Exception as e:
+            logger.warning(f"Failed to get sample rate: {e}")
+        # 探测失败兜底: 有声书标准 44.1kHz (好于放任 loudnorm 的 192k 直出)
+        return 44100
 
 
 # Convenience function for module-level import
