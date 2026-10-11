@@ -230,6 +230,7 @@ class TTSEngine(Protocol):
 
 import hashlib
 import logging
+import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -256,7 +257,11 @@ class BaseTTSEngine:
         return f"tts_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}_{hashlib.md5(str(datetime.now()).encode()).hexdigest()[:8]}"  # nosec B324
 
     def _build_output_path(self, task_id: str, voice_id: str) -> Path:
-        return self.output_dir / f"{task_id}_{voice_id}.mp3"
+        # Blend voice ids ("am_onyx*0.65+am_fenrir*0.35") carry filesystem-hostile
+        # characters (* is illegal on Windows); sanitize the filename portion only
+        # — the voice_id itself is passed through unmodified.
+        safe_voice = re.sub(r"[^A-Za-z0-9_.-]+", "_", voice_id)
+        return self.output_dir / f"{task_id}_{safe_voice}.mp3"
 
     def _map_prosody(self, prosody: Optional[TTSProsody]) -> Optional[dict]:
         if prosody is None:

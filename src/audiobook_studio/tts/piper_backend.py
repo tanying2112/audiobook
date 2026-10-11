@@ -31,6 +31,8 @@ from .piper_models import (
     list_piper_voices,
 )
 
+from ..utils.pitch_shift import shift_semitones_path
+
 logger = logging.getLogger(__name__)
 
 
@@ -213,6 +215,25 @@ class PiperBackend(BaseTTSEngine):
 
         if proc.returncode != 0:
             raise RuntimeError(f"Piper synthesis failed (exit {proc.returncode}): {proc.stderr.strip()}")
+
+        # ── Pitch shift on the synthesized WAV (v6 ffmpeg band-shift; atempo
+        # preserves duration). Piper's sample rate is model-dependent (16/22.05/
+        # 24 kHz), so read the actual sr from the output WAV. Fails soft: on
+        # ffmpeg error the original audio is kept. ──
+        pitch_st = float(prosody.get("pitch", 0.0) or 0.0) if prosody else 0.0
+        if abs(pitch_st) >= 0.001 and wav_path.exists():
+            wav_sr = self.sample_rate
+            try:
+                import soundfile as _sf
+
+                wav_sr = int(_sf.info(str(wav_path)).samplerate)
+            except Exception:  # noqa: BLE001 — fall back to configured sr
+                pass
+            shifted_path = wav_path.parent / (wav_path.stem + "_pitchshift.wav")
+            if shift_semitones_path(wav_path, shifted_path, pitch_st, wav_sr):
+                shifted_path.replace(wav_path)  # in-place overwrite
+            else:
+                shifted_path.unlink(missing_ok=True)
 
         # Convert to MP3 if requested.
         if output_path.suffix == ".mp3":

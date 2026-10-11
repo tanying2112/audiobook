@@ -10,10 +10,13 @@ placeholder phonemizer, token_lengths input mismatch, style shape issues).
 import asyncio
 import hashlib
 import logging
+import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
+
+from ..utils.pitch_shift import shift_semitones_array
 
 from .engine import (
     BaseTTSEngine,
@@ -174,6 +177,75 @@ KOKORO_VOICES: Dict[str, Dict[str, str]] = {
 }
 
 
+# v6-validated blend voices (dual-timbre: weighted linear mix of style tensors).
+KOKORO_BLEND_VOICES: Dict[str, Dict[str, str]] = {
+    "am_onyx*0.65+am_fenrir*0.35": {
+        "name": "am_onyx*0.65+am_fenrir*0.35",
+        "language": "en",
+        "gender": "male",
+        "description": "Blend: American Male Onyx 65% + Fenrir 35% (v6 coach voice)",
+    },
+}
+
+
+_BLEND_VOICE_RE = re.compile(
+    r"^[A-Za-z0-9_]+(\*[0-9.]+)?(\+[A-Za-z0-9_]+(\*[0-9.]+)?)*$"
+)
+
+
+def parse_blend_voice(voice_id: str) -> Optional[List[Tuple[str, float]]]:
+    """Parse blend voice syntax: "a*0.65+b*0.35" -> [("a", 0.65), ("b", 0.35)].
+
+    - No weights ("a+b+c") -> equal weights normalized to sum 1.0.
+    - Partial weights -> missing weights share the remainder (1 - sum_explicit);
+      if remainder <= 0, fall back to equal weights then normalize.
+    - Returns None when voice_id is not blend syntax.
+    """
+    if not voice_id or "+" not in voice_id:
+        return None
+    if not _BLEND_VOICE_RE.match(voice_id):
+        return None
+    parts = voice_id.split("+")
+    comps: List[Tuple[str, Optional[float]]] = []
+    for p in parts:
+        if "*" in p:
+            name, _, w = p.partition("*")
+            try:
+                comps.append((name, float(w)))
+            except ValueError:
+                return None
+        else:
+            comps.append((p, None))
+    # Resolve weights
+    names = [n for n, _ in comps]
+    explicit_sum = sum(w for _, w in comps if w is not None)
+    n_missing = sum(1 for _, w in comps if w is None)
+    n_total = len(comps)
+    if n_missing == 0:
+        weights = [w for _, w in comps]
+        total = sum(weights)
+        if total <= 0:  # all weights zero ("a*0+b*0") -> equal weights
+            return [(name, 1.0 / n_total) for name in names]
+        return [(name, w / total) for name, w in zip(names, weights)]
+    elif explicit_sum < 1.0:
+        missing_share = (1.0 - explicit_sum) / n_missing
+    else:
+        missing_share = (explicit_sum / (n_total - n_missing)) if (n_total - n_missing) else 1.0
+    weights = [w if w is not None else missing_share for _, w in comps]
+    total = sum(weights)
+    if total <= 0:  # degenerate weights -> equal weights
+        return [(name, 1.0 / n_total) for name in names]
+    return [(name, w / total) for name, w in zip(names, weights)]
+
+
+def _kokoro_voice_lang(voice_id: str) -> str:
+    """Resolve language for a voice_id (supports blend syntax)."""
+    comps = parse_blend_voice(voice_id)
+    if comps:
+        return KOKORO_VOICES.get(comps[0][0], {}).get("language", "en")
+    return KOKORO_VOICES.get(voice_id, {}).get("language", "en")
+
+
 class KokoroBackend(BaseTTSEngine):
     """Kokoro-ONNX TTS Backend for local CPU synthesis.
 
@@ -218,6 +290,7 @@ class KokoroBackend(BaseTTSEngine):
         self._initialized = False
         self._session = None
         self._voice_embeddings: Dict[str, Any] = {}
+        self._blended_voices: Dict[str, Any] = {}
         # In mock mode, pre-populate voice embeddings from KOKORO_VOICES registry
         if self.mock_mode:
             self._voice_embeddings = KOKORO_VOICES.copy()
@@ -307,8 +380,8 @@ class KokoroBackend(BaseTTSEngine):
 
         else:  # pragma: no cover
             # ─── Real inference path (requires kokoro_onnx model + weights) ───
-            # Determine language from voice_id (fallback to 'en' for unknown)
-            lang = KOKORO_VOICES.get(voice_id, {}).get("language", "en")
+            # Determine language from voice_id (blend-aware; fallback to 'en')
+            lang = _kokoro_voice_lang(voice_id)
 
             # Map language codes for phonemizer (espeak-ng):
             #   - 'zh' -> 'cmn' (espeak uses cmn for Mandarin)
@@ -348,6 +421,9 @@ class KokoroBackend(BaseTTSEngine):
 
             # Run synthesis via kokoro_onnx.Kokoro.create()
             # This handles tokenization, phonemization, and inference correctly
+            # Blend voice syntax ("am_onyx*0.65+am_fenrir*0.35") resolves to a
+            # weighted-sum style tensor; kokoro_onnx.create() accepts NDArray.
+            voice_arg = self._resolve_blend_voice(voice_id)
             try:
                 # kokoro_onnx.Kokoro.create() returns (audio_array, sample_rate).
                 # Kokoro's context window is 510 phonemes — longer texts crash with
@@ -357,7 +433,7 @@ class KokoroBackend(BaseTTSEngine):
                     None,
                     lambda: self._create_chunked(
                         text=text,
-                        voice=voice_id,
+                        voice=voice_arg,
                         speed=speed,
                         lang=phonemizer_lang,
                     ),
@@ -390,6 +466,17 @@ class KokoroBackend(BaseTTSEngine):
                 volume = prosody.get("volume", 0)  # dB
                 if volume != 0:
                     audio = audio * (10 ** (volume / 20.0))
+
+            # ── Pitch shift (v6 evidence: ffmpeg band-shift keeps UTMOS ~4.46;
+            # librosa phase-vocoder collapses to 1.33) ──
+            # Applied in-memory via temp float WAV round-trip; atempo restores
+            # duration so duration_ms stays correct. Fails soft: on ffmpeg
+            # error the un-shifted audio is kept (module-level one-time warn).
+            pitch_st = float(prosody.get("pitch", 0.0) or 0.0) if prosody else 0.0
+            if abs(pitch_st) >= 0.001:
+                audio = shift_semitones_array(
+                    np.asarray(audio, dtype=np.float32), sample_rate, pitch_st
+                )
 
             # Save as WAV then convert to MP3
             import soundfile as sf
@@ -610,6 +697,7 @@ class KokoroBackend(BaseTTSEngine):
         self._kokoro = None
         self._session = None
         self._voice_embeddings = None
+        self._blended_voices = {}
         self._loaded = False
         self._initialized = False
         logger.info("Kokoro backend cleaned up")
@@ -674,10 +762,48 @@ class KokoroBackend(BaseTTSEngine):
             chunks.append(current)
         return [c for c in chunks if c]
 
+    def _resolve_blend_voice(self, voice_id: str) -> Union[str, np.ndarray]:
+        """Resolve blend voice syntax to a weighted-sum style tensor (cached).
+
+        For "am_onyx*0.65+am_fenrir*0.35": loads each component's style tensor
+        via kokoro_onnx.get_voice_style(), computes the weighted sum, caches by
+        the composite key. Returns the original string when voice_id isn't
+        blend syntax or no component resolves (kokoro_onnx then raises its own
+        clear "Voice X not found" error for genuinely unknown voices).
+        """
+        comps = parse_blend_voice(voice_id)
+        if comps is None or self._kokoro is None:
+            return voice_id
+        cached = self._blended_voices.get(voice_id)
+        if cached is not None:
+            return cached
+        parts: List[Tuple[str, float, np.ndarray]] = []
+        for name, weight in comps:
+            try:
+                style = np.asarray(self._kokoro.get_voice_style(name), dtype=np.float32)
+            except Exception:  # noqa: BLE001 — skip missing, blend the rest
+                logger.warning(f"Kokoro blend {voice_id}: component {name!r} missing; skipped")
+                continue
+            parts.append((name, weight, style))
+        if not parts:
+            logger.warning(f"Kokoro blend {voice_id}: no resolvable components; using raw id")
+            return voice_id
+        total = sum(w for _, w, _ in parts)
+        if total <= 0:
+            parts = [(n, 1.0 / len(parts), s) for n, _, s in parts]
+            total = 1.0
+        blended = parts[0][2] * (parts[0][1] / total)
+        for _, w, s in parts[1:]:
+            blended = blended + s * (w / total)
+        blended = np.asarray(blended, dtype=np.float32)
+        self._blended_voices[voice_id] = blended
+        logger.info(f"Kokoro blend voice cached: {voice_id} from {[(n, round(w/total, 3)) for n, w, _ in parts]}")
+        return blended
+
     def _create_chunked(
         self,
         text: str,
-        voice: str,
+        voice: Union[str, np.ndarray],
         speed: float,
         lang: str,
     ):
@@ -698,7 +824,7 @@ class KokoroBackend(BaseTTSEngine):
                 audios.append(np.zeros(int(sample_rate * 0.2), dtype=audio.dtype))  # 200ms pause
         return np.concatenate(audios), sample_rate
 
-    def _create_one(self, chunk: str, voice: str, speed: float, lang: str):
+    def _create_one(self, chunk: str, voice: Union[str, np.ndarray], speed: float, lang: str):
         """Synthesize one chunk, honoring the configured Chinese G2P frontend.
 
         Kokoro's zh voices were trained on misaki[zh] phonemes (tone-marked
@@ -761,9 +887,10 @@ class KokoroBackend(BaseTTSEngine):
             return tokens, lengths
 
     def get_voices(self) -> List[VoiceInfo]:
-        """Get available Kokoro voices."""
+        """Get available Kokoro voices (base presets + blend voices)."""
         voices = []
-        for voice_id, info in KOKORO_VOICES.items():
+        all_voices = {**KOKORO_VOICES, **KOKORO_BLEND_VOICES}
+        for voice_id, info in all_voices.items():
             voices.append(
                 VoiceInfo(
                     voice_id=voice_id,
@@ -781,7 +908,7 @@ class KokoroBackend(BaseTTSEngine):
 
     def estimate_duration(self, text: str, voice_id: str, **kwargs: Any) -> int:
         """Estimate duration based on text length and average speech rate."""
-        lang = KOKORO_VOICES.get(voice_id, {}).get("language", "en")
+        lang = _kokoro_voice_lang(voice_id)
         chinese_chars = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
         english_chars = len(text) - chinese_chars
 
