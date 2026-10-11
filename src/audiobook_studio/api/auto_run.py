@@ -137,6 +137,7 @@ _stage_order = [
     "analyze",
     "annotate",
     "edit",
+    "audio_director",
     "audio_postprocess",
     "synthesize",
     "quality",

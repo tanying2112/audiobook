@@ -42,6 +42,7 @@ PIPELINE_STAGE_TO_PROMPT_DIR = {
 # Stage type classification for quality metric selection
 STAGE_TYPE = {
     "edit": "text_edit",
+    "audio_director": "audio_direction",
     "annotate": "text_annotation",
     "analyze": "structure_analysis",
     "extract": "extraction",
@@ -71,6 +72,10 @@ def _convert_input_to_model(pipeline_stage: str, input_dict: Dict[str, Any]) -> 
             input_dict = dict(input_dict)
             input_dict["paragraph_annotation"] = ParagraphAnnotation(**input_dict["paragraph_annotation"])
         return TtsEditInput(**input_dict)
+    elif pipeline_stage == "audio_director":
+        from ..schemas.audio_director import AudioDirectorInput
+
+        return AudioDirectorInput(**input_dict)
     elif pipeline_stage == "annotate":
         from ..schemas.paragraph import ParagraphAnnotationInput
 
@@ -100,6 +105,8 @@ def _get_required_input_fields(pipeline_stage: str) -> List[str]:
     """Get required input fields for a pipeline stage."""
     if pipeline_stage == "edit":
         return ["paragraph_text", "paragraph_annotation", "difficulty", "forbid_edit"]
+    elif pipeline_stage == "audio_director":
+        return ["paragraph_text", "sentences"]
     elif pipeline_stage == "annotate":
         return ["paragraph_text", "paragraph_index"]
     elif pipeline_stage == "analyze":
@@ -258,6 +265,11 @@ def _run_stage_with_prompt_version(
             from ..pipeline.edit_for_tts import EditForTtsPipeline
 
             pipeline = EditForTtsPipeline(mock_mode=mock_mode)
+            return pipeline.run(input_data)
+        elif pipeline_stage == "audio_director":
+            from ..pipeline.audio_director import AudioDirectorPipeline
+
+            pipeline = AudioDirectorPipeline(mock_mode=mock_mode)
             return pipeline.run(input_data)
         elif pipeline_stage == "annotate":
             from ..pipeline.annotate_paragraph import AnnotateParagraphPipeline

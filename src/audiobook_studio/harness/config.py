@@ -239,7 +239,7 @@ class HarnessSettings(BaseSettings):
     """ECAPA-TDNN speaker cosine 最低阈值（默认 0.85）"""
 
     AUDIO_GATE_STAGES: List[str] = Field(
-        default=["edit_for_tts", "tts_routing", "synthesize"],
+        default=["edit_for_tts", "tts_routing", "synthesize", "audio_director"],
         alias="HARNESS_AUDIO_GATE_STAGES",
     )
     """启用音频门禁的 stage 列表（仅产生音频的 stage 适用）"""

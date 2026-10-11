@@ -132,6 +132,15 @@ SENTENCE_GAP_DEFAULT_MS = 220
 ZH_SENTENCE_END_PAUSE_MS = 500   # 。！？ 完整句末
 ZH_SEMICOLON_PAUSE_MS = 300      # ； 半句停顿
 
+# Batch 3.2: LLM 音频导演的停顿类别 → 默认毫秒 (audio_director sentence_overrides
+# 的 pause_category 语义档; 显式 pause_after_ms 仍优先于类别)
+PAUSE_CATEGORY_DEFAULTS_MS = {
+    "clause": 300,      # 从句边界 — 换气
+    "comma": 150,       # 逗号级微顿 — 语流不断
+    "dramatic": 900,    # 戏剧性停顿 — 悬念/情绪爆发前
+    "paragraph": 1200,  # 段落收束 — 场景切换
+}
+
 # 校准 dB 封顶 (v6 CALIB_CAP 系统化为 ±3dB)
 VOICE_CALIB_CAP_DB = 3.0
 
@@ -217,15 +226,24 @@ def _sentence_pause_default_ms(sent: str) -> int:
 
 
 def _override_pause_ms(override: dict[str, Any], default_ms: int) -> int:
-    """Explicit pause_after_ms from an override, else the default (None-safe)."""
+    """Resolve the after-sentence pause from an override.
+
+    Priority (Batch 3.2): explicit ``pause_after_ms`` > ``pause_category``
+    (LLM 导演语义档, PAUSE_CATEGORY_DEFAULTS_MS) > caller default
+    (Batch 2.3 标点分级). 坏值/未知类别诚实回退 default, 不抛错。
+    """
     raw = override.get("pause_after_ms")
-    if raw is None:
-        return int(default_ms)
-    try:
-        val = int(float(raw))
-    except (TypeError, ValueError):
-        return int(default_ms)
-    return max(0, val)
+    if raw is not None:
+        try:
+            return max(0, int(float(raw)))
+        except (TypeError, ValueError):
+            pass  # 坏显式值不可用 → 穿透到类别档/默认
+    cat = override.get("pause_category")
+    if cat is not None:
+        cat_ms = PAUSE_CATEGORY_DEFAULTS_MS.get(str(cat))
+        if cat_ms is not None:
+            return int(cat_ms)
+    return int(default_ms)
 
 
 # Edge-TTS voice ID -> Kokoro voice ID mapping

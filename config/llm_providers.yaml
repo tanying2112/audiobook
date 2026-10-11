@@ -30,7 +30,7 @@ providers:
     max_tokens_per_minute: 50000
     max_requests_per_minute: 60
     timeout_seconds: 120
-    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, audio_director, judge, translate]
     enabled: false
     extra_params:
       extra_headers:
@@ -48,7 +48,7 @@ providers:
     max_tokens_per_minute: 50000
     max_requests_per_minute: 30
     timeout_seconds: 120
-    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, audio_director, judge, translate]
     enabled: true
     extra_params:
       extra_headers:
@@ -68,7 +68,7 @@ providers:
     max_tokens_per_minute: 4000
     max_requests_per_minute: 20
     timeout_seconds: 120
-    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, audio_director, judge, translate]
     enabled: true
     extra_params:
       use_direct_sdk: true
@@ -159,7 +159,7 @@ providers:
     max_tokens_per_minute: 50000
     max_requests_per_minute: 30
     timeout_seconds: 120
-    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, audio_director, judge, translate]
     enabled: false
     extra_params:
       use_direct_sdk: true
@@ -176,7 +176,7 @@ providers:
     max_tokens_per_minute: 100000
     max_requests_per_minute: 200
     timeout_seconds: 0  # 无超时限制
-    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, audio_director, judge, translate]
     enabled: true
     extra_params:
       use_direct_sdk: true
@@ -191,7 +191,7 @@ providers:
     max_tokens_per_minute: 100000
     max_requests_per_minute: 200
     timeout_seconds: 0  # 无超时限制
-    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, audio_director, judge, translate]
     enabled: false  # 启用前需先运行 vLLM 服务器
     extra_params:
       use_vllm: true
@@ -211,7 +211,7 @@ providers:
     max_tokens_per_minute: 100000
     max_requests_per_minute: 200
     timeout_seconds: 0
-    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, audio_director, judge, translate]
     enabled: false
     extra_params:
       use_vllm: true
@@ -250,7 +250,7 @@ providers:
     priority: 5
     max_tokens_per_minute: 30000
     max_requests_per_minute: 60
-    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, audio_director, judge, translate]
     enabled: false
     extra_params:
       use_direct_sdk: true
@@ -264,7 +264,7 @@ providers:
     api_key_pool_env:
       - OPENROUTER_API_KEY_1
     priority: 10
-    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, audio_director, judge, translate]
     enabled: false
 
   # OpenCode Zen - key 已注入, 但 2026-08 从本机网络不可达 (TLS 被掐断, DNS 到
@@ -279,7 +279,7 @@ providers:
     priority: 15
     max_tokens_per_minute: 50000
     max_requests_per_minute: 100
-    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, audio_director, judge, translate]
     enabled: false
     extra_params:
       use_direct_sdk: true
@@ -294,7 +294,7 @@ providers:
     priority: 12
     max_tokens_per_minute: 100000
     max_requests_per_minute: 60
-    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, audio_director, judge, translate]
     enabled: false
     extra_params:
       use_direct_sdk: true
@@ -309,7 +309,7 @@ providers:
     priority: 18
     max_tokens_per_minute: 50000
     max_requests_per_minute: 100
-    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, audio_director, judge, translate]
     enabled: false
     extra_params:
       use_direct_sdk: true
@@ -326,7 +326,7 @@ providers:
     priority: 10
     max_tokens_per_minute: 30000
     max_requests_per_minute: 60
-    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, audio_director, judge, translate]
     enabled: false
 
   # 智谱 AI - GLM-4-Flash (无key，暂禁用)
@@ -339,7 +339,7 @@ providers:
     priority: 22
     max_tokens_per_minute: 50000
     max_requests_per_minute: 100
-    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, audio_director, judge, translate]
     enabled: false
     extra_params:
       use_direct_sdk: true
@@ -464,7 +464,7 @@ providers:
     priority: 55
     max_tokens_per_minute: 10000
     max_requests_per_minute: 30
-    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, audio_director, judge, translate]
     enabled: false
     extra_params:
       use_direct_sdk: true
@@ -492,7 +492,7 @@ providers:
     priority: 95
     max_tokens_per_minute: 5000
     max_requests_per_minute: 30
-    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, audio_director, judge, translate]
     enabled: false
     extra_params:
       use_direct_sdk: true
@@ -507,7 +507,7 @@ providers:
     max_tokens_per_minute: 100000
     max_requests_per_minute: 100
     timeout_seconds: 0
-    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, audio_director, judge, translate]
     enabled: false
     extra_params:
       use_direct_sdk: true
@@ -520,7 +520,7 @@ providers:
     max_tokens_per_minute: 100000
     max_requests_per_minute: 100
     timeout_seconds: 0
-    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, audio_director, judge, translate]
     enabled: false
     extra_params:
       use_direct_sdk: true
@@ -533,7 +533,7 @@ providers:
     max_tokens_per_minute: 100000
     max_requests_per_minute: 100
     timeout_seconds: 0
-    stages: [extract, analyze, annotate, annotate_paragraph, edit, judge, translate]
+    stages: [extract, analyze, annotate, annotate_paragraph, edit, audio_director, judge, translate]
     enabled: false
     extra_params:
       use_direct_sdk: true

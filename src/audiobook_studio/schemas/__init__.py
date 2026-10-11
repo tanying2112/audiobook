@@ -40,6 +40,11 @@ from .review import (
 from .routing import Routing
 from .text_clean import TextCleanConfig, TextCleanInput, TextCleanResult
 from .tts_edit import TTSEdit, TtsEditInput, TtsEditOutput
+from .audio_director import (
+    AudioDirectorInput,
+    AudioDirectorOutput,
+    SentenceOverrideSuggestion,
+)
 from .tts_routing import TtsRoutingDecision, TtsRoutingInput
 
 __all__ = [
@@ -60,6 +65,9 @@ __all__ = [
     "Paragraph",
     # 环节④
     "TtsEditInput",
+    "AudioDirectorInput",
+    "AudioDirectorOutput",
+    "SentenceOverrideSuggestion",
     "TtsEditOutput",
     "TTSEdit",
     # 环节⑤

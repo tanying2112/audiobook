@@ -95,6 +95,7 @@ class PipelineStage(str, Enum):
     ANALYZE = "analyze"
     ANNOTATE = "annotate_paragraph"
     EDIT = "edit_for_tts"
+    AUDIO_DIRECTOR = "audio_director"
     ROUTE = "tts_routing"
     QUALITY = "quality_judge"
     SYNTHESIZE = "synthesize"

@@ -50,6 +50,7 @@ class StageName(str, Enum):
     ANNOTATE = "annotate"
     ANNOTATE_PARAGRAPH = "annotate_paragraph"
     EDIT = "edit"
+    AUDIO_DIRECTOR = "audio_director"
     ROUTE = "route"
     JUDGE = "judge"
     TRANSLATE = "translate"

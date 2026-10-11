@@ -26,11 +26,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 # Import schema classes used in stage handlers
+from ..schemas import AudioDirectorInput, AudioDirectorOutput
 from ..schemas.book import BookAnalysisInput
 
 # Import pipeline classes
 from .analyze_structure import AnalyzeStructurePipeline
 from .annotate_paragraph import AnnotateParagraphPipeline
+from .audio_director import AudioDirectorPipeline
 from .audio_postprocess import AudioPostProcessor
 from .edit_for_tts import EditForTtsPipeline
 from .extract import ExtractPipeline
@@ -639,6 +641,74 @@ class EditStage(StageHandler):
 from dataclasses import asdict
 
 from ..pipeline.progress_emitter import emit_stage_enter, emit_stage_exit, emit_stage_progress
+
+
+class AudioDirectorStage(StageHandler):
+    """Audio director stage: LLM 逐句演绎建议 (edit 后、合成前的增强层).
+
+    人工优先: apersist 仅在 Paragraph.sentence_overrides 为空时落库;
+    人工经 ReviewEditPanel 编辑后字段非空即人工领地, 导演不覆盖。
+    导演失败/降级不阻断管线 (AudioDirectorPipeline 内部诚实降级为空建议)。
+    """
+
+    async def run(self, **kwargs: Any) -> Any:
+        para = kwargs.get("paragraph")
+
+        # 优先取 edit 后文本 (本 stage 排在 edit 之后); 兜底原始文本
+        if para:
+            paragraph_text = para.edited_text or para.text
+        else:
+            paragraph_text = kwargs.get("paragraph_text", "")
+
+        if not (paragraph_text or "").strip():
+            # 空段落: 无可导演内容, 诚实返回空建议 (不阻断)
+            return AudioDirectorOutput(
+                sentence_overrides=[], rationale="空段落", confidence=0.0
+            )
+
+        # 与合成侧同源切句, 保证 idx 对齐 (SynthesizeStage 消费同一切分)
+        from .synthesize import _split_sentences
+
+        sentences = _split_sentences(paragraph_text)
+        input_data = AudioDirectorInput(
+            paragraph_text=paragraph_text,
+            sentences=sentences,
+            speaker_name=(para.speaker_canonical_name or "_narrator_") if para else "_narrator_",
+            emotion=(para.emotion or "neutral") if para else "neutral",
+            emotion_intensity=(para.emotion_intensity or 0.5) if para else 0.5,
+            is_dialogue=(para.is_dialogue or False) if para else False,
+        )
+        pipeline = AudioDirectorPipeline()
+        return pipeline.run(input_data)
+
+    def persist(
+        self,
+        db: Session,
+        project_id: int,
+        chapter: Optional[Any],
+        paragraph: Optional[Any],
+        result: Any,
+        chapter_index: Optional[int] = None,
+        paragraph_index: Optional[int] = None,
+    ) -> None:
+        # ``write_audio_director`` is async (see persistence.py); live
+        # persistence runs via ``apersist`` below.
+        pass
+
+    async def apersist(
+        self,
+        db: AsyncSession,
+        project_id: int,
+        chapter: Optional[Any],
+        paragraph: Optional[Any],
+        result: Any,
+        chapter_index: Optional[int] = None,
+        paragraph_index: Optional[int] = None,
+    ) -> None:
+        if paragraph:
+            from .persistence import write_audio_director
+
+            await write_audio_director(db, paragraph, result)
 
 
 class AudioPostprocessStage(StageHandler):
@@ -1364,6 +1434,7 @@ StageRegistry.register("segment", SegmentStage)
 StageRegistry.register("analyze", AnalyzeStage)
 StageRegistry.register("annotate", AnnotateStage)
 StageRegistry.register("edit", EditStage)
+StageRegistry.register("audio_director", AudioDirectorStage)
 StageRegistry.register("audio_postprocess", AudioPostprocessStage)
 StageRegistry.register("review", ReviewStage)
 StageRegistry.register("synthesize", SynthesizeStage)

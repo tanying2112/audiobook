@@ -11,6 +11,7 @@ Exports convenience functions for each pipeline stage:
 """
 
 from .analyze_structure import AnalyzeStructurePipeline, analyze_structure
+from .audio_director import AudioDirectorPipeline, audio_director
 from .annotate_paragraph import AnnotateParagraphPipeline, annotate_paragraph
 from .audio_finalize import AudioFinalizer, finalize_audio
 from .audio_postprocess import AudioPostProcessor
@@ -50,6 +51,7 @@ __all__ = [
     "analyze_structure",
     "annotate_paragraph",
     "edit_for_tts",
+    "audio_director",
     "quality_check",
     "synthesize_paragraphs",
     "finalize_audio",
@@ -61,6 +63,7 @@ __all__ = [
     "AnalyzeStructurePipeline",
     "AnnotateParagraphPipeline",
     "EditForTtsPipeline",
+    "AudioDirectorPipeline",
     "QualityCheckPipeline",
     "SynthesizePipeline",
     "AudioFinalizer",
