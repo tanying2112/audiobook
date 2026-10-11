@@ -35,6 +35,93 @@ export const PIPELINE_STAGE_ORDER: PipelineStage[] = [
   'quality',
 ]
 
+// ── FSM 状态机类型（Phase 2）────────────────────────────────────────────────
+
+/** FSM 管线状态 */
+export type FsmState =
+  | 'idle'
+  | 'extracting'
+  | 'analyzing'
+  | 'annotating'
+  | 'pending_human_confirm'
+  | 'audio_postprocessing'
+  | 'synthesizing'
+  | 'quality_check'
+  | 'exporting'
+  | 'completed'
+  | 'failed'
+
+/** FSM 管线模式 */
+export type FsmMode = 'autopilot' | 'interactive'
+
+/** FSM 状态信息（对应后端 PipelineStatusResponse） */
+export interface FsmStatus {
+  project_id: number
+  mode: FsmMode
+  current_state: FsmState
+  chapter_index: number
+  chapter_id: number | null
+  paused_at: string | null
+  user_confirmed: boolean
+  error: string | null
+  completed_stages: string[]
+}
+
+/** FSM 确认动作请求（对应后端 PipelineConfirmRequest） */
+export interface FsmConfirmRequest {
+  project_id: number
+  chapter_id?: number
+  action: 'approve' | 'reject' | 'request_rerun' | 'edit'
+  edits?: Record<string, unknown>
+}
+
+/** 章节在 FSM 中的显示状态 */
+export type ChapterFsmStatus =
+  | 'pending'
+  | 'current'
+  | 'completed'
+  | 'failed'
+  | 'awaiting_confirm'
+
+/** FSM 章节列表项 */
+export interface FsmChapterItem {
+  id: number
+  index: number
+  title: string
+  status: ChapterFsmStatus
+  current_stage?: FsmState
+  progress: number
+}
+
+/** FSM 章节详情 */
+export interface FsmChapterDetail {
+  chapter: FsmChapterItem
+  original_text: string
+  edited_text: string
+  annotations: AnnotationChip[]
+  routing_decision?: RoutingDecision
+}
+
+/** 标注芯片 */
+export interface AnnotationChip {
+  id: string
+  type: 'character' | 'emotion' | 'voice' | 'pause' | 'sfx'
+  label: string
+  value: string
+  confidence?: number
+  paragraph_index: number
+  offset_start?: number
+  offset_end?: number
+}
+
+/** 路由决策 */
+export interface RoutingDecision {
+  engine: string
+  voice: string
+  reason: string
+  confidence: number
+}
+
 // ── 状态枚举 ────────────────────────────────────────────────────────────────
 
 /** 阶段状态（Chapter per-stage 字段的清洗后标准值） */
@@ -194,4 +281,44 @@ export interface InlineChatState {
   loading: boolean
   /** 错误信息 */
   error: string | null
+}
+
+// ── 提取预览类型（Phase 3）────────────────────────────────────────────────
+
+/** 提取结果章节预览 */
+export interface ExtractionChapterPreview {
+  id: number
+  index: number
+  title: string
+  raw_text: string
+  paragraph_count: number
+  status: string
+  selected: boolean
+}
+
+/** 提取结果段落预览 */
+export interface ExtractionParagraphPreview {
+  id: number
+  chapter_id: number
+  index: number
+  text: string
+  preview_text: string
+  character: string | null
+  emotion: string | null
+}
+
+/** 提取结果详细响应 */
+export interface ExtractionDetailResponse {
+  job_id: string
+  project_id: number
+  status: string
+  language: string
+  page_count: number
+  has_ocr: boolean
+  ocr_page_ratio: number
+  warnings: string[]
+  processing_time_seconds: number
+  chapters: ExtractionChapterPreview[]
+  total_chapters: number
+  total_paragraphs: number
 }

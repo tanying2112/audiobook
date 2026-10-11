@@ -6,7 +6,7 @@ Provides async export execution with progress tracking via Celery states.
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union, cast
 
 from celery import Task
 from celery import states as celery_states
@@ -55,16 +55,16 @@ async def _run_export_async(
     import inspect
 
     if db_session is not None:
-        result = export_project(project_id, db_session, job)  # type: ignore
+        result = export_project(project_id, db_session, job)
         if inspect.isawaitable(result):
-            return await result
+            return cast(ExportJob, await result)
         return result
 
     from ..database import SessionLocal
 
     def _run_sync() -> ExportJob:
         with SessionLocal() as db:
-            return export_project(project_id, db, job)  # type: ignore
+            return export_project(project_id, db, job)
 
     return await asyncio.to_thread(_run_sync)
 

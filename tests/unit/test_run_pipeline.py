@@ -231,6 +231,7 @@ class TestModuleConstants:
             "三国演义",
             "Carnival",
             "test_story",
+            "Football Forever",
         }
 
     def test_book_config_fields(self, rp):
@@ -257,12 +258,13 @@ class TestInitializeDatabase:
         """init_db called once, SessionLocal returns a mock that sees existing
         Project records for every BOOK_CONFIG entry → no new projects inserted."""
         mock_session = MagicMock()
-        # Project exists for all four books (红楼梦, 三国演义, Carnival, test_story)
+        # Project exists for all five books (红楼梦, 三国演义, Carnival, test_story, Football Forever)
         mock_session.query.return_value.filter.return_value.first.side_effect = [
             MagicMock(id=1),
             MagicMock(id=2),
             MagicMock(id=3),
             MagicMock(id=4),
+            MagicMock(id=5),
         ]
         # Use fixture mocks via rp._mock_* attributes
         rp._mock_session_local.return_value = mock_session
@@ -274,12 +276,13 @@ class TestInitializeDatabase:
 
     def test_seed_creates_missing_project(self, rp):
         mock_session = MagicMock()
-        # First book (红楼梦): no existing -> created; the other three exist
+        # First book (红楼梦): no existing -> created; the other four exist
         mock_session.query.return_value.filter.return_value.first.side_effect = [
             None,
             MagicMock(id=1),
             MagicMock(id=2),
             MagicMock(id=3),
+            MagicMock(id=4),
         ]
         # When project created, db.add then commit then refresh
         rp._mock_session_local.return_value = mock_session

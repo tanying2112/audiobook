@@ -218,7 +218,9 @@ class TestCollectAudioFiles:
 class TestBuildSubtitleEntries:
     @patch("src.audiobook_studio.export.batch_exporter.get_duration_sync", return_value=5000)
     def test_basic(self, mock_dur):
-        para = MagicMock(id=1, original_text="Hello", text="Hello", speaker_canonical_name="Alice", order=1)
+        para = MagicMock(
+            id=1, original_text="Hello", text="Hello", edited_text=None, speaker_canonical_name="Alice", order=1
+        )
         seg = MagicMock(paragraph_id=1, file_path="/a.mp3", duration_ms=5000)
         chapter = MagicMock(title="Ch1", index=1)
         data = [

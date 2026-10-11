@@ -209,6 +209,7 @@ class TestBuildSubtitleEntries:
                         id=1,
                         index=1,
                         text="First paragraph",
+                        edited_text=None,
                         original_text=None,
                         speaker_canonical_name="Narrator",
                     ),
@@ -216,6 +217,7 @@ class TestBuildSubtitleEntries:
                         id=2,
                         index=2,
                         text="Second paragraph",
+                        edited_text=None,
                         original_text=None,
                         speaker_canonical_name="Character",
                     ),
@@ -251,6 +253,7 @@ class TestBuildSubtitleEntries:
                         id=1,
                         index=1,
                         text="Paragraph text",
+                        edited_text=None,
                         original_text=None,
                         speaker_canonical_name="Narrator",
                     ),
@@ -273,9 +276,12 @@ class TestBuildSubtitleEntries:
         chapter_data = [
             {
                 "paragraphs": [
-                    MagicMock(id=1, index=1, text="No audio", speaker_canonical_name="Narrator"),
+                    MagicMock(id=1, index=1, text="No audio", edited_text=None, speaker_canonical_name="Narrator"),
                 ],
-                "audio_segments": [],
+                "audio_segments": [
+                    # 段落有音频段，但段无时长且文件不存在 → 走 3000ms 默认回退
+                    MagicMock(paragraph_id=1, file_path="/nonexistent/seg.mp3", duration_ms=None),
+                ],
             },
         ]
 

@@ -127,10 +127,59 @@ class ExtractionResultResponse(BaseModel):
     processing_time_seconds: float
 
 
+class ChapterPreview(BaseModel):
+    """Chapter preview for extraction result."""
+
+    id: int
+    index: int
+    title: str
+    raw_text: str
+    paragraph_count: int
+    status: str
+    selected: bool = False
+
+
+class ParagraphPreview(BaseModel):
+    """Paragraph preview for extraction result."""
+
+    id: int
+    chapter_id: int
+    index: int
+    text: str
+    preview_text: str  # First 200 chars
+    character: Optional[str] = None
+    emotion: Optional[str] = None
+
+
+class ExtractionDetailResponse(BaseModel):
+    """Detailed extraction result with chapters and paragraphs."""
+
+    job_id: str
+    project_id: int
+    status: str
+    language: str
+    page_count: int
+    has_ocr: bool
+    ocr_page_ratio: float
+    warnings: List[str] = []
+    processing_time_seconds: float
+    chapters: List[ChapterPreview]
+    total_chapters: int
+    total_paragraphs: int
+
+
 # ── Redis Connection Pool ──────────────────────────────────────────────────
 
 
 import redis.asyncio as redis
+
+try:
+    from redis.exceptions import ConnectionError as RedisConnectionError
+except ImportError:  # pragma: no cover - unit-test conftest stubs redis as a bare mock
+
+    class RedisConnectionError(Exception):
+        """Import-compat fallback when the redis package is stubbed in tests."""
+
 
 _redis_pool: Optional[redis.ConnectionPool] = None
 _redis_client: Optional[redis.Redis] = None
@@ -394,6 +443,25 @@ async def update_extraction_job(
     await redis_client.hset(extraction_job_key(job_id), mapping=updates)
 
 
+async def _update_job_safe(
+    redis_client: Optional[redis.Redis],
+    job_id: str,
+    **updates,
+) -> None:
+    """Update job status, degrading to a no-op when Redis is unavailable.
+
+    Extraction itself only needs SQLite; Redis is status tracking only, so a
+    connection failure must not abort the background extraction (previously the
+    upload path 500'd and the job died with it when Redis was down).
+    """
+    if redis_client is None:
+        return
+    try:
+        await update_extraction_job(redis_client, job_id, **updates)
+    except RedisConnectionError as e:
+        logger.warning(f"Redis unavailable, job status update skipped for {job_id}: {e}")
+
+
 async def list_project_extractions(redis_client: redis.Redis, project_id: int) -> List[ExtractionJobStatus]:
     """List all extraction jobs for a project."""
     job_ids = await redis_client.smembers(project_extractions_key(project_id))
@@ -547,9 +615,7 @@ async def upload_chunk(
         job_id = await create_extraction_job(redis_client, project_id, upload_id, file_path, session["mime_type"])
 
         # Same fix as upload_file: actually schedule extraction (was dead code).
-        background_tasks.add_task(
-            run_extraction, job_id, project_id, file_path, session["mime_type"]
-        )
+        background_tasks.add_task(run_extraction, job_id, project_id, file_path, session["mime_type"])
 
         return UploadCompleteResponse(
             upload_id=upload_id,
@@ -609,20 +675,29 @@ async def upload_file(
     logger.info(f"File uploaded: {file_path} ({len(content)} bytes)")
 
     # Start extraction in background
-    redis_client = await get_redis()
-    job_id = await create_extraction_job(
-        redis_client,
-        project_id,
-        upload_id,
-        str(file_path),
-        file.content_type or "application/octet-stream",
-    )
+    # Redis stores job status only; when it is unavailable, degrade to a local
+    # job_id and keep the upload working (previously a hard 500, audit finding).
+    try:
+        redis_client = await get_redis()
+        job_id = await create_extraction_job(
+            redis_client,
+            project_id,
+            upload_id,
+            str(file_path),
+            file.content_type or "application/octet-stream",
+        )
+    except RedisConnectionError as e:
+        logger.warning(f"Redis unavailable, extraction job tracking disabled: {e}")
+        job_id = str(uuid.uuid4())
 
     # run_extraction was previously dead code — nothing scheduled it, so
     # uploads left the job at status="pending" forever and no chapters were
     # ever created (auto-run then "completed" in ~0.1s on an empty project).
     background_tasks.add_task(
-        run_extraction, job_id, project_id, str(file_path),
+        run_extraction,
+        job_id,
+        project_id,
+        str(file_path),
         file.content_type or "application/octet-stream",
     )
 
@@ -638,14 +713,20 @@ async def upload_file(
 
 async def run_extraction(job_id: str, project_id: int, file_path: str, mime_type: str):
     """Run text extraction in background."""
-    redis_client = await get_redis()
-
-    job = await get_extraction_job(redis_client, job_id)
-    if not job:
-        return
+    try:
+        redis_client = await get_redis()
+        job = await get_extraction_job(redis_client, job_id)
+        if not job:
+            return
+    except RedisConnectionError as e:
+        # Redis is job tracking only; extraction itself needs SQLite. Continue
+        # without status updates instead of killing the upload (audit finding).
+        logger.warning(f"Redis unavailable, extraction runs without job tracking: {e}")
+        redis_client = None
+        job = {}
 
     try:
-        await update_extraction_job(
+        await _update_job_safe(
             redis_client,
             job_id,
             status="running",
@@ -668,7 +749,7 @@ async def run_extraction(job_id: str, project_id: int, file_path: str, mime_type
         # thus /health and every other request) stays responsive.
         result = await asyncio.to_thread(extract_text, file_path, mime_type)
 
-        await update_extraction_job(
+        await _update_job_safe(
             redis_client,
             job_id,
             progress="0.5",
@@ -692,7 +773,7 @@ async def run_extraction(job_id: str, project_id: int, file_path: str, mime_type
             project = await db.get(Project, project_id)
             if project:
                 chapters = split_into_chapters(result.raw_text)
-                await update_extraction_job(redis_client, job_id, total_chapters=len(chapters))
+                await _update_job_safe(redis_client, job_id, total_chapters=len(chapters))
 
                 # Save project segments for OCR/content rating tracking
                 if mime_type in ("image/png", "image/jpeg", "image/jpg", "image/tiff", "image/bmp", "image/webp"):
@@ -727,7 +808,7 @@ async def run_extraction(job_id: str, project_id: int, file_path: str, mime_type
                     )
                     db.add(chapter)
 
-                    await update_extraction_job(
+                    await _update_job_safe(
                         redis_client,
                         job_id,
                         extracted_chapters=i + 1,
@@ -742,7 +823,7 @@ async def run_extraction(job_id: str, project_id: int, file_path: str, mime_type
                 await db.commit()
 
         # Complete
-        await update_extraction_job(
+        await _update_job_safe(
             redis_client,
             job_id,
             status="completed",
@@ -769,7 +850,7 @@ async def run_extraction(job_id: str, project_id: int, file_path: str, mime_type
         logger.info(f"Extraction job {job_id} completed for project {project_id}")
 
     except Exception as e:
-        await update_extraction_job(
+        await _update_job_safe(
             redis_client,
             job_id,
             status="failed",
@@ -901,6 +982,92 @@ async def list_extractions(
     """List all extraction jobs for a project."""
     redis_client = await get_redis()
     return await list_project_extractions(redis_client, project_id)
+
+
+@router.get("/{project_id}/extraction-result/{job_id}", response_model=ExtractionDetailResponse)
+async def get_extraction_result(
+    project_id: int,
+    job_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Get detailed extraction result with chapters and paragraphs."""
+    redis_client = await get_redis()
+    job = await get_extraction_job(redis_client, job_id)
+
+    if not job:
+        raise DomainError(
+            message="Extraction job not found",
+            error_code="NOT_FOUND",
+            stage="upload",
+            context={"job_id": job_id},
+        )
+
+    if job["project_id"] != str(project_id):
+        raise DomainError(
+            message="Project ID mismatch",
+            error_code="BAD_REQUEST",
+            stage="upload",
+            context={"expected_project_id": project_id, "actual_project_id": job["project_id"]},
+        )
+
+    # Get chapters from database
+    from sqlalchemy import select
+
+    from ..models import Chapter, Paragraph
+
+    result = await db.execute(select(Chapter).where(Chapter.project_id == project_id).order_by(Chapter.index))
+    chapters = result.scalars().all()
+
+    chapter_previews = []
+    total_paragraphs = 0
+
+    for chapter in chapters:
+        para_result = await db.execute(
+            select(Paragraph).where(Paragraph.chapter_id == chapter.id).order_by(Paragraph.index)
+        )
+        paragraphs = para_result.scalars().all()
+        total_paragraphs += len(paragraphs)
+
+        para_previews = [
+            ParagraphPreview(
+                id=p.id,
+                chapter_id=chapter.id,
+                index=p.index,
+                text=p.text,
+                preview_text=p.text[:200] + ("..." if len(p.text) > 200 else ""),
+                character=p.speaker,
+                emotion=p.emotion,
+            )
+            for p in paragraphs
+        ]
+
+        chapter_previews.append(
+            ChapterPreview(
+                id=chapter.id,
+                index=chapter.index,
+                title=chapter.title,
+                raw_text=chapter.raw_text,
+                paragraph_count=len(paragraphs),
+                status=chapter.status or "completed",
+                selected=True,  # Default to selected
+            )
+        )
+
+    return ExtractionDetailResponse(
+        job_id=job_id,
+        project_id=project_id,
+        status=job.get("status", "unknown"),
+        language=job.get("language", "zh"),
+        page_count=int(job.get("page_count", 0)),
+        has_ocr=job.get("has_ocr", False),
+        ocr_page_ratio=float(job.get("ocr_page_ratio", 0.0)),
+        warnings=job.get("warnings", []),
+        processing_time_seconds=float(job.get("processing_time_seconds", 0.0)),
+        chapters=chapter_previews,
+        total_chapters=len(chapter_previews),
+        total_paragraphs=total_paragraphs,
+    )
 
 
 @router.delete("/{project_id}/upload/{upload_id}")

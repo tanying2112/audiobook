@@ -14,7 +14,12 @@ from enum import Enum
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from ..database import SessionLocal
+from ..models.chapter import Chapter
+from ..models.paragraph import Paragraph
 from ..pipeline.orchestrator import run_pipeline
+
+# Stages that operate per paragraph (need paragraph_id, audit finding).
+_PARAGRAPH_STAGES = {"annotate", "edit", "audio_postprocess", "synthesize", "quality"}
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +93,7 @@ class PipelineContext:
     current_state: PipelineState = PipelineState.IDLE
     chapter_index: int = 0
     chapter_id: Optional[int] = None
+    paragraph_id: Optional[int] = None
     paused_at: Optional[PipelineState] = None
     user_confirmed: bool = False
     error: Optional[str] = None
@@ -129,12 +135,65 @@ class PipelineFSM:
         """Default stage runner using orchestrator.run_pipeline."""
         db = SessionLocal()
         try:
+            # Extract needs a source file. When the project was already
+            # uploaded (chapters carry raw_text), skip re-extraction — mirrors
+            # the auto-run path. Without this, run_pipeline → ExtractStage
+            # builds ExtractionInput with file_path="" and crashes with
+            # FileNotFoundError on the empty path (audit finding).
+            if stage == "extract" and ctx.chapter_id is None:
+                chapters = (
+                    db.query(Chapter)
+                    .filter(
+                        Chapter.project_id == ctx.project_id,
+                        Chapter.raw_text.isnot(None),
+                    )
+                    .first()
+                )
+                if chapters is not None:
+                    logger.info("FSM: chapters already extracted, skipping extract stage")
+                    return None
+                raise ValueError(
+                    f"Project {ctx.project_id} has no extracted chapters and no source file: "
+                    "upload text via POST /api/projects/{id}/upload before starting the pipeline"
+                )
+
+            # Paragraph-level stages (annotate/edit/synthesize/quality) need a
+            # concrete paragraph: run_pipeline with paragraph_index=None fails
+            # ParagraphAnnotation validation. Mirror the auto-run path: iterate
+            # all project paragraphs and run each one (audit finding: the FSM
+            # path could never execute these stages).
+            if stage in _PARAGRAPH_STAGES and ctx.paragraph_id is None:
+                paragraphs = (
+                    db.query(Paragraph).filter(Paragraph.project_id == ctx.project_id).order_by(Paragraph.index).all()
+                )
+                para_results: List[Any] = []
+                for para in paragraphs:
+                    para_results.extend(
+                        await run_pipeline(
+                            stages=[stage],
+                            db=db,
+                            project_id=ctx.project_id,
+                            paragraph_id=para.id,
+                            chapter_id=para.chapter_id,
+                        )
+                    )
+                return para_results
+
+            # Export is not a StageRegistry stage (it is a separate API at
+            # POST /api/projects/{id}/export/): the FSM phase list includes
+            # EXPORTING, but running it as a pipeline stage fails with
+            # "Unknown pipeline stage: export" (audit finding). Skip it here.
+            if stage == "export":
+                logger.info("FSM: export is handled by the export API, skipping pipeline stage")
+                return None
+
             results = await run_pipeline(
                 stages=[stage],
                 db=db,
                 project_id=ctx.project_id,
                 chapter_index=ctx.chapter_index,
                 chapter_id=ctx.chapter_id,
+                paragraph_id=ctx.paragraph_id,
             )
             return results[0] if results else None
         finally:

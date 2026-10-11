@@ -245,9 +245,9 @@ class CriticEnsembleEvaluator:
         weighted_confidence = 0.0
 
         verdicts = {
-            CriticVerdict.PASS: 0,
-            CriticVerdict.WARNING: 0,
-            CriticVerdict.FAIL: 0,
+            CriticVerdict.PASS.value: 0,
+            CriticVerdict.WARNING.value: 0,
+            CriticVerdict.FAIL.value: 0,
         }
 
         for result in results:
@@ -255,15 +255,16 @@ class CriticEnsembleEvaluator:
             total_weight += weight
             weighted_score += result.score * weight
             weighted_confidence += result.confidence * weight
-            verdicts[result.verdict] += 1
+            if result.verdict.value in verdicts:
+                verdicts[result.verdict.value] += 1
 
         final_score = weighted_score / total_weight if total_weight > 0 else 0.0
         weighted_confidence / total_weight if total_weight > 0 else 0.0
 
         # 确定最终裁决
-        if verdicts[CriticVerdict.FAIL] > 0 and final_score < 0.5:
+        if verdicts[CriticVerdict.FAIL.value] > 0 and final_score < 0.5:
             final_verdict = CriticVerdict.FAIL
-        elif verdicts[CriticVerdict.WARNING] > 0 or final_score < 0.7:
+        elif verdicts[CriticVerdict.WARNING.value] > 0 or final_score < 0.7:
             final_verdict = CriticVerdict.WARNING
         else:
             final_verdict = CriticVerdict.PASS

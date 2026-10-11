@@ -146,8 +146,27 @@ def sample_paragraph_with_edit(db_session, sample_project, sample_chapter):
         edit_forbid_edit=False,
     )
     db_session.add(para)
+    db_session.flush()  # Get para.id
+
+    # Create an audio segment linked to the paragraph
+    audio = AudioSegment(
+        project_id=sample_project.id,
+        chapter_id=sample_chapter.id,
+        paragraph_id=para.id,
+        file_path="/tmp/test.mp3",
+        duration_ms=3000,
+        engine="kokoro",
+        voice_id="v1",
+        format="mp3",
+    )
+    db_session.add(audio)
+    db_session.flush()  # Get audio.id
+
+    # Update paragraph with audio_segment_id
+    para.audio_segment_id = audio.id
     db_session.commit()
     db_session.refresh(para)
+
     return para
 
 
@@ -942,6 +961,7 @@ class TestRunStageQuality:
     @pytest.mark.asyncio
     async def test_run_stage_quality(self, db_session, sample_project, sample_chapter, sample_paragraph_with_edit):
         """Test run_stage with quality stage."""
+        # Patch QualityCheckPipeline where it's imported in stage_registry (used inline in QualityStage.run)
         with patch("src.audiobook_studio.pipeline.stage_registry.QualityCheckPipeline") as MockPipeline:
             mock_pipeline = MockPipeline.return_value
             from src.audiobook_studio.schemas import QualityJudgment

@@ -6,8 +6,8 @@
 | 状态 | 说明 | 对应模式 |
 |------|------|----------|
 | 🟢 **已落地** | 核心流水线、双引擎 TTS、质检、导出、前端编辑、遥测看板、单句重录 | 土豆模式 / 云端白嫖模式 |
-| 🟡 **规划中** | 跨语言声纹克隆、模型市场、接口限流、自我迭代演进（DSPy 路径）、管理预热端点 | 专业显卡模式 / 需额外依赖 |
-| 🔴 **需 GPU** | 零样本声纹锁定克隆、CosyVoice/VoxCPM2 神经模型、高保真声纹复用 | 专业显卡模式（独显 ≥16GB VRAM） |
+| 🟡 **规划中** | 模型市场、接口限流、自我迭代演进（DSPy 路径）、管理预热端点 | 专业显卡模式 / 需额外依赖 |
+| 🔴 **需 GPU** | 跨语言声纹克隆、零样本声纹锁定克隆、CosyVoice/VoxCPM2 神经模型、高保真声纹复用 | 专业显卡模式（独显 ≥16GB VRAM） |
 
 </div>
 
@@ -23,9 +23,10 @@ Audiobook Studio 是一个 **一站式有声书制作平台**，从原始手稿�
 - **成本与资源监控**：实时 token、字符、费用统计
 - **安全与合规**：环境变量安全、密钥泄露检测、审计日志
 
-## 💻 三档变速架构 (3-Tier Hardware Profiles)
+## 💻 四档变速架构 (4-Tier Hardware Profiles)
 为实现“让人人都能用得起开源智能有声书”的普惠目标，系统深度解耦并支持一键切换运行模式：
 - 🥔 **土豆模式 (Potato Mode)**：无 GPU、断网可用。TTS 走本地 `Kokoro-82M ONNX` 真合成（断网仍出可播放音频）；LLM 在断网时**诚实降级为启发式规则**（`router._heuristic_fallback`，非真生成，标记 `schema_compliance=False`），联网时回真云免费 API。README 早期描述的 `Qwen2.5-3B-GGUF` (CPU 推理) 为规划项，当前仓库无落地代码/依赖。零成本、绝对隐私。
+- 📴 **完全离线兜底模式 (Offline, 零档)**：无网/配额耗尽/隐私场景的完全离线兜底，`llama.cpp` + `Qwen2.5-3B-GGUF` 承担全部 LLM 与自迭代教练，本地零成本闭环（见 `hardware_profile.yaml` 的 `offline` 档）。
 - ☁️ **云端白嫖模式 (Cloud-Hybrid, 默认)**：轻量级本地。依赖 `QuotaRegistry` 调度的免费大模型 API 轮换池 + 本地 `Kokoro-82M` 极速合成。
 - 🚀 **专业显卡模式 (Pro Studio)**：针对拥有独显或云端算力的专业用户。对接 `CosyVoice/VoxCPM2`（**GPU 神经克隆模型**，需独显/云端算力）实现零样本声纹锁定克隆——**此能力仅限专业显卡模式**。默认土豆/云端白嫖模式的 `Kokoro-82M` / `Piper` 会丢弃 `reference_audio`、不做真实声纹锁定，仅提供谱质心占位特征（非真实声纹，见 `clone.py` 内诚实声明）；`real_clone_available()` 现已改为**诚实探针**——免费 + 无 GPU（未配置克隆后端）时返回 `False`、`clone_mode()` 返回 `'preset'`，但自托管 `docker-compose.gpu.yml`（VoxCPM2/CosyVoice2 且 `/health` 可达）时返回 `True`、声纹克隆从占位变真实（Track B 已接通，可用 `CLONE_BACKEND_DISABLED=true` 强制回退预设）。默认的自我迭代演进通过 **SOP 反思 + 晋升门禁** 路径实现（见 `feedback/sop_reflection.py` + `promotion_gate.py`）；**DSPy 深度演进循环**(GEPA / BootstrapFewShot)为可选实验性路径，需单独安装未声明的 `dspy` 依赖后才可启用，默认未启用。
 
@@ -36,7 +37,7 @@ Audiobook Studio 是一个 **一站式有声书制作平台**，从原始手稿�
 ### 跨语言声纹克隆（Multilingual Voice Clone）— 🔴 **需 GPU / 专业显卡模式**
 - **语言注册表**：`src/audiobook_studio/languages.py` — 集中管理管线可端到端处理的语言及其 TTS 音色、提示词引导。
 - **声纹克隆**：`src/audiobook_studio/tts/clone.py` 的 `VoiceCloner.clone_voice()` / `extract_voice_features()` / `VoicePrint`。**零样本声纹锁定与跨语言复用仅限专业显卡模式（Pro Studio，对接 `CosyVoice/VoxCPM2` 等 GPU 神经模型）**；默认土豆/云端模式走 `Kokoro-82M`，其 `extract_voice_features` 仅生成谱质心占位特征（非真实声纹，见 `clone.py` 内诚实声明），不得用于声纹比对。
-- 专业显卡模式可对接 `CosyVoice/VoxCPM2`（见上方「三档变速架构 → 专业显卡模式」）。
+- 专业显卡模式可对接 `CosyVoice/VoxCPM2`（见上方「四档变速架构 → 专业显卡模式」）。
 
 ### BGM 混音（背景音乐 Ducking）
 - **实现**：`src/audiobook_studio/export/audio_ducking.py`（`MixConfig`）+ 导出管线自动 ducking。

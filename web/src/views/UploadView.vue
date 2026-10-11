@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import './UploadView.css'
 import { useUpload } from '../composables/useUpload'
+import { Icon } from '@iconify/vue'
+import ChapterTree from '../components/upload/ChapterTree.vue'
+import UploadActionBar from '../components/upload/UploadActionBar.vue'
 
 const {
   t,
@@ -16,24 +19,33 @@ const {
   statusMessage,
   extractionStatus,
   uploadComplete,
-  createdProjectId,
-  fileInput,
   canProceedStep1,
+  canProceedStep3,
   triggerFileInput,
   handleFileSelect,
   handleDrop,
   formatFileSize,
   goToStep2,
   startUpload,
-  goToProject,
   goBack,
   clearFile,
+  // Phase 3
+  extractionResult,
+  selectedChapterIds,
+  extractionLoading,
+  extractionJobId,
+  startPipelineLoading,
+  fetchExtractionResultData,
+  startPipeline,
+  toggleChapterSelection,
+  toggleSelectAll,
 } = useUpload()
 
-void createdProjectId
-void fileInput
+const handleSaveDraft = () => {
+  console.log('Save draft clicked')
+  alert(t('upload.saveDraftNotImplemented'))
+}
 </script>
-
 
 <template>
   <div class="page-container upload-view">
@@ -161,32 +173,51 @@ void fileInput
       </div>
     </section>
 
-    <!-- Step 3: Upload Progress -->
+    <!-- Step 3: Extraction Result & Chapter Selection (Phase 3) -->
     <section v-if="step === 3" class="card card-hover section">
-      <h2 class="card-title">{{ t('upload.progress') }}</h2>
+      <h2 class="card-title">{{ t('upload.step_3') }}</h2>
 
-      <div class="progress-container mb-4">
+      <div v-if="uploading" class="progress-container mb-4">
         <div class="progress-bar" style="height: 8px; background: var(--color-border); border-radius: 4px; overflow: hidden;">
           <div class="progress-fill" :style="{ width: uploadProgress + '%' }" style="height: 100%; background: var(--color-primary); border-radius: 4px; transition: width 0.3s;"></div>
         </div>
         <span class="progress-text font-medium" style="min-width: 48px; text-align: right;">{{ uploadProgress }}%</span>
       </div>
 
-      <div class="status-message p-3 rounded mb-4" :class="extractionStatus === 'error' ? 'alert alert-error' : 'alert alert-info'">
+      <div v-if="!uploadComplete" class="status-message p-3 rounded mb-4" :class="extractionStatus === 'error' ? 'alert alert-error' : 'alert alert-info'">
         <p>{{ statusMessage }}</p>
       </div>
 
-      <div v-if="extractionStatus" class="extraction-status p-3 rounded mb-4" style="background: var(--color-bg-tertiary); border: 1px solid var(--color-border);">
-        <p><strong>{{ t('upload.extractionStatus') }}:</strong> {{ extractionStatus }}</p>
-      </div>
+      <div v-else class="extraction-complete">
+        <div class="grid gap-4">
+          <!-- Chapter Tree (Left) -->
+          <div class="flex-1" style="min-width: 0;">
+            <ChapterTree
+              :extraction-result="extractionResult"
+              :selected-chapter-ids="selectedChapterIds"
+              :extraction-loading="extractionLoading"
+              :extraction-job-id="extractionJobId"
+              @toggle="toggleChapterSelection"
+              @refresh="fetchExtractionResultData"
+              @select-all="toggleSelectAll"
+            />
+          </div>
 
-      <div v-if="uploadComplete" class="flex justify-end gap-2">
-        <button class="btn btn-primary btn-lg" @click="goToProject">
-          <Icon icon="mdi:book-open" width="18" height="18" class="gap-2" />
-          {{ t('upload.viewProject') }}
-        </button>
+          <!-- Preview Panel (Right) - Optional, can be added later -->
+        </div>
+
+        <!-- Action Bar (Bottom) -->
+        <UploadActionBar
+          :extraction-result="extractionResult"
+          :selected-chapter-ids="selectedChapterIds"
+          :start-pipeline-loading="startPipelineLoading"
+          :extraction-loading="extractionLoading"
+          :can-start-pipeline="canProceedStep3"
+          @start-pipeline="startPipeline"
+          @back-to-edit="step = 2"
+          @save-draft="handleSaveDraft"
+        />
       </div>
     </section>
   </div>
 </template>
-

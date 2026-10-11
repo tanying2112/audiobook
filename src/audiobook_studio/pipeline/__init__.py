@@ -42,6 +42,7 @@ from .sop_reflection import (
 )
 from .stage_registry import StageRegistry
 from .synthesize import SynthesizePipeline, synthesize_paragraphs
+from .text_clean import TextCleanPipeline, clean_text
 
 __all__ = [
     # Convenience functions
@@ -54,6 +55,7 @@ __all__ = [
     "finalize_audio",
     "run_stage",
     "run_pipeline",
+    "clean_text",
     # Pipeline classes
     "ExtractPipeline",
     "AnalyzeStructurePipeline",
@@ -62,6 +64,7 @@ __all__ = [
     "QualityCheckPipeline",
     "SynthesizePipeline",
     "AudioFinalizer",
+    "TextCleanPipeline",
     # Orchestration components
     "CheckpointManager",
     "AudioPostProcessor",

@@ -110,16 +110,21 @@ class TestRunExportAsync:
 
     @pytest.mark.asyncio
     async def test_run_export_async_calls_export_project(self):
-        """Test _run_export_async calls export_project with correct args."""
+        """Test _run_export_async calls export_project with correct args.
+
+        Without an injected ``db_session`` the production path opens a sync
+        ``SessionLocal`` in a worker thread (``asyncio.to_thread``), so the
+        sync session and sync ``export_project`` are exercised.
+        """
         project_id = 1
         mock_job = MagicMock()
         mock_job.project_id = project_id
 
-        with patch("src.audiobook_studio.tasks.export_tasks.export_project", new_callable=AsyncMock) as mock_export:
+        with patch("src.audiobook_studio.tasks.export_tasks.export_project") as mock_export:
             mock_export.return_value = mock_job
-            with patch("src.audiobook_studio.tasks.export_tasks.AsyncSessionLocal") as mock_session:
-                mock_db = AsyncMock()
-                mock_session.return_value.__aenter__.return_value = mock_db
+            with patch("src.audiobook_studio.database.SessionLocal") as mock_session:
+                mock_db = MagicMock()
+                mock_session.return_value.__enter__.return_value = mock_db
 
                 result = await export_tasks._run_export_async(project_id, mock_job)
 

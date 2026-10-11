@@ -36,6 +36,7 @@ from .edit_for_tts import EditForTtsPipeline
 from .extract import ExtractPipeline
 from .quality_check import QualityCheckPipeline
 from .synthesize import SynthesizePipeline
+from .text_clean import TextCleanPipeline
 
 logger = logging.getLogger(__name__)
 
@@ -191,8 +192,63 @@ def _plugin_stage_handler_class(factory: Callable[..., Any]) -> Type[StageHandle
 
 # ── Built-in Stage Handlers ──────────────────────────────────────────────────
 
-
 from ..schemas import ExtractionInput
+from ..schemas.text_clean import TextCleanInput, TextCleanResult
+
+
+class TextCleanStage(StageHandler):
+    """Text Clean stage: clean SRT subtitle text to readable format.
+
+    Runs after synthesize/export, converts SRT to readable text with:
+    - Timestamp/sequence removal
+    - Broken word merging (cross-line splits)
+    - Punctuation/spacing fixes
+    - Name normalization
+    - Speaker-based paragraph regrouping
+    - Optional LLM polish
+    """
+
+    async def run(self, **kwargs: Any) -> Any:
+        srt_path = kwargs.get("srt_path")
+        use_llm = kwargs.get("use_llm", False)
+        project_id = kwargs.get("project_id", 0)
+        chapter_index = kwargs.get("chapter_index", 1)
+
+        if not srt_path:
+            raise ValueError("text_clean requires srt_path")
+
+        from pathlib import Path
+
+        srt_path = Path(srt_path)
+        if not srt_path.exists():
+            raise FileNotFoundError(f"SRT file not found: {srt_path}")
+
+        output_path = srt_path.with_suffix("_readable.txt")
+
+        logger.info(f"TextCleanStage: cleaning {srt_path} -> {output_path}")
+
+        pipeline = TextCleanPipeline(mock_mode=kwargs.get("mock_mode", False))
+        result = pipeline.run(srt_path=str(srt_path))
+
+        # Emit progress
+        try:
+            import asyncio
+
+            loop = asyncio.get_running_loop()
+            loop.create_task(
+                emit_stage_progress(
+                    stage="text_clean",
+                    project_id=project_id,
+                    chapter_index=chapter_index,
+                    current=1,
+                    total=1,
+                    message="Text cleaning complete",
+                )
+            )
+        except RuntimeError:
+            pass
+
+        return result
 
 
 class ExtractStage(StageHandler):
@@ -1089,9 +1145,7 @@ class QualityStage(StageHandler):
                 # auto_run/orchestrator 传入的是 AsyncSession（此前 db.query
                 # 只对同步 Session 有效，导致音频路径恒为空、质检在无音频上
                 # 空跑）。异步分支正确取回 segment。
-                seg_res = await db.execute(
-                    _select(AudioSegment).filter(AudioSegment.id == para.audio_segment_id)
-                )
+                seg_res = await db.execute(_select(AudioSegment).filter(AudioSegment.id == para.audio_segment_id))
                 seg = seg_res.scalar_one_or_none()
             elif db is not None:
                 seg = db.query(AudioSegment).filter(AudioSegment.id == para.audio_segment_id).first()
@@ -1315,4 +1369,5 @@ StageRegistry.register("review", ReviewStage)
 StageRegistry.register("synthesize", SynthesizeStage)
 StageRegistry.register("quality", QualityStage)
 StageRegistry.register("translate", TranslateStage)
+StageRegistry.register("text_clean", TextCleanStage)
 from ..schemas.paragraph import ParagraphAnnotationInput

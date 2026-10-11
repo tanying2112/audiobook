@@ -1,7 +1,8 @@
 """Hardware Profile Configuration using Pydantic Settings.
 
-Three-tier architecture:
+Four-tier architecture:
 - potato: Pure CPU, fully offline, llama.cpp + Kokoro-ONNX
+- offline: Fully-offline fallback, llama.cpp + Qwen2.5-3B GGUF for all LLM + self-iteration coach
 - cloud_hybrid: Free cloud APIs + local TTS (DEFAULT)
 - pro_studio: GPU + VoxCPM2/CosyVoice + DSPy evolution
 """

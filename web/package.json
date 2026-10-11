@@ -30,6 +30,7 @@
     "wavesurfer.js": "^7.12.7"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/node": "^24.12.3",
     "@vitejs/plugin-vue": "^6.0.6",
     "@vitest/coverage-v8": "^2.1.0",

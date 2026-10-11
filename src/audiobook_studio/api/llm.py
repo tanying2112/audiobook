@@ -1,14 +1,16 @@
 """LLM API endpoints for chat-based editing and annotation."""
 
+import asyncio
 import json
 import logging
+import uuid
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from ..llm.client import create_client
+from ..llm.router import get_llm_router
 
 logger = logging.getLogger(__name__)
 
@@ -21,17 +23,33 @@ router = APIRouter(prefix="/llm", tags=["llm"])
 
 
 class ChatEditRequest(BaseModel):
-    """Request for chat-based text editing."""
+    """Request for chat-based text editing.
 
-    paragraph_id: int = Field(..., description="Paragraph index or ID")
+    Tolerant to the frontend payload (types/pipeline.ts ChatEditRequest):
+    paragraph_id/paragraph_index are interchangeable, original_text defaults
+    to empty (frontend sends the selection via annotation_context), and
+    history entries may carry structured suggestion objects.
+    """
+
+    paragraph_id: Optional[int] = Field(None, description="Paragraph index or ID")
+    paragraph_index: Optional[int] = Field(None, description="Alias for paragraph_id (frontend payload)")
     project_id: int = Field(..., description="Project ID")
-    original_text: str = Field(..., description="Original paragraph text")
+    chapter_index: Optional[int] = Field(None, description="Chapter index (frontend payload)")
+    original_text: str = Field("", description="Original paragraph text")
     intent: str = Field(..., description="User's editing intent, e.g., 'make it more colloquial'")
+    target_stage: Optional[str] = Field(None, description="Target stage: edit/annotate (frontend payload)")
     annotation_context: Optional[Dict[str, Any]] = Field(
         None, description="Current annotation (speaker, emotion, etc.)"
     )
-    conversation_history: Optional[List[Dict[str, str]]] = Field(None, description="Previous conversation turns")
+    conversation_history: Optional[List[Dict[str, Any]]] = Field(None, description="Previous conversation turns")
     difficulty: Optional[str] = Field(None, description="Paragraph difficulty (A/B/C/D)")
+
+    @property
+    def effective_paragraph_id(self) -> int:
+        """Paragraph id with the frontend's paragraph_index alias resolved."""
+        if self.paragraph_index is not None:
+            return self.paragraph_index
+        return self.paragraph_id or 0
 
 
 class ChatEditResponse(BaseModel):
@@ -45,17 +63,31 @@ class ChatEditResponse(BaseModel):
 
 
 class ChatAnnotateRequest(BaseModel):
-    """Request for chat-based annotation adjustment."""
+    """Request for chat-based annotation adjustment.
 
-    paragraph_id: int = Field(..., description="Paragraph index or ID")
+    Tolerant to the frontend payload, same as ChatEditRequest.
+    """
+
+    paragraph_id: Optional[int] = Field(None, description="Paragraph index or ID")
+    paragraph_index: Optional[int] = Field(None, description="Alias for paragraph_id (frontend payload)")
     project_id: int = Field(..., description="Project ID")
-    original_text: str = Field(..., description="Paragraph text")
+    chapter_index: Optional[int] = Field(None, description="Chapter index (frontend payload)")
+    original_text: str = Field("", description="Paragraph text")
     current_annotation: Optional[Dict[str, Any]] = Field(None, description="Current annotation")
     user_instruction: str = Field(
-        ...,
+        "",
         description="User's instruction, e.g., 'this is said by Zhang San, more angry'",
     )
-    conversation_history: Optional[List[Dict[str, str]]] = Field(None, description="Previous conversation turns")
+    intent: Optional[str] = Field(None, description="Alias for user_instruction (frontend payload)")
+    target_stage: Optional[str] = Field(None, description="Target stage: edit/annotate (frontend payload)")
+    conversation_history: Optional[List[Dict[str, Any]]] = Field(None, description="Previous conversation turns")
+
+    @property
+    def effective_paragraph_id(self) -> int:
+        """Paragraph id with the frontend's paragraph_index alias resolved."""
+        if self.paragraph_index is not None:
+            return self.paragraph_index
+        return self.paragraph_id or 0
 
 
 class ChatAnnotateResponse(BaseModel):
@@ -181,6 +213,21 @@ async def stream_json_lines(data_stream: AsyncGenerator[str, None]) -> AsyncGene
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def _create_chat_client():
+    """Create an LLM client for the chat endpoints.
+
+    The bare ``create_client()`` calls the chat endpoints used before never
+    worked (create_client requires a model argument). Route through the first
+    enabled provider from the routing config — the same default the pipeline
+    stages rely on, with key-pool rotation and timeout from the provider.
+    """
+    router = get_llm_router()
+    enabled = router.config.get_all_enabled()
+    if not enabled:
+        raise HTTPException(status_code=503, detail="No LLM provider configured")
+    return router.get_client(enabled[0])
+
+
 @router.post("/chat-edit")
 async def chat_edit(request: ChatEditRequest):
     """
@@ -199,13 +246,22 @@ async def chat_edit(request: ChatEditRequest):
 
         async def generate_edit() -> AsyncGenerator[str, None]:
             """Generate streaming edit response."""
-            llm_client = create_client()
+            llm_client = _create_chat_client()
+            message_id = str(uuid.uuid4())
+
+            # Frontend SSE protocol (matches the mock endpoint): thinking →
+            # token* → suggestion → done. suggestion must be nested under the
+            # "suggestion" key or the frontend parser drops it.
+            yield json.dumps({"type": "thinking", "message_id": message_id}, ensure_ascii=False)
 
             # Build conversation messages
             system_msg = {"role": "system", "content": CHAT_EDIT_SYSTEM_PROMPT}
 
+            # Frontend inline chat sends the selection via annotation_context
+            # rather than original_text — resolve both.
+            original_text = request.original_text or str((request.annotation_context or {}).get("selected_text") or "")
             context_info = f"""
-Original text: {request.original_text}
+Original text: {original_text}
 Editing intent: {request.intent}
 Current annotation: {json.dumps(request.annotation_context) if request.annotation_context else 'None'}
 Difficulty: {request.difficulty or 'Unknown'}
@@ -217,43 +273,53 @@ Difficulty: {request.difficulty or 'Unknown'}
                 messages.extend(request.conversation_history)
             messages.append({"role": "user", "content": context_info})
 
-            # Stream response from LLM
-            response_chunks = []
-            async for chunk in llm_client.stream(
-                messages=messages,
-                temperature=0.7,
-                max_tokens=1000,
-            ):
-                content = chunk.choices[0].delta.content if chunk.choices else ""
-                if content:
-                    response_chunks.append(content)
-                    # Send incremental token updates (frontend expects "token" type)
-                    yield json.dumps(
-                        {
-                            "type": "token",
-                            "content": content,
-                        },
-                        ensure_ascii=False,
-                    )
+            # LLMClient has no streaming interface — use the standard
+            # structured call() (instructor parsing, semantic cache, mock
+            # mode) and emit the rationale as a single token update so the
+            # frontend accumulator still renders streaming text.
+            try:
+                result = await asyncio.to_thread(
+                    llm_client.call,
+                    messages=messages,
+                    response_model=ChatEditResponse,
+                    temperature=0.7,
+                    max_tokens=1000,
+                )
+            except Exception as e:
+                # Surface the real reason as an SSE error event so the
+                # frontend popup shows it instead of a bare HTTP 500.
+                logger.error(f"Chat edit LLM call failed: {e}")
+                yield json.dumps(
+                    {"type": "error", "message": f"LLM unavailable: {e}", "code": "LLM_UNAVAILABLE"},
+                    ensure_ascii=False,
+                )
+                return
+            parsed = result.output
+            edited_text = parsed.edited_text or original_text
+            changes_made = list(parsed.changes_made or [])
+            rationale = parsed.rationale or ""
+            confidence = parsed.confidence
+            forbid_edit = bool(parsed.forbid_edit)
 
-            # Parse final response
-            full_response = "".join(response_chunks)
-
-            # Try to extract JSON from response
-            edited_text = request.original_text
-            changes_made = []
-            rationale = full_response
-            confidence = 0.8
+            if rationale:
+                yield json.dumps({"type": "token", "content": rationale}, ensure_ascii=False)
 
             # Send suggestion with full parsed data (frontend expects "suggestion" type)
             yield json.dumps(
                 {
                     "type": "suggestion",
-                    "edited_text": edited_text,
-                    "changes_made": changes_made,
-                    "rationale": rationale,
-                    "confidence": confidence,
-                    "forbid_edit": forbid_edit,
+                    "suggestion": {
+                        "kind": "text_edit",
+                        "paragraph_id": str(request.effective_paragraph_id),
+                        "before": {"original_text": original_text},
+                        "after": {"edited_text": edited_text},
+                        "changes_made": changes_made,
+                        "confidence": confidence,
+                        "rationale": rationale,
+                        "edited_text": edited_text,
+                        "forbid_edit": forbid_edit,
+                    },
+                    "message_id": message_id,
                 },
                 ensure_ascii=False,
             )
@@ -262,6 +328,7 @@ Difficulty: {request.difficulty or 'Unknown'}
             yield json.dumps(
                 {
                     "type": "done",
+                    "message_id": message_id,
                     "edited_text": edited_text,
                     "changes_made": changes_made,
                     "rationale": rationale,
@@ -298,14 +365,21 @@ async def chat_annotate(request: ChatAnnotateRequest):
 
         async def generate_annotation() -> AsyncGenerator[str, None]:
             """Generate streaming annotation response."""
-            llm_client = create_client()
+            llm_client = _create_chat_client()
+            message_id = str(uuid.uuid4())
+
+            # Same SSE protocol as chat-edit: thinking → token* → suggestion → done.
+            yield json.dumps({"type": "thinking", "message_id": message_id}, ensure_ascii=False)
 
             # Build conversation messages
             system_msg = {"role": "system", "content": CHAT_ANNOTATE_SYSTEM_PROMPT}
 
+            # Frontend streamChatAnnotate sends intent as the instruction alias.
+            user_instruction = request.user_instruction or request.intent or ""
+            original_text = request.original_text or str((request.current_annotation or {}).get("selected_text") or "")
             context_info = f"""
-Text: {request.original_text}
-User instruction: {request.user_instruction}
+Text: {original_text}
+User instruction: {user_instruction}
 Current annotation: {json.dumps(request.current_annotation) if request.current_annotation else 'None'}
 """
 
@@ -315,32 +389,39 @@ Current annotation: {json.dumps(request.current_annotation) if request.current_a
                 messages.extend(request.conversation_history)
             messages.append({"role": "user", "content": context_info})
 
-            # Stream response from LLM
-            response_chunks = []
-            async for chunk in llm_client.stream(
-                messages=messages,
-                temperature=0.5,
-                max_tokens=500,
-            ):
-                content = chunk.choices[0].delta.content if chunk.choices else ""
-                if content:
-                    response_chunks.append(content)
-                    yield json.dumps(
-                        {
-                            "type": "token",
-                            "content": content,
-                        },
-                        ensure_ascii=False,
-                    )
-
-            # Parse final response
-            full_response = "".join(response_chunks)
+            # Same structured call() as chat-edit — LLMClient has no streaming.
+            try:
+                result = await asyncio.to_thread(
+                    llm_client.call,
+                    messages=messages,
+                    response_model=ChatAnnotateResponse,
+                    temperature=0.5,
+                    max_tokens=500,
+                )
+            except Exception as e:
+                logger.error(f"Chat annotate LLM call failed: {e}")
+                yield json.dumps(
+                    {"type": "error", "message": f"LLM unavailable: {e}", "code": "LLM_UNAVAILABLE"},
+                    ensure_ascii=False,
+                )
+                return
+            parsed = result.output
+            full_response = parsed.rationale or ""
+            if full_response:
+                yield json.dumps({"type": "token", "content": full_response}, ensure_ascii=False)
 
             # Send suggestion (frontend expects "suggestion" type)
             yield json.dumps(
                 {
                     "type": "suggestion",
-                    "rationale": full_response,
+                    "suggestion": {
+                        "kind": "annotation_adjust",
+                        "paragraph_id": str(request.effective_paragraph_id),
+                        "changes_made": [],
+                        "confidence": 0.8,
+                        "rationale": full_response,
+                    },
+                    "message_id": message_id,
                 },
                 ensure_ascii=False,
             )
@@ -349,6 +430,7 @@ Current annotation: {json.dumps(request.current_annotation) if request.current_a
             yield json.dumps(
                 {
                     "type": "done",
+                    "message_id": message_id,
                     "rationale": full_response,
                 },
                 ensure_ascii=False,
@@ -396,7 +478,7 @@ async def assistant(request: AssistantRequest):
     Answers questions about the project, provides suggestions, and can trigger actions.
     """
     try:
-        llm_client = create_client()
+        llm_client = _create_chat_client()
 
         system_msg = {
             "role": "system",
@@ -419,14 +501,18 @@ Current context: {json.dumps(request.context) if request.context else 'None'}
 
         messages = [system_msg, {"role": "user", "content": context_info}]
 
-        response = await llm_client.chat.completions.create(
+        # LLMClient is not a litellm client — the old direct
+        # chat.completions.create(model="sonnet") call never worked. Use the
+        # standard structured call() via the routed client.
+        result = await asyncio.to_thread(
+            llm_client.call,
             messages=messages,
-            model="sonnet",
+            response_model=AssistantResponse,
             temperature=0.7,
             max_tokens=500,
         )
 
-        answer = response.choices[0].message.content
+        answer = result.output.answer
 
         # Generate suggested actions based on context
         suggested_actions = []
@@ -445,4 +531,26 @@ Current context: {json.dumps(request.context) if request.context else 'None'}
 
     except Exception as e:
         logger.error(f"Assistant failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LLM Router Status Endpoint (Phase 5)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.get("/status")
+async def llm_status():
+    """Get aggregated LLM router status.
+
+    Returns providers health, key pool stats, circuit breaker states,
+    cost tracking, quota registry, and mock mode flag.
+    """
+    from ..llm.router import get_llm_router
+
+    try:
+        router = get_llm_router()
+        return router.get_aggregated_status()
+    except Exception as e:
+        logger.error(f"LLM status endpoint failed: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e

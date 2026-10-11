@@ -442,6 +442,40 @@ class ExtractPipeline:
             logger.error(f"Image OCR failed: {e}")
             return "", 1, False, 0.0, []
 
+    def _trim_to_main_content(self, raw_text: str) -> str:
+        """剔除非主文内容，仅保留故事正文；失败/病理情况诚实返回原文。"""
+        try:
+            from .main_content import extract_main_content, filter_enabled, llm_refine_enabled, make_llm_boundary_fn
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[main-content] module unavailable, passing text through: {e}")
+            return raw_text
+
+        if not filter_enabled():
+            return raw_text
+
+        boundary_fn = None
+        if llm_refine_enabled() and not self.mock_mode:
+            try:
+                boundary_fn = make_llm_boundary_fn(self.router)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"[main-content] LLM boundary refine unavailable: {e}")
+
+        try:
+            result = extract_main_content(raw_text, llm_boundary_fn=boundary_fn)
+        except Exception as e:  # noqa: BLE001 — 裁剪失败绝不阻塞提取
+            logger.warning(f"[main-content] trimming failed, keeping original text: {e}")
+            return raw_text
+
+        if not result.text or not result.text.strip():
+            logger.warning("[main-content] trimming produced empty text; keeping original")
+            return raw_text
+        if result.method != "passthrough" and len(result.text) < len(raw_text):
+            logger.info(
+                f"[main-content] kept story only: {len(raw_text)} -> {len(result.text)} chars "
+                f"(method={result.method}, degraded={result.degraded})"
+            )
+        return result.text
+
     def _detect_language(self, text: str) -> str:
         """Simple heuristic language detection.
 
@@ -550,6 +584,12 @@ class ExtractPipeline:
             raise ValueError(f"Unsupported MIME type: {mime_type}")
 
         multimodal_used = bool(visual_elements)
+
+        # ── 主文裁剪：剔除出版信息/目录/简介/问答/练习等非主文内容 ──
+        # 仅保留故事正文进入下游 analyze/annotate/edit/synthesize。
+        # 开关 MAIN_CONTENT_FILTER_ENABLED（默认开）；可选 LLM 边界增强
+        # MAIN_CONTENT_LLM_REFINE（默认关），失败时诚实降级为启发式结果。
+        raw_text = self._trim_to_main_content(raw_text)
 
         if not raw_text or len(raw_text) < 50:
             warnings.append("Extracted text too short, may need manual review")

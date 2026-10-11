@@ -38,6 +38,7 @@ from .review import (
     VoiceBindingCheck,
 )
 from .routing import Routing
+from .text_clean import TextCleanConfig, TextCleanInput, TextCleanResult
 from .tts_edit import TTSEdit, TtsEditInput, TtsEditOutput
 from .tts_routing import TtsRoutingDecision, TtsRoutingInput
 
@@ -89,4 +90,8 @@ __all__ = [
     "AudioPostProcessParams",
     "AudioFinalizeParams",
     "AudioFinalizeResult",
+    # 文本清洗契约 (SRT 清洗)
+    "TextCleanInput",
+    "TextCleanResult",
+    "TextCleanConfig",
 ]

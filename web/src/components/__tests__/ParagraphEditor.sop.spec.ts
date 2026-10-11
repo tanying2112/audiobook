@@ -12,6 +12,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import type { ComponentMountingOptions } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import ParagraphEditor from '../ParagraphEditor.vue'
 import type { Paragraph } from '../../types'
 
@@ -54,6 +55,8 @@ function mountEditor(paragraph: Paragraph) {
 
 describe('ParagraphEditor.vue — SOP 纠错投喂 (P0.1)', () => {
   beforeEach(() => {
+    // ParagraphEditor 通过 useInlineChat 依赖 Pinia context store
+    setActivePinia(createPinia())
     sendCorrectionMock.mockReset()
     sendCorrectionMock.mockResolvedValue(true)
   })

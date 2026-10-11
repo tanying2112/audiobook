@@ -56,7 +56,9 @@ const { t } = useI18n()
 const projectId = computed(() => Number(route.params.projectId || route.params.id))
 const stages = ['extract', 'analyze', 'annotate', 'edit', 'audio_postprocess', 'synthesize', 'quality']
 
-const stage = ref('extract')
+// 预选阶段：支持 ?stage= 查询参数（AutoRunStageControl 的阶段级按钮导航过来）
+const queryStage = (route.query as { stage?: unknown } | undefined)?.stage
+const stage = ref(stages.includes(String(queryStage)) ? String(queryStage) : 'extract')
 const chapterId = ref<number | undefined>(undefined)
 const running = ref(false)
 const runResult = ref<StageRunResponse | null>(null)

@@ -221,6 +221,7 @@ def test_initialize_database_full_seed(mock_rp):
         MagicMock(id=2),
         MagicMock(id=3),
         MagicMock(id=4),
+        MagicMock(id=5),
     ]
     mock_rp._mock_session_local.return_value = mock_session
     mock_rp.initialize_database(seed_projects=True)
@@ -237,6 +238,7 @@ def test_initialize_database_seed_creates_missing(mock_rp):
         MagicMock(id=2),  # 三国演义 exists
         MagicMock(id=3),  # Carnival exists
         MagicMock(id=4),  # test_story exists
+        MagicMock(id=5),  # Football Forever exists
     ]
     mock_rp._mock_session_local.return_value = mock_session
     mock_rp.initialize_database(seed_projects=True)
@@ -885,7 +887,7 @@ def test_stages_order(mock_rp):
 
 def test_book_config_keys(mock_rp):
     """Test BOOK_CONFIG has expected keys."""
-    assert set(mock_rp.BOOK_CONFIG.keys()) == {"红楼梦", "三国演义", "Carnival", "test_story"}
+    assert set(mock_rp.BOOK_CONFIG.keys()) == {"红楼梦", "三国演义", "Carnival", "test_story", "Football Forever"}
 
 
 def test_book_config_fields(mock_rp):

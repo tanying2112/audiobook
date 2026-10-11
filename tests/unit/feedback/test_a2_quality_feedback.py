@@ -4,12 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from audiobook_studio.feedback.loop import (
-    _load_samples,
-    quality_judgment_to_sample,
-    quality_judgments_to_golden,
-)
-from audiobook_studio.schemas.quality import QualityJudgment
+from src.audiobook_studio.feedback.loop import _load_samples, quality_judgment_to_sample, quality_judgments_to_golden
+from src.audiobook_studio.schemas.quality import QualityJudgment
 
 
 def _judgment(segment_id: str, needs_regen: bool, issues: list) -> QualityJudgment:

@@ -381,12 +381,14 @@ class TestPipelineFSMIntegration:
     @patch("src.audiobook_studio.agent.fsm.SessionLocal")
     @patch("src.audiobook_studio.agent.fsm.run_pipeline")
     async def test_default_runner_uses_orchestrator(self, mock_run_pipeline, mock_session_local):
-        """Default stage runner should use orchestrator.run_pipeline."""
+        """Default stage runner should use orchestrator.run_pipeline for the
+        generic path — extract with a concrete chapter skips the
+        already-extracted skip branch."""
         mock_db = MagicMock()
         mock_session_local.return_value = mock_db
         mock_run_pipeline.return_value = [{"result": "ok"}]
 
-        context = PipelineContext(project_id=1, mode=PipelineMode.AUTOPILOT, chapter_index=1)
+        context = PipelineContext(project_id=1, mode=PipelineMode.AUTOPILOT, chapter_index=1, chapter_id=5)
         fsm = PipelineFSM(context)  # Uses default runner
 
         await fsm.execute_stage(PipelineState.EXTRACTING)
@@ -396,6 +398,7 @@ class TestPipelineFSMIntegration:
         assert call_args[1]["stages"] == ["extract"]
         assert call_args[1]["project_id"] == 1
         assert call_args[1]["chapter_index"] == 1
+        assert call_args[1]["chapter_id"] == 5
         mock_db.close.assert_called_once()
 
 
@@ -1023,6 +1026,7 @@ class TestPipelineFSMEndpoints:
     async def test_start_pipeline_invalid_mode(self, mock_project):
         """POST /agent/pipeline/start should reject invalid mode."""
         from src.audiobook_studio.api.agent_chat import start_pipeline
+        from src.audiobook_studio.exceptions import DomainError
 
         request = PipelineStartRequest(
             project_id=1,
@@ -1030,9 +1034,10 @@ class TestPipelineFSMEndpoints:
             chapter_index=1,
         )
 
-        # PipelineMode(request.mode.lower()) raises ValueError (enum)
-        # before the HTTPException handler is reached
-        with pytest.raises(ValueError, match="not a valid PipelineMode"):
+        # Invalid mode raises DomainError (VALIDATION_ERROR -> HTTP 422).
+        # Previously PipelineMode() raised an unhandled ValueError that
+        # surfaced as HTTP 500 (audit fix).
+        with pytest.raises(DomainError, match="Invalid mode"):
             await start_pipeline(request, mock_project)
 
     @pytest.mark.asyncio
@@ -1058,7 +1063,7 @@ class TestPipelineFSMEndpoints:
         from src.audiobook_studio.agent.fsm import PipelineMode
         from src.audiobook_studio.api.agent_chat import confirm_pipeline
 
-        request = PipelineConfirmRequest(project_id=1, confirmed=True)
+        request = PipelineConfirmRequest(project_id=1, action="approve")
 
         with patch("src.audiobook_studio.api.agent_chat.get_fsm") as mock_get_fsm:
             mock_fsm = AsyncMock()
@@ -1082,11 +1087,11 @@ class TestPipelineFSMEndpoints:
 
     @pytest.mark.asyncio
     async def test_confirm_pipeline_reject(self, mock_project):
-        """POST /agent/pipeline/confirm with confirmed=False should fail pipeline."""
+        """POST /agent/pipeline/confirm with action='reject' should fail pipeline."""
         from src.audiobook_studio.agent.fsm import PipelineMode, PipelineState
         from src.audiobook_studio.api.agent_chat import confirm_pipeline
 
-        request = PipelineConfirmRequest(project_id=1, confirmed=False)
+        request = PipelineConfirmRequest(project_id=1, action="reject")
 
         with patch("src.audiobook_studio.api.agent_chat.get_fsm") as mock_get_fsm:
             mock_fsm = AsyncMock()
@@ -1110,7 +1115,7 @@ class TestPipelineFSMEndpoints:
         from src.audiobook_studio.agent.fsm import PipelineMode
         from src.audiobook_studio.api.agent_chat import confirm_pipeline
 
-        request = PipelineConfirmRequest(project_id=1, confirmed=True)
+        request = PipelineConfirmRequest(project_id=1, action="approve")
 
         with patch("src.audiobook_studio.api.agent_chat.get_fsm") as mock_get_fsm:
             mock_fsm = AsyncMock()

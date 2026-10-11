@@ -79,16 +79,27 @@ import src.audiobook_studio  # noqa: F401
 
 
 class _AudiobookStudioAliasLoader:
-    """Loader yielding the already-executed canonical ``src.`` module."""
+    """Loader yielding the already-executed canonical ``src.`` module.
+
+    ``create_module`` returns the canonical module object (never re-executes the
+    source). ``exec_module`` restores the canonical module's original ``__spec__``
+    so ``__spec__.name == __name__`` (the import machinery stamps the alias spec
+    onto the module in ``module_from_spec`` before ``exec_module`` runs).
+    """
 
     def __init__(self, module):
         self._module = module
+        self._original_spec = getattr(module, "__spec__", None)
 
     def create_module(self, spec):
         return self._module
 
     def exec_module(self, module):
-        # The canonical module is already fully executed; nothing to do.
+        # The canonical module is already fully executed; restore its real spec
+        # (the machinery may have overwritten ``module.__spec__`` with the alias
+        # spec while building the module) so ``__spec__.name`` stays canonical.
+        if self._original_spec is not None:
+            module.__spec__ = self._original_spec
         return None
 
 
@@ -103,29 +114,22 @@ class _AudiobookStudioAliasFinder:
             canonical = importlib.import_module(alt)
         except ImportError:
             return None
-        # Build the spec under the CANONICAL name (`alt`), not the alias, and
-        # pre-populate the alias key. Two reasons:
-        #
-        # 1. `_load` runs even after find_spec returns (CPython does not re-check
-        #    sys.modules), and `_init_module_attrs(override=True)` then stamps
-        #    `module.__spec__` onto whatever create_module returns — here the
-        #    canonical module. If spec.name is the alias ("audiobook_studio.X"),
-        #    that leaves `canonical.__name__` ("src.audiobook_studio.X")
-        #    disagreeing with `canonical.__spec__.name` — a half-aliased object
-        #    that intermittently surfaces as ``cannot import name '__all__' from
-        #    '<unknown module name>'`` under some collection orders. Naming the
-        #    spec with `alt` keeps `__spec__.name == __name__`, so the overwrite
-        #    is a harmless no-op re-stamp of an equivalent spec.
-        #
-        # 2. Pre-populating `sys.modules[name]` preserves the existing
-        #    behaviour where `sys.modules["audiobook_studio.X"]` resolves to the
-        #    canonical object (the spec's own `_load` writes `sys.modules[alt]`,
-        #    not the alias key, so without this line the alias key would go
-        #    missing).
-        sys.modules[name] = canonical
+        # Build the spec under the ALIAS name (`name`), so ``_load`` writes the alias
+        # key into ``sys.modules`` (the parent-import bookkeeping in
+        # ``_find_and_load_unlocked`` reads ``sys.modules[parent]`` for the bare
+        # name, so the alias key MUST be populated). We deliberately do NOT
+        # pre-populate ``sys.modules[name]`` here: ``_find_spec`` re-checks
+        # ``if not is_reload and name in sys.modules`` AFTER the finder returns,
+        # and when that fires it returns ``module.__spec__`` — the canonical
+        # module's ORIGINAL spec whose loader is the real ``SourceFileLoader``,
+        # which then RE-EXECUTES the source into a second (orphan) module object,
+        # recreating the exact bare/src identity split this finder exists to
+        # prevent. Leaving the alias key unset makes ``_find_spec`` return THIS
+        # spec, so ``_load`` uses ``_AudiobookStudioAliasLoader`` (which yields the
+        # already-executed module and restores ``__spec__`` in ``exec_module``).
         from importlib.machinery import ModuleSpec
 
-        return ModuleSpec(alt, _AudiobookStudioAliasLoader(canonical), origin=canonical.__file__)
+        return ModuleSpec(name, _AudiobookStudioAliasLoader(canonical), origin=canonical.__file__)
 
 
 _sys.meta_path.insert(0, _AudiobookStudioAliasFinder())
@@ -195,11 +199,23 @@ def _unify_audiobook_aliases() -> None:
                     and getattr(obj, "__module__", None)
                     and obj.__module__.startswith(("audiobook_studio", "src.audiobook_studio"))
                 ):
-                    src_classes[(obj.__qualname__, _strip_src(obj.__module__))] = obj
+                    key = (obj.__qualname__, _strip_src(obj.__module__))
+                    # When a duplicate class was re-executed under the bare
+                    # ``audiobook_studio`` name and then rebound into a ``src.``
+                    # module, it collides with the canonical class on the same
+                    # (qualname, module) key. Dict iteration order is hash-random,
+                    # so "last writer wins" would pick the orphan non-deterministically
+                    # and leak the wrong identity into later pydantic/Enum checks.
+                    # Prefer the object actually DEFINED in the module being iterated
+                    # (``modname == obj.__module__``) — that is the canonical class.
+                    if key not in src_classes or modname == obj.__module__:
+                        src_classes[key] = obj
                 elif callable(obj) and not isinstance(obj, type) and isinstance(getattr(obj, "__module__", None), str):
                     base = _strip_src(obj.__module__)
                     if base.startswith("audiobook_studio"):
-                        src_functions[(obj.__qualname__, base)] = obj
+                        key = (obj.__qualname__, base)
+                        if key not in src_functions or modname == obj.__module__:
+                            src_functions[key] = obj
     # Rebind across EVERY loaded module (production + test files), not just the
     # audiobook/src tree. Test modules also capture classes at collection time (e.g.
     # ``from src.audiobook_studio.tts.engine import TTSTaskResult``), so an
@@ -516,6 +532,7 @@ def _reset_global_state():
         "src.audiobook_studio.utils.redis_pool:reset_redis_pool",
         "src.audiobook_studio.config:reset_settings",
         "src.audiobook_studio.config:reset_unified_config",
+        "src.audiobook_studio.harness.config:reset_harness_settings",
     ]
     for spec in resets:
         mod_name, fn_name = spec.split(":")

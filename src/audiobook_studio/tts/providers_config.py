@@ -29,7 +29,7 @@ from typing import Dict, List, Optional, Tuple
 
 logger = __import__("logging").getLogger(__name__)
 
-DEFAULT_CONFIG_PATH = Path(__file__).parent.parent.parent / "config" / "tts_providers.yaml"
+DEFAULT_CONFIG_PATH = Path(__file__).parent.parent.parent.parent / "config" / "tts_providers.yaml"
 
 #: Fallback ordering if the YAML file is missing.
 FALLBACK_PROVIDERS: List[Dict[str, object]] = [
@@ -134,6 +134,7 @@ def load_tts_provider_config(path: Optional[str] = None) -> List[Dict[str, objec
                     "name": p.get("name", f"provider_{idx}"),
                     "engine": p.get("engine", p.get("name")),
                     "priority": int(p.get("priority", idx)),
+                    "priority_by_lang": p.get("priority_by_lang"),
                     "enabled": bool(p.get("enabled", True)),
                     "default_voice": p.get("default_voice"),
                     "auto_download": bool(p.get("auto_download", False)),
@@ -195,6 +196,17 @@ def license_matrix(path: Optional[str] = None) -> Dict[str, EngineLicense]:
     return matrix
 
 
+def _get_effective_priority(provider: dict, lang_prefix: str) -> int:
+    """Get effective priority for a given language.
+
+    Checks priority_by_lang first, falls back to global priority.
+    """
+    priority_by_lang = provider.get("priority_by_lang")
+    if priority_by_lang and isinstance(priority_by_lang, dict):
+        return int(priority_by_lang.get(lang_prefix, provider.get("priority", 999)))
+    return int(provider.get("priority", 999))
+
+
 def select_engine(
     language: str = "zh-CN",
     need_clone: bool = False,
@@ -216,6 +228,9 @@ def select_engine(
     which is ``False``), GPU-only engines are skipped and cloning degrades to
     ``"preset"`` — the selector never returns an engine it cannot run, and never
     pretends to clone.
+
+    Language-specific priority: providers can define ``priority_by_lang`` mapping
+    (e.g., ``{"en": 0, "zh": 2}``) to override global priority per language.
     """
     if gpu_available is None:
         gpu_available = gpu_backends_enabled()
@@ -240,6 +255,9 @@ def select_engine(
             return True  # unknown engine: don't filter on language
         return lang_prefix in [str(lang).split("-")[0].lower() for lang in cap.languages]
 
+    # Sort feasible by effective priority for this language (lower = higher priority)
+    feasible.sort(key=lambda p: _get_effective_priority(p, lang_prefix))
+
     # 1) Clone requested -> prefer a real clone engine (needs GPU), else preset.
     if need_clone:
         for p in feasible:
@@ -260,7 +278,7 @@ def select_engine(
             if cap and cap.emotion and _lang_match(p["engine"]):
                 return (p["engine"], "standard")
 
-    # 3) Default: highest-priority feasible engine.
+    # 3) Default: highest-priority feasible engine for this language.
     if feasible:
         return (feasible[0]["engine"], "standard")
     return ("kokoro", "standard")

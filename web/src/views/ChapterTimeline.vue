@@ -1,5 +1,9 @@
 <script setup lang="ts">
 import './ChapterTimeline.css'
+import { ref } from 'vue'
+import type { Paragraph } from '../types'
+import { updateParagraph } from '../api'
+import ParagraphEditor from '../components/ParagraphEditor.vue'
 import { useChapterTimeline } from '../composables/useChapterTimeline'
 
 const {
@@ -27,9 +31,24 @@ const {
   jumpToParagraph,
   goBack,
   hasAnnotations,
+  projectId,
 } = useChapterTimeline()
 
 void waveformContainer
+
+// ── 段落编辑（P0.1）────────────────────────────────────────────────────────
+const editingParagraph = ref<Paragraph | null>(null)
+
+function openEditor(para: Paragraph) {
+  editingParagraph.value = para
+}
+
+async function handleSave(paragraphId: number, payload: Partial<Paragraph>) {
+  await updateParagraph(projectId, chapterId, paragraphId, payload)
+  // 刷新列表使卡片展示新正文；失败时编辑器保持打开以便重试
+  await store.loadParagraphs(projectId, chapterId)
+  editingParagraph.value = null
+}
 </script>
 
 
@@ -127,8 +146,19 @@ void waveformContainer
       <div v-if="wsError" class="alert alert-error mt-2">{{ wsError }}</div>
     </div>
 
+    <!-- Paragraph Editor (P0.1) -->
+    <ParagraphEditor
+      v-if="editingParagraph"
+      class="section"
+      :paragraph="editingParagraph"
+      :project-id="projectId"
+      :chapter-id="chapterId"
+      @save="handleSave"
+      @close="editingParagraph = null"
+    />
+
     <!-- Paragraph Selector Hint -->
-    <div v-if="!selectedParaId && store.paragraphs.length" class="empty-state section">
+    <div v-if="!editingParagraph && !selectedParaId && store.paragraphs.length" class="empty-state section">
       <Icon icon="mdi:hand-pointing-right" width="32" height="32" style="opacity: 0.4" />
       <p>{{ t('chapter_timeline.select_hint') }}</p>
     </div>
@@ -156,6 +186,9 @@ void waveformContainer
           <span v-if="para.is_dialogue" class="badge badge-info" style="font-size: 10px;">{{ t('chapter_timeline.dialogue') }}</span>
           <span v-else class="badge badge-muted" style="font-size: 10px;">{{ t('chapter_timeline.narration') }}</span>
           <span :class="['status-dot', para.status || 'pending']" style="width: 8px; height: 8px; border-radius: 50%;" :style="{ background: para.status === 'completed' ? 'var(--color-success)' : para.status === 'error' ? 'var(--color-danger)' : 'var(--color-warning)' }" />
+          <button class="btn btn-ghost btn-sm touch-target" @click.stop="openEditor(para)" :title="t('common.edit')" :aria-label="t('common.edit')">
+            <Icon icon="mdi:pencil" width="18" height="18" />
+          </button>
           <button class="btn btn-ghost btn-sm touch-target" @click.stop="jumpToParagraph(para.id)" :title="t('chapter_timeline.waveform_jump')" :aria-label="t('chapter_timeline.waveform_jump')">
             <Icon icon="mdi:waveform" width="18" height="18" />
           </button>

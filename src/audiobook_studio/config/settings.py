@@ -94,7 +94,12 @@ class Settings(BaseSettings):
     RATE_LIMIT_BURST: int = Field(default=10, alias="RATE_LIMIT_BURST")
 
     # Database
-    DATABASE_URL: str = Field(default="sqlite:///./data/audiobook.db", alias="DATABASE_URL")
+    # Default matches database.py's canonical src/data/audiobook.db (absolute,
+    # cwd-independent) so settings and the ORM never fork a second DB.
+    DATABASE_URL: str = Field(
+        default=f"sqlite:///{Path(__file__).resolve().parents[2] / 'data' / 'audiobook.db'}",
+        alias="DATABASE_URL",
+    )
 
     # JWT Authentication
     JWT_SECRET_KEY: str = Field(alias="JWT_SECRET_KEY")

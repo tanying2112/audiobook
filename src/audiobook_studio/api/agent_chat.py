@@ -109,7 +109,9 @@ class PipelineConfirmRequest(BaseModel):
     """Request to confirm human review (Interactive mode)."""
 
     project_id: int = Field(..., description="Project ID")
-    confirmed: bool = Field(True, description="Whether user confirms the annotations")
+    chapter_id: Optional[int] = Field(None, description="Chapter ID being confirmed")
+    action: str = Field("approve", description="Action: 'approve', 'reject', 'request_rerun', 'edit'")
+    edits: Optional[Dict[str, Any]] = Field(None, description="Optional edits if action is 'edit'")
 
 
 class PipelineConfirmResponse(BaseModel):
@@ -798,7 +800,15 @@ async def start_pipeline(
             context={"project_id": request.project_id},
         )
 
-    mode = PipelineMode(request.mode.lower())
+    try:
+        mode = PipelineMode(request.mode.lower())
+    except ValueError:
+        raise DomainError(
+            message=f"Invalid mode: '{request.mode}'. Use 'autopilot' or 'interactive'",
+            error_code="VALIDATION_ERROR",
+            stage="agent_chat",
+            context={"mode": request.mode, "valid_modes": ["autopilot", "interactive"]},
+        )
     if mode not in [PipelineMode.AUTOPILOT, PipelineMode.INTERACTIVE]:
         raise DomainError(
             message="Invalid mode. Use 'autopilot' or 'interactive'",
@@ -823,7 +833,7 @@ async def start_pipeline(
         mode=mode.value,
         current_state=result["current_state"],
         status=result["status"],
-        chapter_index=result["chapter_index"],
+        chapter_index=result.get("chapter_index", request.chapter_index),
         paused_at=result.get("paused_at"),
         message=f"Pipeline {result['status']} at {result['current_state']}",
     )
@@ -856,7 +866,8 @@ async def confirm_pipeline(
             context={"mode": fsm.mode.value},
         )
 
-    if not request.confirmed:
+    action = request.action.lower()
+    if action == "reject":
         # User rejected - stop pipeline
         fsm.context.current_state = PipelineState.FAILED
         fsm.context.error = "User rejected annotations"
@@ -867,19 +878,42 @@ async def confirm_pipeline(
             status="failed",
             message="Pipeline stopped: user rejected annotations",
         )
-
-    # Continue after confirmation
-    result = await fsm.continue_after_confirmation()
-
-    if result["status"] == "completed":
-        remove_fsm(request.project_id)
-
-    return PipelineConfirmResponse(
-        project_id=request.project_id,
-        current_state=result["current_state"],
-        status=result["status"],
-        message=f"Pipeline {result['status']} at {result['current_state']}",
-    )
+    elif action == "request_rerun":
+        # Request re-annotation - reset to annotating state
+        fsm.context.current_state = PipelineState.ANNOTATING
+        fsm.context.results.pop("annotate", None)
+        result = await fsm.run_until_pause_or_complete()
+        return PipelineConfirmResponse(
+            project_id=request.project_id,
+            current_state=result["current_state"],
+            status=result["status"],
+            message=f"Pipeline re-annotation started: {result['status']} at {result['current_state']}",
+        )
+    elif action == "edit":
+        # User provided edits - store them and continue
+        if request.edits:
+            fsm.context.results["human_edits"] = request.edits
+        fsm.confirm()
+        result = await fsm.continue_after_confirmation()
+        if result["status"] == "completed":
+            remove_fsm(request.project_id)
+        return PipelineConfirmResponse(
+            project_id=request.project_id,
+            current_state=result["current_state"],
+            status=result["status"],
+            message=f"Pipeline {result['status']} at {result['current_state']}",
+        )
+    else:  # approve (default)
+        fsm.confirm()
+        result = await fsm.continue_after_confirmation()
+        if result["status"] == "completed":
+            remove_fsm(request.project_id)
+        return PipelineConfirmResponse(
+            project_id=request.project_id,
+            current_state=result["current_state"],
+            status=result["status"],
+            message=f"Pipeline {result['status']} at {result['current_state']}",
+        )
 
 
 @router.get("/pipeline/status/{project_id}", response_model=PipelineStatusResponse)

@@ -5,7 +5,12 @@ import {
   fetchAgentSessions,
   fetchAgentSessionHistory,
   deleteAgentSession,
+  confirmPipelineAction,
+  fetchPipelineStatus,
+  type PipelineConfirmRequest,
+  type PipelineStatusResponse,
 } from '../api'
+import type { FsmChapterItem, FsmChapterDetail, FsmConfirmRequest } from '../types/pipeline'
 
 export interface Message {
   role: 'user' | 'assistant' | 'system'
@@ -37,6 +42,12 @@ export interface UseAgentChatOptions {
   onClose?: () => void
   onMessageSent?: (message: string) => void
   onMessageReceived?: (message: string) => void
+  /** 是否启用 FSM 交互模式 */
+  fsmMode?: boolean
+  /** FSM 章节变更回调 */
+  onChapterChange?: (chapter: FsmChapterItem) => void
+  /** FSM 状态变更回调 */
+  onFsmStateChange?: (state: any) => void
 }
 
 export function useAgentChat(options: UseAgentChatOptions) {
@@ -48,9 +59,14 @@ export function useAgentChat(options: UseAgentChatOptions) {
     onClose,
     onMessageSent,
     onMessageReceived,
+    fsmMode = false,
+    onChapterChange,
+    onFsmStateChange,
   } = options
 
-  // State
+  // ─────────────────────────────────────────────────────────────────────────
+  // 基础聊天状态
+  // ─────────────────────────────────────────────────────────────────────────
   const messages = ref<Message[]>([])
   const inputMessage = ref('')
   const loading = ref(false)
@@ -74,7 +90,25 @@ export function useAgentChat(options: UseAgentChatOptions) {
     showTimestamps: true,
   })
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // FSM 交互模式状态（Phase 2）
+  // ─────────────────────────────────────────────────────────────────────────
+  const fsmChapters = ref<FsmChapterItem[]>([])
+  const currentFsmChapter = ref<FsmChapterItem | null>(null)
+  const fsmChapterDetail = ref<FsmChapterDetail | null>(null)
+  const fsmStatus = ref<PipelineStatusResponse | null>(null)
+  const fsmLoading = ref(false)
+  const fsmActionLoading = ref<string | null>(null)
+
+  // FSM WebSocket 连接
+  const fsmWs = ref<WebSocket | null>(null)
+  const fsmReconnectAttempts = ref(0)
+  const fsmMaxReconnectAttempts = 10
+  const fsmReconnectInterval = 3000
+
+  // ─────────────────────────────────────────────────────────────────────────
   // Computed
+  // ─────────────────────────────────────────────────────────────────────────
   const statusClass = computed(() => {
     if (connectionStatus.value === 'connected') return 'online'
     if (connectionStatus.value === 'connecting') return 'connecting'
@@ -102,7 +136,27 @@ export function useAgentChat(options: UseAgentChatOptions) {
     t('agentChat.suggestions.help'),
   ])
 
-  // WebSocket connection
+  // FSM 计算属性
+  const fsmIsRunning = computed(() => {
+    return !!fsmStatus.value && ['running', 'paused'].includes(fsmStatus.value.status)
+  })
+
+  const fsmIsPaused = computed(() => {
+    return !!fsmStatus.value && fsmStatus.value.status === 'paused'
+  })
+
+  const fsmCanConfirm = computed(() => {
+    return !!fsmStatus.value && fsmStatus.value.status === 'paused' && fsmStatus.value.current_state === 'pending_human_confirm'
+  })
+
+  const pendingChapter = computed(() => {
+    if (!fsmStatus.value || !fsmCanConfirm.value) return null
+    return fsmChapters.value.find(c => c.status === 'awaiting_confirm') || null
+  })
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 基础聊天 WebSocket
+  // ─────────────────────────────────────────────────────────────────────────
   const connectWebSocket = () => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = import.meta.env.VITE_API_BASE
@@ -196,6 +250,228 @@ export function useAgentChat(options: UseAgentChatOptions) {
     }
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // FSM WebSocket 连接（复用 usePipelineProgress 的模式，专用 subprotocol）
+  // ─────────────────────────────────────────────────────────────────────────
+  const connectFsmWebSocket = () => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const host = import.meta.env.VITE_API_BASE
+      ? new URL(import.meta.env.VITE_API_BASE, window.location.origin).host
+      : window.location.host
+    // 使用 FSM 专用 subprotocol
+    const wsUrl = `${protocol}//${host}/api/agent/chat/${projectId}?fsm=true`
+
+    try {
+      fsmWs.value = new WebSocket(wsUrl, 'v1.audiobook.fsm')
+      fsmWs.value.onopen = () => {
+        console.log('FSM WebSocket connected')
+        fsmReconnectAttempts.value = 0
+        // 请求初始状态
+        sendFsmMessage('status', {})
+      }
+
+      fsmWs.value.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data)
+          handleFsmWebSocketMessage(data)
+        } catch (e) {
+          console.error('Failed to parse FSM WebSocket message:', e)
+        }
+      }
+
+      fsmWs.value.onclose = () => {
+        scheduleFsmReconnect()
+      }
+
+      fsmWs.value.onerror = (error) => {
+        console.error('FSM WebSocket error:', error)
+      }
+    } catch (error) {
+      console.error('Failed to create FSM WebSocket:', error)
+    }
+  }
+
+  const scheduleFsmReconnect = () => {
+    if (fsmReconnectAttempts.value >= fsmMaxReconnectAttempts) {
+      console.log('FSM max reconnect attempts reached')
+      return
+    }
+    fsmReconnectAttempts.value++
+    setTimeout(() => {
+      connectFsmWebSocket()
+    }, fsmReconnectInterval)
+  }
+
+  const sendFsmMessage = (type: string, payload: any): boolean => {
+    if (fsmWs.value?.readyState === WebSocket.OPEN) {
+      fsmWs.value.send(JSON.stringify({ type, ...payload }))
+      return true
+    }
+    return false
+  }
+
+  const handleFsmWebSocketMessage = (data: any) => {
+    switch (data.type) {
+      case 'fsm.state_changed':
+        // 章节状态变更
+        updateFsmChaptersFromEvent(data)
+        onFsmStateChange?.(data)
+        break
+      case 'fsm.awaiting_confirmation':
+        // 等待人工确认
+        handleAwaitingConfirmation(data)
+        break
+      case 'fsm.chapter_completed':
+        // 章节完成
+        handleChapterCompleted(data)
+        break
+      case 'fsm.pipeline_completed':
+        // 流水线完成
+        handlePipelineCompleted(data)
+        break
+      case 'fsm.error':
+        console.error('FSM error:', data.message)
+        break
+      case 'status':
+        // 完整状态响应
+        updateFsmStatus(data)
+        break
+      case 'keepalive':
+        break
+      default:
+        console.log('Unknown FSM message type:', data.type)
+    }
+  }
+
+  const updateFsmChaptersFromEvent = (data: any) => {
+    if (data.chapters) {
+      fsmChapters.value = data.chapters.map((c: any) => ({
+        id: c.id,
+        index: c.index,
+        title: c.title,
+        status: c.status,
+        current_stage: c.current_stage,
+        progress: c.progress || 0,
+      }))
+    }
+  }
+
+  const updateFsmStatus = (data: PipelineStatusResponse) => {
+    fsmStatus.value = data
+    // 同步章节列表
+    if (data.chapters) {
+      fsmChapters.value = data.chapters as unknown as FsmChapterItem[]
+    }
+  }
+
+  const handleAwaitingConfirmation = (data: any) => {
+    const chapterId = data.chapter_id
+    const chapter = fsmChapters.value.find(c => c.id === chapterId)
+    if (chapter) {
+      chapter.status = 'awaiting_confirm'
+      chapter.current_stage = data.current_state
+      chapter.progress = data.progress || 0
+    }
+    // 更新当前章节详情
+    if (chapter) {
+      loadChapterDetail(chapter)
+    }
+    fsmStatus.value = data
+  }
+
+  const handleChapterCompleted = (data: any) => {
+    const chapterId = data.chapter_id
+    const chapter = fsmChapters.value.find(c => c.id === chapterId)
+    if (chapter) {
+      chapter.status = 'completed'
+      chapter.progress = 1
+    }
+    fsmStatus.value = data
+    onChapterChange?.(chapter!)
+    // 自动加载下一章节详情
+    const nextChapter = fsmChapters.value.find(c => c.status === 'pending' || c.status === 'current')
+    if (nextChapter) {
+      loadChapterDetail(nextChapter)
+    }
+  }
+
+  const handlePipelineCompleted = (data: any) => {
+    fsmStatus.value = data
+    // 标记所有章节完成
+    fsmChapters.value.forEach(c => {
+      if (c.status !== 'failed') c.status = 'completed'
+    })
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // FSM 章节详情加载
+  // ─────────────────────────────────────────────────────────────────────────
+  const loadChapterDetail = async (chapter: FsmChapterItem) => {
+    currentFsmChapter.value = chapter
+    try {
+      // 从后端获取章节详情（原文、编辑文本、标注、路由决策）
+      const response = await fetch(`/api/projects/${projectId}/chapters/${chapter.id}/detail`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}` },
+      })
+      if (response.ok) {
+        const detail = await response.json()
+        fsmChapterDetail.value = {
+          chapter,
+          original_text: detail.original_text || '',
+          edited_text: detail.edited_text || '',
+          annotations: detail.annotations || [],
+          routing_decision: detail.routing_decision,
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load chapter detail:', error)
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // FSM 动作：批准、驳回、重标注、跳过
+  // ─────────────────────────────────────────────────────────────────────────
+  const confirmFsmAction = async (action: FsmConfirmRequest['action'], edits?: Record<string, unknown>) => {
+    if (!pendingChapter.value) return
+    fsmActionLoading.value = action
+
+    try {
+      const payload: PipelineConfirmRequest = {
+        project_id: projectId,
+        chapter_id: pendingChapter.value.id,
+        action,
+        edits,
+      }
+      const response = await confirmPipelineAction(payload)
+      fsmStatus.value = {
+        project_id: projectId,
+        mode: response.mode || 'interactive',
+        current_state: response.current_state,
+        chapter_index: response.chapter_index || 0,
+        chapter_id: response.chapter_id || null,
+        paused_at: null,
+        user_confirmed: action === 'approve' || action === 'edit',
+        error: null,
+        completed_stages: [],
+        status: 'running',
+      }
+      // 发送 WebSocket 确认
+      sendFsmMessage('confirm', payload)
+    } catch (error) {
+      console.error('FSM confirm action failed:', error)
+    } finally {
+      fsmActionLoading.value = null
+    }
+  }
+
+  const approveChapter = (edits?: Record<string, unknown>) => confirmFsmAction('approve', edits)
+  const rejectChapter = () => confirmFsmAction('reject')
+  const requestRerun = () => confirmFsmAction('request_rerun')
+  const editChapter = (edits?: Record<string, unknown>) => confirmFsmAction('edit', edits)
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 基础聊天方法
+  // ─────────────────────────────────────────────────────────────────────────
   const sendWebSocketMessage = (type: string, payload: any): boolean => {
     if (ws.value?.readyState === WebSocket.OPEN) {
       ws.value.send(JSON.stringify({ type, ...payload }))
@@ -391,9 +667,21 @@ export function useAgentChat(options: UseAgentChatOptions) {
     onClose?.()
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
   // Lifecycle
+  // ─────────────────────────────────────────────────────────────────────────
   onMounted(() => {
     connectWebSocket()
+    if (fsmMode) {
+      connectFsmWebSocket()
+      // 初始加载状态
+      fetchPipelineStatus(projectId).then(status => {
+        fsmStatus.value = status
+        if (status.chapters) {
+          fsmChapters.value = status.chapters as unknown as FsmChapterItem[]
+        }
+      }).catch(console.error)
+    }
     if (initialMessage) {
       sendMessage(initialMessage)
     }
@@ -408,6 +696,10 @@ export function useAgentChat(options: UseAgentChatOptions) {
       ws.value.close()
       ws.value = null
     }
+    if (fsmWs.value) {
+      fsmWs.value.close()
+      fsmWs.value = null
+    }
   })
 
   watch(inputMessage, () => {
@@ -420,6 +712,7 @@ export function useAgentChat(options: UseAgentChatOptions) {
   })
 
   return {
+    // 基础聊天
     messages,
     inputMessage,
     loading,
@@ -451,5 +744,25 @@ export function useAgentChat(options: UseAgentChatOptions) {
     formatMessage,
     toggleHistory,
     handleClose,
+    ws: ws.value,
+
+    // FSM 交互模式
+    fsmMode,
+    fsmChapters,
+    currentFsmChapter,
+    fsmChapterDetail,
+    fsmStatus,
+    fsmLoading,
+    fsmActionLoading,
+    fsmIsRunning,
+    fsmIsPaused,
+    fsmCanConfirm,
+    pendingChapter,
+    loadChapterDetail,
+    approveChapter,
+    rejectChapter,
+    requestRerun,
+    editChapter,
+    confirmFsmAction,
   }
 }
