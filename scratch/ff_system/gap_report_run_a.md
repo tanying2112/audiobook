@@ -48,6 +48,7 @@ mp3 直测与间奏口径差异, 本报告以 s4 同口径双测为准。
 修复方向: AnnotateParagraphPipeline 的 prompt/few-shot 对英文对白的说话人归属与情感判定增强;
    标注 emotion→导演 rationale 已有语义理解, 说明 annotate stage 输出被中性默认压平。
 **→ 已修复 (2026-10-13)**: PromptCompressor 增加标注保护 token + 标注输入 max_input_tokens 16000 — 根因是压缩器截断/压平了标注指令, 情感与说话人判定输出恢复。
+**端到端实证 (2026-10-13, 真实 LLM 重标注 35 段)**: emotion 35/35 neutral → 34/35 非中性 (tense 17/angry 10/contemplative 3/happy 2/surprised 1/tender 1/neutral 1); speaker 35/35 `_narrator_` → 5 角色 (Coach Zangado 14/Tino 11/Narrator 5/Lenda 3/Nakano 2)。对照脚本 scratch/ff_system/s2_gap_verify.py (PASS)。
 
 
 ### 差距 B — 绑定表命名缺口 (永不匹配) 【高优先】
@@ -57,6 +58,7 @@ mp3 直测与间奏口径差异, 本报告以 s4 同口径双测为准。
 分析 prompt 改产 Edge/kokoro 兼容 ID)。
 修复方向: 两 stage 命名契约统一 (规范化为 _narrator_ 或 alias 表); Google Neural2 ID 映射。
 **→ 已修复 (2026-10-13)**: synthesize 侧 _normalize_speaker_name + _find_voice_binding — 'Narrator'/_narrator_ 等别名归一匹配, 绑定查找不再恒 miss; Google Neural2 ID 映射已在 f7ae71f (英文 Edge→kokoro 15 条) 覆盖。
+**端到端实证**: 同上重标注 — 对白段落说话人归属恢复 (Tino 11 段/Coach Zangado 14 段), 叙述段归 Narrator (5 段), 绑定名与分析层 canonical_name 一致。
 
 
 ### 差距 C — 质检门静音规则与导演停顿系统性冲突 【中优先】
@@ -75,6 +77,7 @@ BookMeta.difficulty=A 已在数据里, 但从未传导到导演/合成的 speed 
 修复方向: difficulty→speed 映射进 AudioDirector prompt/合成参数 (A 级 ≈ 0.75×基准);
    章首/章尾 bed 间奏可用 finalize 已有 sfx/scene 基建补时长叙事感。
 **→ 已修复 (2026-10-13)**: BookMeta.difficulty 全链传导 — stage_registry→AudioDirectorInput.difficulty→导演 prompt 难度校准行 (A 级刻意慢速基线 0.75-0.9) + TtsRoutingInput.difficulty→make_tts_routing_decision rate×DIFFICULTY_RATE_SCALE['A']=0.75。同时修 merge_sentence_prosody speed 语义 REPLACE→MULTIPLY: 导演句级 speed=1.0 (不变) 不再把基准缩放清回 1.0; base=1.0 时行为向后兼容。B/C/D/未指定不变。
+**端到端实证**: 重标注中导演 speed 建议中位 0.95→0.85, 上限 1.15→1.05 — A 级校准行生效 (不再对紧张/愤怒段建议 >1.1)。
 
 
 ### 差距 F — 专名/外来词发音: 英文分级读物注音词典为空 【中优先, 高性价比】
@@ -97,7 +100,20 @@ futsal→futzsel, sao paulo→salo paullo), 叠加弱读连读 (two nil→too nl
 3. ~~差距 C: 质检门 pause_category 感知~~ ✅ 已修 (声明停顿预算契约)
 4. ~~差距 D: difficulty→语速策略传导~~ ✅ 已修 (0.75× 全链 + MULTIPLY 语义)
 5. Run B (可选): 掩蔽 ASR 文本 → LLM 清洗 → 端到端演示 (718 词召回文本)
-6. (新) s2b 重标注验证: 真实 LLM 标注下情感/说话人是否脱离 neutral (Gap A 修复的端到端确认)
+6. ~~s2 重标注验证~~ ✅ 已完成 (2026-10-13 真实 LLM 重标注, 34/35 非中性 + 5 角色归属, 见「四·五」表; 判定脚本 s2_gap_verify.py PASS)
+
+## 四·五、差距修复端到端实证汇总 (2026-10-13, 真实 LLM 重标注 Run A 35 段)
+
+来源: scratch/ff_system/s2_gap_verify.py 对照 archive_pre_fix/ 旧基线。
+
+| 维度 | 修复前 | 修复后 | 差距 |
+|---|---|---|---|
+| emotion | 35/35 neutral | 34/35 非中性 (7 类) | A |
+| speaker | 35/35 `_narrator_` | 5 角色分布 | A+B |
+| 导演 speed 建议 | 中位 0.95, max 1.15 | 中位 0.85, max 1.05 | D |
+| voice_id 覆盖 | 9 条 (未经音色表校验) | 5 条全过契约校验 | G |
+| 判定 | — | **PASS** | — |
+
 
 
 ## 五、Run B — 生成文本端到端 (掩蔽 ASR → LLM 清洗 → 全管线)
