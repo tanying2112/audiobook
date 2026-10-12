@@ -39,6 +39,7 @@ def test_scheduler_forwards_use_learned_to_iteration(monkeypatch):
         human_preference_score=1.0,
         candidate_id=None,
         use_learned=False,
+        quality_judge=None,
     ):
         captured.setdefault("calls", []).append((stage, use_learned))
         return _FakeRep()
@@ -230,6 +231,7 @@ def test_sop_background_thread_starts_harness_worker(monkeypatch, tmp_path):
         human_preference_score=1.0,
         candidate_id=None,
         use_learned=False,
+        quality_judge=None,
     ):
         captured.setdefault("calls", []).append(stage)
         return _FakeRep()

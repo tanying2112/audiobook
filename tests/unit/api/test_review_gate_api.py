@@ -17,7 +17,7 @@ import tempfile
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -555,7 +555,7 @@ class TestReviewParagraphEdit:
             f"/api/projects/{sample_project}/review-gate/chapters/1/paragraphs/2",
             json={
                 "edited_text": "「你来啦！」他高兴地喊道。",
-                "emotion": "joy",
+                "emotion": "tender",
                 "emotion_intensity": 0.9,
                 "speech_rate": 1.1,
                 "notes": "终审时把「兴奋」改为「高兴」",
@@ -566,13 +566,57 @@ class TestReviewParagraphEdit:
         body = resp.json()
         assert "edited_text" in body["changes_made"]
         assert "emotion" in body["changes_made"]
-        assert body["paragraph"]["emotion"] == "joy"
+        assert body["paragraph"]["emotion"] == "tender"
         assert body["paragraph"]["edited_text"] == "「你来啦！」他高兴地喊道。"
 
         row = _paragraph_row(db_session, sample_project, 1, 2)
         assert row["edited_text"] == "「你来啦！」他高兴地喊道。"
         assert row["status"] == "edited"  # human-edited paragraph state
         assert row["notes"] == "终审时把「兴奋」改为「高兴」"
+
+    @pytest.mark.anyio
+    async def test_edit_rejects_non_canonical_emotion(
+        self, async_client: AsyncClient, sample_project: int, db_session
+    ):
+        """非 14 枚举 emotion 必 422 —— 保存入口同值域校验。
+
+        live E2E 实证的 P0：旧实现接受 'joy' 落库，客户确认后合成期
+        ParagraphAnnotation Literal 直接炸（build_routing_input 抛错、
+        run failed at synthesize）。终审门必须挡在保存时。
+        """
+        # 记录 PATCH 前的段落原值（emotion 列不在 _paragraph_row 的列集里，经 ORM 直读）
+        db_session.expire_all()
+        ch_id = db_session.execute(
+            select(Chapter.id).where(
+                Chapter.project_id == sample_project, Chapter.index == 1
+            )
+        ).scalar_one()
+        para = db_session.execute(
+            select(Paragraph).where(
+                Paragraph.chapter_id == ch_id, Paragraph.index == 2
+            )
+        ).scalar_one()
+        emotion_before = para.emotion
+        row_before = _paragraph_row(db_session, sample_project, 1, 2)
+
+        resp = await async_client.patch(
+            f"/api/projects/{sample_project}/review-gate/chapters/1/paragraphs/2",
+            json={"emotion": "joy"},
+        )
+        assert resp.status_code == 422
+        assert "joy" in resp.text
+
+        # 落库无副作用：段落 emotion/文本/状态均不变
+        db_session.expire_all()
+        para = db_session.execute(
+            select(Paragraph).where(
+                Paragraph.chapter_id == ch_id, Paragraph.index == 2
+            )
+        ).scalar_one()
+        row_after = _paragraph_row(db_session, sample_project, 1, 2)
+        assert para.emotion == emotion_before
+        assert row_after["edited_text"] == row_before["edited_text"]
+        assert row_after["status"] == row_before["status"]
 
     @pytest.mark.anyio
     async def test_edit_writes_human_tts_edit_audit(

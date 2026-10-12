@@ -127,13 +127,16 @@ class TestBuildFadeFilter:
         assert "st=0" in result
         assert "d=1.0" in result
 
-    def test_fade_out_with_placeholder(self):
+    def test_fade_out_real_start(self):
+        # P3a 修复后: 淡出起点 = 实测时长 - 淡出时长, 不再是 PLACEHOLDER
         f = AudioFinalizer(mock_mode=True)
         params = make_params(fade_in_ms=0, fade_out_ms=2000, fade_shape="sin")
-        result = f._build_fade_filter(params)
+        result = f._build_fade_filter(params, duration_ms=4000)
         assert "afade=t=out" in result
-        assert "PLACEHOLDER" in result
+        assert "st=2.000" in result
         assert "d=2.0" in result
+        assert "curve=qsin" in result
+        assert "PLACEHOLDER" not in result
 
     def test_fade_both(self):
         f = AudioFinalizer(mock_mode=True)

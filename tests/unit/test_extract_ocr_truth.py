@@ -63,7 +63,7 @@ def _restore_original_extract_module():
         # ``getattr`` on the parent and would still return the reloaded module,
         # breaking module identity for later tests (e.g. test_vision patching
         # ``OCR_AVAILABLE`` on a different copy than ``_extract_image`` reads).
-        setattr(_pipeline, "extract", _ORIGINAL_EXTRACT_MODULE)
+        _pipeline.extract = _ORIGINAL_EXTRACT_MODULE
     else:
         sys.modules.pop(_EXTRACT_MODULE_NAME, None)
         if hasattr(_pipeline, "extract"):
