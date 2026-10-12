@@ -16,7 +16,7 @@ Schema v2 (极简重构):
 - 兼容 v1: 保留声学字段作为可选字段，供迁移期使用
 """
 
-from typing import Annotated, Literal, Optional
+from typing import Annotated, Literal, Optional, get_args
 
 from pydantic import BaseModel, Field
 
@@ -26,6 +26,27 @@ Confidence = Annotated[float, Field(ge=0.0, le=1.0)]
 EmotionIntensity = Annotated[float, Field(ge=0.0, le=1.0)]
 DifficultyLevel = Literal["A", "B", "C"]
 ContentRating = Literal["儿童", "大众", "青少年", "成人"]
+
+# 情感标签 14 枚举 —— 合成期 ParagraphAnnotation 的唯一权威值域。
+# 终审门等编辑入口必须用 EMOTION_TAGS 同值域校验（422），否则坏值会在
+# 客户确认后、合成期炸掉（build_routing_input 构造 Literal 直接抛错）。
+EmotionTag = Literal[
+    "neutral",
+    "happy",
+    "sad",
+    "angry",
+    "fearful",
+    "surprised",
+    "disgusted",
+    "tense",
+    "tender",
+    "contemplative",
+    "whisper",
+    "cold_laugh",
+    "sigh",
+    "sarcastic",
+]
+EMOTION_TAGS: tuple = get_args(EmotionTag)
 
 # v1 兼容字段（可选，用于迁移期）
 SpeechRate = Annotated[float, Field(ge=0.7, le=1.3)]
@@ -67,22 +88,7 @@ class ParagraphAnnotation(BaseModel):
         description="说话人规范名 (必须命中 character_voice_map 或 _narrator_)",
     )
     is_dialogue: bool = Field(..., description="是否为对话")
-    emotion: Literal[
-        "neutral",
-        "happy",
-        "sad",
-        "angry",
-        "fearful",
-        "surprised",
-        "disgusted",
-        "tense",
-        "tender",
-        "contemplative",
-        "whisper",
-        "cold_laugh",
-        "sigh",
-        "sarcastic",
-    ] = Field(..., description="情感标签 (14 枚举)")
+    emotion: EmotionTag = Field(..., description="情感标签 (14 枚举)")
     emotion_intensity: EmotionIntensity = Field(..., description="情感强度 0-1")
     confidence: Confidence = Field(..., description="置信度 0-1")
     difficulty: DifficultyLevel = Field(default="B", description="段落难度等级 A/B/C，用于成本预估和质量阈值")

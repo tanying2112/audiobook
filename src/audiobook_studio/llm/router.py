@@ -867,8 +867,11 @@ class LLMRouter:
                             logger.warning(f"Provider {provider.name} returned invalid JSON for stage {stage}: {e}")
                             raise
 
-                    self.rate_limiters[provider.name].record_usage(result.tokens_in + result.tokens_out)
-                    self.cost_tracker.add_cost(provider.name, result.cost_usd)
+                    # 缓存命中未触达 provider：不占限流窗口、不计成本，
+                    # 否则瞬时缓存命中潮会误触发 "Rate limit near" 级联跳过。
+                    if not getattr(result, "from_cache", False):
+                        self.rate_limiters[provider.name].record_usage(result.tokens_in + result.tokens_out)
+                        self.cost_tracker.add_cost(provider.name, result.cost_usd)
 
                     # Record success for circuit breaker
                     if cb:

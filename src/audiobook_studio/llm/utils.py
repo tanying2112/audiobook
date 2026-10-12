@@ -73,7 +73,16 @@ def validate_and_parse_llm_response(
         raise LLMParseError("LLM returned empty JSON object {}", raw_response="{}", stage=stage)
 
     # Stage-specific validation
-    if stage == "judge":
+    # segment_id 是「judge 响应模型」(QualityJudgment/PairwiseJudgment) 的契约字段，
+    # 不是 judge 阶段名下所有调用的契约——反馈语义分析器（llm_analyzer）复用 judge
+    # 阶段的路由/模型但请求 FeedbackAnalysis（无 segment_id 字段）。若按阶段名一刀切，
+    # 合法的 FeedbackAnalysis 响应会被误拒 → 重试后模型漂移成 judge 形状 → 触发
+    # heuristic fallback 返回 QualityJudgment → 分析器降级关键词匹配（曾致马拉松
+    # 21 轮指令通道失效）。故仅当请求的响应模型确为 judge 模型时才强制 segment_id。
+    if stage == "judge" and getattr(response_model, "__name__", "") in (
+        "QualityJudgment",
+        "PairwiseJudgment",
+    ):
         if "segment_id" not in raw_response or not raw_response["segment_id"]:
             raise LLMParseError(
                 "LLM response missing required 'segment_id' field for judge stage",

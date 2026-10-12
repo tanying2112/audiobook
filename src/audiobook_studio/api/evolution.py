@@ -155,7 +155,7 @@ def _seed_prompt_from_sop(stage: str) -> Optional[str]:
         cfg = get_sop_config()
         # Use the global genre rules as a textual seed prompt.
         snapshot = cfg.get_config_snapshot()
-        rules = snapshot.get("genre_rules", {})
+        rules = snapshot.get("genres", {})
         if rules:
             import json
 
@@ -202,7 +202,7 @@ def _persist_optimized_prompt_to_sop(stage: str, result: Any) -> None:
 
         cfg = get_sop_config()
         # Store under a dedicated evolution key so SOP reflection can pick it up.
-        genre_rules = cfg.get_config_snapshot().get("genre_rules", {})
+        genre_rules = cfg.get_config_snapshot().get("genres", {})
         genre_rules.setdefault("_gepa_evolution", {})
         genre_rules["_gepa_evolution"][stage] = {
             "optimized_prompt": result.optimized_prompt,

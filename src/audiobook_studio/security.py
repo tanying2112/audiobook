@@ -280,11 +280,20 @@ def safe_subprocess_args(cmd: list[str], base_dir: Optional[Path] = None) -> lis
     # Command substitution patterns
     cmd_sub_patterns = [r"\$\(.*\)", r"`.*`"]
 
+    # ffmpeg filtergraph 值槽 (-filter_complex/-af/-vf 的后随参数) 与 -map 的
+    # 流选择器 ([aout]) 合法包含
+    # [labels] 与引号表达式 —— 这是 ffmpeg 语法而非 shell 注入向量 (本仓库从不
+    # shell=True; 标志白名单亦保证滤镜值不会被重释为新标志)。2026-10-09:
+    # 此前全面禁止导致 AudioFinalizer 叠加轨路径带标签必崩, SFX 从未生效。
+    filter_value_flags = {"-filter_complex", "-af", "-vf", "-filter:a", "-filter:v", "-map"}
+
     for i, arg in enumerate(cmd):
+        is_filter_value = i > 0 and cmd[i - 1] in filter_value_flags
         # Check for shell metacharacters in ALL arguments (defense in depth)
-        for ch in shell_metachars:
-            if ch in arg:
-                raise ValueError(f"Argument {i} contains shell metacharacter '{ch}': {arg}")
+        if not is_filter_value:
+            for ch in shell_metachars:
+                if ch in arg:
+                    raise ValueError(f"Argument {i} contains shell metacharacter '{ch}': {arg}")
 
         # Check for command substitution patterns
         for pattern in cmd_sub_patterns:
@@ -310,6 +319,11 @@ def safe_subprocess_args(cmd: list[str], base_dir: Optional[Path] = None) -> lis
             "-i",
             "-y",
             "-v",
+            "-show_entries",
+            "-show_format",
+            "-show_streams",
+            "-of",
+            "-",
             "-vn",
             "-an",
             "-sn",

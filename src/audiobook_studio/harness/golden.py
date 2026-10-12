@@ -93,6 +93,7 @@ def evaluate_on_harness_golden(
     *,
     baseline_fn: Optional[Callable[[Dict[str, Any]], Any]] = None,
     split: str = "test",
+    quality_judge=None,
 ) -> Dict[str, Any]:
     """在 harness 自有留出集（平铺布局 ``data/golden/harness/{split}/{stage}.jsonl``）
     上评估候选 vs 基线，实现 harness 自洽：不借用 feedback 的 ``run_candidate_on_held_out``
@@ -104,7 +105,7 @@ def evaluate_on_harness_golden(
     mgr = GoldenDatasetManager()
     samples = mgr.load_samples(stage, split)
 
-    def _score_one(sample, fn) -> float:
+    def _score_one(sample, fn, scoring=None) -> float:
         rec = sample.__dict__ if hasattr(sample, "__dict__") else dict(sample)
         inp = dict(rec.get("input") or {})
         exp = rec.get("expected_output")
@@ -118,7 +119,7 @@ def evaluate_on_harness_golden(
             logger.warning("[harness-eval] run_fn 抛错，该例置 0: %s", exc)
             return 0.0
         try:
-            s = float(judge.score(inp, out, exp, stage))
+            s = float((scoring or judge).score(inp, out, exp, stage))
         except Exception as exc:  # noqa: BLE001
             logger.warning("[harness-eval] judge 抛错，该例置 0: %s", exc)
             return 0.0
@@ -134,9 +135,25 @@ def evaluate_on_harness_golden(
         base = [_score_one(s, baseline_fn) for s in samples]
         baseline_mean = sum(base) / len(base) if base else 0.0
         effect = mean - baseline_mean
-    return {
+
+    # 复合质量指标（可选第二评判器）：结构化比对度量「行为回归」（金标通过率），
+    # 复合质量度量「文本质量增量」（quality_ratio），两个门各取所需。
+    quality_mean: Optional[float] = None
+    quality_baseline_mean: Optional[float] = None
+    if quality_judge is not None and samples:
+        q_cand = [_score_one(s, run_fn, quality_judge) for s in samples]
+        quality_mean = sum(q_cand) / len(q_cand) if q_cand else 0.0
+        if baseline_fn is not None:
+            q_base = [_score_one(s, baseline_fn, quality_judge) for s in samples]
+            quality_baseline_mean = sum(q_base) / len(q_base) if q_base else 0.0
+
+    result = {
         "case_count": len(samples),
         "mean_score": mean,
         "baseline_mean": baseline_mean,
         "effect_size": effect,
     }
+    if quality_mean is not None:
+        result["quality_mean"] = quality_mean
+        result["quality_baseline_mean"] = quality_baseline_mean
+    return result

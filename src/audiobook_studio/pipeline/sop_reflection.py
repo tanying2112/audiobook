@@ -935,9 +935,13 @@ class SOPBackgroundThread:
             interval = float(os.environ.get("AUDIOBOOK_HARNESS_INTERVAL", "3600"))
             auto_deploy = os.environ.get("AUDIOBOOK_HARNESS_AUTO_DEPLOY", "0") == "1"
             use_learned = self._harness_use_learned_enabled()
+            from audiobook_studio.feedback.offline_judge import OfflineJudge, QualityCompositeJudge
+
             self._harness_scheduler = HarnessScheduler(
                 interval=interval,
                 auto_deploy=auto_deploy,
+                judge=OfflineJudge(),
+                quality_judge=QualityCompositeJudge(),
                 use_learned=use_learned,
                 smoke_test_enabled=self._harness_smoke_test_enabled(),
                 smoke_test_stage=self._harness_smoke_test_stage(),
