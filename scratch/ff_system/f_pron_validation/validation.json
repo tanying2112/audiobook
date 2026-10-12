@@ -1,0 +1,65 @@
+{
+  "Tino": {
+    "respell": "Tee-no",
+    "hyp_base": "my friends call me tinino and i play football",
+    "base_hit": false,
+    "hyp_fix": "my friends call me tinno and i play football",
+    "fix_hit": false
+  },
+  "Albertino": {
+    "respell": "Al-ber-tee-no",
+    "hyp_base": "i am albertino or tinino to my friends",
+    "base_hit": true,
+    "hyp_fix": "i am albertino or tinino to my friends",
+    "fix_hit": true
+  },
+  "Zangado": {
+    "respell": "Zan-gah-doh",
+    "hyp_base": "they call him zanggado angry in portuguese",
+    "base_hit": false,
+    "hyp_fix": "they call him zanarddo angry in portuguese",
+    "fix_hit": false
+  },
+  "Lenda": {
+    "respell": "Len-dah",
+    "hyp_base": "the second is linda the captain of stars",
+    "base_hit": false,
+    "hyp_fix": "the second is linda the captain of stars",
+    "fix_hit": false
+  },
+  "Nakano": {
+    "respell": "Nah-kah-noh",
+    "hyp_base": "naano are you ready asks the coach",
+    "base_hit": false,
+    "hyp_fix": "nakao are you ready asks the coach",
+    "fix_hit": false
+  },
+  "futsal": {
+    "respell": "foot-sal",
+    "hyp_base": "we played futzsel when we were children",
+    "base_hit": false,
+    "hyp_fix": "we played foot sal when we were children",
+    "fix_hit": false
+  },
+  "Sao Paulo": {
+    "respell": "Sow pow-loh",
+    "hyp_base": "he comes from sao paulo a very big city",
+    "base_hit": true,
+    "hyp_fix": "he comes from soo paulo a very big city",
+    "fix_hit": false
+  },
+  "Talita": {
+    "respell": "Tah-lee-tah",
+    "hyp_base": "my little sister talita is here today",
+    "base_hit": true,
+    "hyp_fix": "my little sister tali ta is here today",
+    "fix_hit": false
+  },
+  "Junior": {
+    "respell": "Joo-nyor",
+    "hyp_base": "the first is my friend junior a good player",
+    "base_hit": true,
+    "hyp_fix": "the first is my friend ju nier a good player",
+    "fix_hit": false
+  }
+}

@@ -60,7 +60,9 @@ def _parse_raw(raw: Dict) -> Dict[str, DictEntry]:
             entries[word] = DictEntry(phoneme=str(meta))
             continue
         phoneme = meta.get("phoneme")
-        if phoneme is None:
+        if phoneme is None or not str(phoneme).strip():
+            # Gap F: proposed (空 phoneme) 条目惰性跳过 — 只占位不替换,
+            # 防止 apply 把目标词替换成空串。
             continue
         source = str(meta.get("source") or "rule_ns")
         entries[word] = DictEntry(phoneme=str(phoneme), source=source)
@@ -125,6 +127,66 @@ def apply_pronunciation_dict(text: str, pronunciation_dict: Dict[str, DictEntry]
             text = re.sub(pattern, phoneme, text)
 
     return text
+
+
+# Gap F (2026-10-13): 启发式专名抽取的排除词表 — 句首大写词多为普通词,
+# 书名/章节标题词不作专名提议。英文小写化后命中即排除。
+_PROPER_NOUN_STOPWORDS = frozenset({
+    "i", "the", "a", "an", "it's", "he's", "she's", "they're", "we're",
+    "chapter", "one", "two", "three", "okay", "ok", "yes", "no", "not",
+    "stars", "stripes", "cup",  # 本域队名等普通名词 (语料观察)
+})
+
+
+def propose_pronunciation_entries(
+    text: str,
+    language: Optional[str] = None,
+    top_k: int = 40,
+) -> Dict[str, Dict[str, str]]:
+    """从书文本启发式抽取候选专名 → 词典模板条目 (Gap F: 分析→词典链).
+
+    只提议、不发明发音 (红线#1): 每条 phoneme 留空, 由 LLM 注音或人工
+    核对一次后填入 (随后合成回听 SenseVoice 验证 — 见
+    scratch/ff_system/f_pron_dict_validate.py 的实证流程), 全书复用。
+
+    启发式 (en): 句中大写词 (排除句首/对白引号内首词与停用词) 按频次排序,
+    停用词先滤再切 top_k (防低频噪声按字母序挤掉高频人名); 连续大写词合并
+    为短语 (如 "Sao Paulo")。zh 文本无大小写信号 → 返回空 (诚实: 无证据
+    不提议, zh 专名仍走人工/LLM 渠道)。
+
+    Returns:
+        {词: {"phoneme": "", "source": "proposed"}} — 供生成项目级
+        pronunciation_dict.yaml 模板; 空 phoneme 条目在 _parse_raw
+        惰性跳过 (只占位不替换), 填入注音并回听验证后才生效。
+    """
+    if language and language.startswith("zh"):
+        return {}
+    # 句中大写词: 句首/对白引号内首词多为普通起始词, 用位置+停用词双滤。
+    proposals: Dict[str, int] = {}
+    tokens = re.split(r"(\s+)", text)  # 保留空白以判断句首
+    at_sentence_start = True
+    for tok in tokens:
+        if not tok:
+            continue
+        if tok.isspace():
+            continue
+        # 对白引号内首词 ('We' is Stars / “I'm ready”): 开引号起句 → 句首。
+        quote_open = tok[0] in "'\"“‘"
+        word = tok.strip(".,!?;:'\"“”‘’()[]—-")
+        if word and word[0].isupper() and not (at_sentence_start or quote_open):
+            proposals[word] = proposals.get(word, 0) + 1
+        at_sentence_start = (
+            tok.endswith(("\n", "\r", ".", "!", "?", ":", '"', "”", "'")) or None
+        )
+    # 停用词/非 ASCII 先滤, 再按频次切 top_k (防 1 次噪声词挤掉高频人名)。
+    ranked = sorted(
+        (
+            (w, c) for w, c in proposals.items()
+            if w.lower() not in _PROPER_NOUN_STOPWORDS and w.isascii()
+        ),
+        key=lambda kv: (-kv[1], kv[0]),
+    )[:top_k]
+    return {w: {"phoneme": "", "source": "proposed"} for w, _c in ranked}
 
 
 def get_pronunciation_dict(

@@ -33,3 +33,14 @@ entries:
   道友:
     phoneme: "dào yǒu"
     source: manual
+
+# ── 英文分级读物专名 (Gap F, 2026-10-13) ────────────────────────────────────
+# Football Forever (Oxford Bookworms L1) 回听实证 (kokoro am_adam 合成 →
+# SenseVoice 回听 → 与 gold 拼写整词对照, 全程见 scratch/ff_system/f_pron_*.py):
+#   - Lenda: 系统 4 次全被听成 "linda", respell "Len da" 回听整词命中 ✓
+#   - 其余专名系统与原声叙述者持平 (Tino 双方均被听成 "tinino"; Nakano/futsal
+#     原声直接漏听) — 属 SenseVoice 评分天花板 (差距 E), 不加词条 (红线#1:
+#     无实证不提交)。
+  Lenda:
+    phoneme: "Len da"
+    source: heuristic
