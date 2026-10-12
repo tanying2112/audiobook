@@ -242,8 +242,26 @@ class PromptCompressor:
         total = len(text)
         return int(chinese / 4 + (total - chinese) / 3)
 
-    def compress(self, prompt: str, schema_json: str, few_shot: str) -> tuple[str, int]:
-        """Compress prompt to fit within token limits."""
+    # Gap A fix (2026-10-12): smart 截断曾把 annotate prompt 中段的「待标注段落
+    # (含段落文本)」整节切掉, LLM 拿不到文本只能吐 neutral/0.5 最小合法对象
+    # (两个 Run 全部 35+ 段标注被此截断毁掉)。含保护标记的节强制保留。
+    PROTECT_MARKERS: tuple[str, ...] = (
+        "文本：", "待标注段落", "paragraph_text", "Raw ASR", "原始文本", "原声",
+        "待清洗", "待编辑", "切句列表",
+    )
+
+    def compress(
+        self,
+        prompt: str,
+        schema_json: str,
+        few_shot: str,
+        protect_markers: tuple[str, ...] = (),
+    ) -> tuple[str, int]:
+        """Compress prompt to fit within token limits.
+
+        protect_markers: 截断时强制保留的节标记 (任何 stage 的关键输入内容,
+        如待标注段落文本)。为空时退化为原 smart 头尾切。
+        """
         schema_tokens = self.estimate_tokens(schema_json)
         few_shot_tokens = self.estimate_tokens(few_shot)
         prompt_base_tokens = self.estimate_tokens(prompt)
@@ -272,14 +290,62 @@ class PromptCompressor:
                 ratio = self.max_tokens / total
                 keep_chars = int(len(prompt) * ratio * 0.9)
                 prompt = "[截断...]\n" + prompt[-keep_chars:]
-            else:  # smart - keep both ends
-                ratio = self.max_tokens / total
-                keep_chars = int(len(prompt) * ratio * 0.9)
-                half = keep_chars // 2
-                prompt = prompt[:half] + "\n[中间省略...]\n" + prompt[-half:]
+            else:  # smart - keep both ends, protected sections exempt (Gap A fix)
+                if protect_markers:
+                    prompt = self._smart_compress_protected(
+                        prompt, schema_tokens, few_shot_tokens, protect_markers
+                    )
+                else:
+                    ratio = self.max_tokens / total
+                    keep_chars = int(len(prompt) * ratio * 0.9)
+                    half = keep_chars // 2
+                    prompt = prompt[:half] + "\n[中间省略...]\n" + prompt[-half:]
 
         final_tokens = self.estimate_tokens(prompt) + schema_tokens + few_shot_tokens
         return prompt, final_tokens
+
+    def _smart_compress_protected(
+        self,
+        prompt: str,
+        schema_tokens: int,
+        few_shot_tokens: int,
+        protect_markers: tuple[str, ...],
+    ) -> str:
+        """Section-aware smart truncation: protected sections always survive.
+
+        按 markdown 节 (``\\n## `` 标题分节) 切分: 含 protect_markers 的节全量
+        保留 (按原顺序), 其余节拼接后做头尾保留直到预算内。保护区自身超预算
+        时仅保其尾部 (文本在节首的风险远小于被整节切掉)。
+        """
+        import re
+
+        sections = re.split(r"(?=\n## )", prompt)
+        protected = [s for s in sections if any(m in s for m in protect_markers)]
+        normal = [s for s in sections if not any(m in s for m in protect_markers)]
+
+        protected_text = "".join(protected)
+        protected_tokens = self.estimate_tokens(protected_text)
+        budget = self.max_tokens - schema_tokens - few_shot_tokens - protected_tokens
+
+        if budget <= 0:
+            # 保护区就超预算: 保保护区尾部 (文本通常在节首之后)
+            combined = protected_text
+            ratio = max(
+                0.1,
+                (self.max_tokens - schema_tokens - few_shot_tokens) / max(protected_tokens, 1),
+            )
+            keep_chars = int(len(combined) * ratio * 0.9)
+            return "[前部截断...]\n" + combined[-keep_chars:]
+
+        normal_text = "".join(normal)
+        normal_tokens = self.estimate_tokens(normal_text)
+        if normal_tokens > budget:
+            ratio = budget / normal_tokens
+            keep_chars = int(len(normal_text) * ratio * 0.9)
+            half = keep_chars // 2
+            normal_text = normal_text[:half] + "\n[中间省略...]\n" + normal_text[-half:]
+
+        return protected_text + normal_text
 
 
 class LLMRouter:
@@ -780,9 +846,13 @@ class LLMRouter:
             raise ValueError(f"No providers configured for stage: {stage}")
 
         # Build and compress prompt - preserve system message for JSON enforcement
+        # Gap A fix: protect critical input sections from truncation (文本/待标注/切句等)
         user_prompt = messages[-1]["content"] if messages else ""
         compressed_prompt, estimated_tokens = self.prompt_compressor.compress(
-            user_prompt, self._get_schema_json(response_model), ""
+            user_prompt,
+            self._get_schema_json(response_model),
+            "",
+            protect_markers=PromptCompressor.PROTECT_MARKERS,
         )
 
         # Rebuild messages with compressed prompt - preserves system message
