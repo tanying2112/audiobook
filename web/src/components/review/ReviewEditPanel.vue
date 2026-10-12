@@ -351,7 +351,7 @@ function loadSentenceRows(overrides: SentenceOverride[] | null | undefined): voi
 /** 组装差量：仅收集有任一字段填写的句；数字非法/为空 = 不覆盖该字段 */
 function buildSentenceOverrides(): SentenceOverride[] {
   const out: SentenceOverride[] = []
-  for (let i = 0; i < sentencePreview.length; i++) {
+  for (let i = 0; i < sentencePreview.value.length; i++) {
     const row = sentenceRows[i]
     if (!row) continue
     const o: SentenceOverride = { idx: i }
@@ -478,7 +478,7 @@ watch(
 function buildPayload(): ReviewEditPayloadWithSentences {
   const para = props.paragraph
   if (!para) return {}
-  const payload: ReviewParagraphEditPayload = {}
+  const payload: ReviewEditPayloadWithSentences = {}
 
   if ((form.edited_text ?? '') !== (para.edited_text ?? para.text)) {
     payload.edited_text = form.edited_text ?? ''

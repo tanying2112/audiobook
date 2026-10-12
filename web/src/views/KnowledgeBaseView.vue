@@ -1,24 +1,21 @@
 <template>
-  <div class="knowledge-view">
-    <div class="header">
+  <div class="knowledge-view page-container">
+    <div class="page-header">
       <h1>{{ t('knowledge.title') }}</h1>
-      <el-button type="primary" @click="showAdd = true">{{ t('knowledge.add') }}</el-button>
+      <button class="btn btn-primary" @click="showAdd = true" :aria-label="t('knowledge.add')">{{ t('knowledge.add') }}</button>
     </div>
 
-    <el-card class="section">
-      <template #header>
-        <div class="card-header">
-          <span>{{ t('knowledge.entries') }}</span>
-          <el-input
-            v-model="topicFilter"
-            :placeholder="t('knowledge.searchTopic')"
-            clearable
-            size="small"
-            style="width: 220px"
-            @change="load"
-          />
-        </div>
-      </template>
+    <div class="card section">
+      <div class="card-header">
+        <span class="card-title">{{ t('knowledge.entries') }}</span>
+        <input
+          v-model="topicFilter"
+          class="form-control search-input"
+          :placeholder="t('knowledge.searchTopic')"
+          @change="load"
+          :aria-label="t('knowledge.searchTopic')"
+        />
+      </div>
       <el-table :data="entries" v-loading="loading">
         <el-table-column prop="topic" :label="t('knowledge.topic')" min-width="160" />
         <el-table-column prop="source_agent" :label="t('knowledge.source')" width="120" />
@@ -30,20 +27,22 @@
         <el-table-column prop="created_at" :label="t('knowledge.createdAt')" width="180" />
       </el-table>
       <el-empty v-if="!loading && entries.length === 0" :description="t('common.noData')" />
-    </el-card>
+    </div>
 
     <el-dialog v-model="showAdd" :title="t('knowledge.add')" width="640px">
-      <el-form label-width="100px">
-        <el-form-item :label="t('knowledge.topic')">
-          <el-input v-model="form.topic" />
-        </el-form-item>
-        <el-form-item :label="t('knowledge.content')">
-          <el-input v-model="form.knowledgeJson" type="textarea" :rows="8" placeholder="JSON" />
-        </el-form-item>
-      </el-form>
+      <form class="knowledge-form" @submit.prevent="submit">
+        <div class="form-group">
+          <label class="form-label">{{ t('knowledge.topic') }}</label>
+          <input v-model="form.topic" class="form-control" :aria-label="t('knowledge.topic')" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">{{ t('knowledge.content') }}</label>
+          <textarea v-model="form.knowledgeJson" class="form-control knowledge-textarea" rows="8" placeholder="JSON" :aria-label="t('knowledge.content')"></textarea>
+        </div>
+      </form>
       <template #footer>
-        <el-button @click="showAdd = false">{{ t('common.cancel') }}</el-button>
-        <el-button type="primary" :loading="submitting" @click="submit">{{ t('common.submit') }}</el-button>
+        <button class="btn btn-outline" @click="showAdd = false">{{ t('common.cancel') }}</button>
+        <button class="btn btn-primary" :disabled="submitting" @click="submit" :aria-label="t('common.submit')">{{ t('common.submit') }}</button>
       </template>
     </el-dialog>
   </div>
@@ -109,17 +108,52 @@ onMounted(load)
 </script>
 
 <style scoped>
-.knowledge-view { padding: 24px; max-width: 1200px; margin: 0 auto; }
-.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-.section { margin-bottom: 16px; }
-.card-header { display: flex; justify-content: space-between; align-items: center; }
+.knowledge-view {
+  /* max-width & margin handled by .page-container */
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.search-input {
+  width: 220px;
+}
+
+.knowledge-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 .knowledge-json {
   margin: 0;
   max-height: 120px;
   overflow: auto;
   font-size: 12px;
-  background: var(--el-fill-color-light);
+  background: var(--color-bg-tertiary);
   padding: 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
+}
+
+.knowledge-textarea {
+  min-height: 120px;
+  resize: vertical;
+  font-family: var(--font-mono);
+}
+
+@media (max-width: 767px) {
+  .card-header {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+
+  .search-input {
+    width: 100%;
+  }
 }
 </style>

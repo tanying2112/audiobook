@@ -1,49 +1,70 @@
 <template>
-  <div class="sop-view">
-    <div class="header">
-      <h1>{{ t('sop.title') }}</h1>
+  <div class="page-container">
+    <div class="page-header">
       <div>
-        <el-tag :type="bgStatus.running ? 'success' : 'info'" class="bg-tag">
+        <h1>{{ t('sop.title') }}</h1>
+      </div>
+      <div class="header-actions">
+        <span
+          class="badge"
+          :class="bgStatus.running ? 'badge-success' : 'badge-muted'"
+        >
           {{ t('sop.background') }}: {{ bgStatus.running ? t('common.on') : t('common.off') }}
-        </el-tag>
-        <el-button size="small" @click="toggleBackground">
+        </span>
+        <button class="btn btn-outline btn-sm" @click="toggleBackground" :aria-label="bgStatus.running ? t('sop.stopBackground') : t('sop.startBackground')">
           {{ bgStatus.running ? t('sop.stopBackground') : t('sop.startBackground') }}
-        </el-button>
+        </button>
       </div>
     </div>
 
-    <el-row :gutter="16">
-      <el-col :span="6">
-        <el-card>
-          <template #header>{{ t('sop.genres') }}</template>
-          <el-menu :default-active="activeGenre" @select="onSelectGenre">
-            <el-menu-item v-for="g in genres" :key="g" :index="g">{{ g }}</el-menu-item>
-          </el-menu>
-          <el-empty v-if="genres.length === 0" :description="t('common.noData')" />
-        </el-card>
-      </el-col>
-      <el-col :span="18">
-        <el-card v-loading="loadingRules">
-          <template #header>
-            <div class="card-header">
-              <span>{{ activeGenre || t('sop.selectGenre') }}</span>
-              <el-button v-if="activeGenre" size="small" type="primary" :loading="reflecting" @click="onReflect">
-                {{ t('sop.reflectNow') }}
-              </el-button>
-            </div>
-          </template>
-          <template v-if="rules">
-            <div v-for="(val, key) in rules.rules" :key="key" class="rule-block">
-              <h4>{{ key }}</h4>
-              <pre>{{ JSON.stringify(val, null, 2) }}</pre>
-            </div>
-            <div v-if="Object.keys(rules.rules || {}).length === 0">
-              <el-empty :description="t('sop.noRules')" />
-            </div>
-          </template>
-        </el-card>
-      </el-col>
-    </el-row>
+    <div class="sop-layout">
+      <!-- Genre sidebar -->
+      <div class="card sop-sidebar">
+        <div class="card-title">{{ t('sop.genres') }}</div>
+        <nav class="genre-nav" role="listbox" :aria-label="t('sop.genres')">
+          <button
+            v-for="g in genres"
+            :key="g"
+            class="genre-item"
+            :class="{ active: g === activeGenre }"
+            role="option"
+            :aria-selected="g === activeGenre"
+            @click="onSelectGenre(g)"
+          >
+            {{ g }}
+          </button>
+        </nav>
+        <div v-if="genres.length === 0" class="empty-state">
+          {{ t('common.noData') }}
+        </div>
+      </div>
+
+      <!-- Rules panel -->
+      <div class="card sop-rules" v-loading="loadingRules">
+        <div class="rules-header">
+          <h2 class="card-title">{{ activeGenre || t('sop.selectGenre') }}</h2>
+          <button
+            v-if="activeGenre"
+            class="btn btn-primary btn-sm"
+            :disabled="reflecting"
+            @click="onReflect"
+          >
+            <span v-if="reflecting" class="spinner"></span>
+            {{ t('sop.reflectNow') }}
+          </button>
+        </div>
+
+        <template v-if="rules">
+          <div v-for="(val, key) in rules.rules" :key="key" class="rule-block">
+            <h4>{{ key }}</h4>
+            <pre class="rule-code">{{ JSON.stringify(val, null, 2) }}</pre>
+          </div>
+          <div v-if="Object.keys(rules.rules || {}).length === 0" class="empty-state">
+            {{ t('sop.noRules') }}
+          </div>
+        </template>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -118,10 +139,115 @@ onMounted(load)
 </script>
 
 <style scoped>
-.sop-view { padding: 24px; }
-.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-.bg-tag { margin-right: 8px; }
-.card-header { display: flex; justify-content: space-between; align-items: center; }
-.rule-block { margin-bottom: 12px; }
-.rule-block pre { background: var(--el-fill-color-light); padding: 8px; border-radius: 4px; overflow: auto; }
+.sop-layout {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 16px;
+}
+
+.sop-sidebar {
+  padding: 0;
+  overflow: hidden;
+}
+
+.genre-nav {
+  display: flex;
+  flex-direction: column;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.genre-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 16px;
+  border: none;
+  background: none;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+  border-left: 3px solid transparent;
+}
+
+.genre-item:hover {
+  background: var(--color-primary-soft);
+  color: var(--color-text);
+}
+
+.genre-item.active {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-weight: 500;
+  border-left-color: var(--color-primary);
+}
+
+.sop-rules {
+  overflow: hidden;
+}
+
+.rules-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rules-header .card-title {
+  margin: 0;
+}
+
+.rule-block {
+  margin-bottom: 16px;
+}
+
+.rule-block h4 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.rule-code {
+  background: var(--color-bg-tertiary);
+  padding: 12px;
+  border-radius: var(--radius);
+  overflow: auto;
+  font-size: 13px;
+  line-height: 1.5;
+  font-family: var(--font-mono);
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+@media (max-width: 767px) {
+  .sop-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .genre-nav {
+    flex-direction: row;
+    max-height: none;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 4px;
+    padding: 8px;
+  }
+
+  .genre-item {
+    white-space: nowrap;
+    border-left: none;
+    border-bottom: 2px solid transparent;
+    padding: 6px 12px;
+  }
+
+  .genre-item.active {
+    border-left-color: transparent;
+    border-bottom-color: var(--color-primary);
+  }
+}
 </style>

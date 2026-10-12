@@ -40,7 +40,7 @@ async function handleLogin() {
       </div>
       <p class="auth-subtitle">{{ t('auth.login_subtitle') }}</p>
 
-      <div v-if="justRegistered" class="alert alert-success" style="margin-bottom: 16px">
+      <div v-if="justRegistered" class="alert alert-success">
         {{ t('auth.register_success') }}
       </div>
 
@@ -83,7 +83,7 @@ async function handleLogin() {
         <div v-if="error" class="alert alert-error">{{ error }}</div>
 
         <button type="submit" class="btn btn-primary btn-lg btn-block" :disabled="loading">
-          <span v-if="loading" class="spinner" style="border-color: rgba(255,255,255,.35); border-top-color: #fff"></span>
+          <span v-if="loading" class="spinner"></span>
           <span>{{ loading ? t('auth.login_in_progress') : t('auth.login') }}</span>
         </button>
       </form>
@@ -99,6 +99,11 @@ async function handleLogin() {
 </template>
 
 <style scoped>
+/* ── Dark mode: override hardcoded white card background ──── */
+:global(html.dark) .auth-card {
+  background: var(--color-surface);
+}
+
 .password-field {
   position: relative;
 }
@@ -126,6 +131,7 @@ async function handleLogin() {
 .bootstrap-hint {
   margin: 12px 0 0;
   font-size: 12px;
+  color: var(--color-text-muted);
 }
 .bootstrap-hint code {
   background: var(--color-bg-tertiary);
@@ -133,5 +139,6 @@ async function handleLogin() {
   margin: 0 4px;
   border-radius: var(--radius-sm);
   font-size: 11px;
+  color: var(--color-text-secondary);
 }
 </style>

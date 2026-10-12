@@ -5,7 +5,7 @@ import { useI18n } from '../i18n'
 import { useProjectStore } from '../stores/projects'
 import { Icon } from '@iconify/vue'
 import api from '../api'
-import { fetchExportFiles, downloadExportFile } from '../api'
+import { fetchExportFiles, downloadExportFile, getExportStatus } from '../api'
 import type { ExportFileInfo } from '../api'
 import '../views/ExportView.css'
 
@@ -81,7 +81,7 @@ async function pollExportStatus() {
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise((r) => setTimeout(r, 2000))
     try {
-      const status = await api.getExportStatus(projectId)
+      const status = await getExportStatus(projectId)
       exportResult.value = status
       if (isTerminalComplete(status.status) || status.status === 'failed') return
     } catch (e) {

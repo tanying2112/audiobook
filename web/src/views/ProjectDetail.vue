@@ -182,7 +182,7 @@ function formatStatus(status: string): string {
         </div>
 
         <div v-if="(chapterStore.chapters?.length ?? 0) === 0" class="empty-state">
-          <Icon icon="mdi:book-outline" width="48" height="48" style="opacity: 0.4" />
+          <Icon icon="mdi:book-outline" width="48" height="48" class="empty-icon" />
           <p>{{ t('project_detail.no_chapters') }}</p>
           <button class="btn btn-primary mt-4" @click="router.push(`/projects/${projectId}/upload`)">
             <Icon icon="mdi:upload" width="16" height="16" />
@@ -198,7 +198,7 @@ function formatStatus(status: string): string {
             @click="openChapter(ch.id)"
           >
             <div class="chapter-info">
-              <h3 class="card-title" style="font-size: 16px; margin: 0;">
+              <h3 class="card-title chapter-title">
                 {{ ch.title || t('project_detail.chapter_fallback', { number: ch.chapter_number || ch.id }) }}
               </h3>
               <span :class="getStatusBadgeClass(ch.status || 'pending')">{{ formatStatus(ch.status || 'pending') }}</span>
@@ -230,6 +230,9 @@ function formatStatus(status: string): string {
 .chevron {
   color: var(--color-text-muted);
   flex-shrink: 0;
+}
+.empty-icon {
+  opacity: 0.4;
 }
 .header-actions {
   display: flex;

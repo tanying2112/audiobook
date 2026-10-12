@@ -1,75 +1,126 @@
 <template>
-  <div class="promotions-view">
-    <h1>{{ t('promotions.title') }}</h1>
+  <div class="page-container">
+    <div class="page-header">
+      <div>
+        <h1>{{ t('promotions.title') }}</h1>
+      </div>
+    </div>
 
-    <el-row :gutter="16" class="stat-row">
-      <el-col :span="6">
-        <el-card><div class="stat-num">{{ gate?.promotion_passed_count ?? '—' }}</div><div class="stat-label">{{ t('promotions.passed') }}</div></el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card><div class="stat-num">{{ canaries.length }}</div><div class="stat-label">{{ t('promotions.activeCanaries') }}</div></el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card><div class="stat-num">{{ abTests.length }}</div><div class="stat-label">{{ t('promotions.abTests') }}</div></el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card>
-          <el-button type="primary" :loading="triggering" @click="onTrigger">{{ t('promotions.triggerIteration') }}</el-button>
-        </el-card>
-      </el-col>
-    </el-row>
+    <!-- KPI row -->
+    <div class="kpi-row">
+      <div class="card kpi-card">
+        <div class="stat-value">{{ gate?.promotion_passed_count ?? '—' }}</div>
+        <div class="stat-label">{{ t('promotions.passed') }}</div>
+      </div>
+      <div class="card kpi-card">
+        <div class="stat-value">{{ canaries.length }}</div>
+        <div class="stat-label">{{ t('promotions.activeCanaries') }}</div>
+      </div>
+      <div class="card kpi-card">
+        <div class="stat-value">{{ abTests.length }}</div>
+        <div class="stat-label">{{ t('promotions.abTests') }}</div>
+      </div>
+      <div class="card kpi-card kpi-action">
+        <button class="btn btn-primary btn-sm" :disabled="triggering" @click="onTrigger">
+          <span v-if="triggering" class="spinner"></span>
+          {{ t('promotions.triggerIteration') }}
+        </button>
+      </div>
+    </div>
 
-    <el-card class="section">
-      <template #header>{{ t('promotions.gateStatus') }}</template>
-      <el-descriptions v-if="gate" :column="2" border>
-        <el-descriptions-item v-for="(v, k) in gateSummary" :key="k" :label="String(k)">{{ v }}</el-descriptions-item>
-      </el-descriptions>
-      <el-empty v-else :description="t('common.noData')" />
-    </el-card>
+    <!-- Gate status -->
+    <div class="card section">
+      <div class="card-title">{{ t('promotions.gateStatus') }}</div>
+      <div v-if="gate" class="gate-grid">
+        <div v-for="(v, k) in gateSummary" :key="k" class="gate-item">
+          <span class="gate-label">{{ k }}</span>
+          <span class="gate-value">{{ v }}</span>
+        </div>
+      </div>
+      <div v-else class="empty-state">{{ t('common.noData') }}</div>
+    </div>
 
-    <el-card class="section">
-      <template #header>{{ t('promotions.canaries') }}</template>
-      <el-table :data="canaries" v-loading="loading">
-        <el-table-column prop="stage" :label="t('promotions.stage')" width="140" />
-        <el-table-column prop="version" :label="t('promotions.version')" width="140" />
-        <el-table-column prop="status" :label="t('promotions.status')" width="140">
-          <template #default="{ row }">
-            <el-tag :type="row.status === 'promoted' ? 'success' : row.status === 'failed' ? 'danger' : 'warning'">{{ row.status }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="traffic_pct" :label="t('promotions.traffic')" width="120" />
-        <el-table-column :label="t('common.actions')" width="200">
-          <template #default="{ row }">
-            <el-popconfirm :title="t('promotions.rollbackConfirm')" @confirm="onRollback(row)">
-              <template #reference>
-                <el-button size="small" type="danger" plain>{{ t('promotions.rollback') }}</el-button>
-              </template>
-            </el-popconfirm>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+    <!-- Canaries -->
+    <div class="card section">
+      <div class="card-title">{{ t('promotions.canaries') }}</div>
+      <div class="table-responsive">
+        <table class="table" v-loading="loading">
+          <thead>
+            <tr>
+              <th>{{ t('promotions.stage') }}</th>
+              <th>{{ t('promotions.version') }}</th>
+              <th>{{ t('promotions.status') }}</th>
+              <th>{{ t('promotions.traffic') }}</th>
+              <th>{{ t('common.actions') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in canaries" :key="row.version + row.stage">
+              <td>{{ row.stage }}</td>
+              <td>{{ row.version }}</td>
+              <td>
+                <span
+                  class="badge"
+                  :class="row.status === 'promoted' ? 'badge-success' : row.status === 'failed' ? 'badge-danger' : 'badge-warning'"
+                >
+                  {{ row.status }}
+                </span>
+              </td>
+              <td>{{ row.traffic_pct }}</td>
+              <td>
+                <button class="btn btn-sm btn-action-danger" @click="onRollback(row)">
+                  {{ t('promotions.rollback') }}
+                </button>
+              </td>
+            </tr>
+            <tr v-if="canaries.length === 0">
+              <td colspan="5" class="empty-cell">{{ t('common.noData') }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
 
-    <el-card class="section">
-      <template #header>{{ t('promotions.abResults') }}</template>
-      <el-table :data="abTests" v-loading="loading">
-        <el-table-column prop="variant_a" :label="t('promotions.variantA')" width="130" />
-        <el-table-column prop="variant_b" :label="t('promotions.variantB')" width="130" />
-        <el-table-column prop="sample_count" :label="t('promotions.samples')" width="100" />
-        <el-table-column prop="improvement_pct" :label="t('promotions.improvement')" width="120">
-          <template #default="{ row }">{{ (row.improvement_pct ?? 0).toFixed(2) }}%</template>
-        </el-table-column>
-        <el-table-column prop="p_value" :label="t('promotions.pValue')" width="100">
-          <template #default="{ row }">{{ row.p_value?.toFixed(4) ?? '—' }}</template>
-        </el-table-column>
-        <el-table-column prop="statistically_significant" :label="t('promotions.significant')" width="110">
-          <template #default="{ row }">
-            <el-tag :type="row.statistically_significant ? 'success' : 'info'">{{ row.statistically_significant ? '✓' : '—' }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="winner" :label="t('promotions.winner')" width="110" />
-      </el-table>
-    </el-card>
+    <!-- AB tests -->
+    <div class="card section">
+      <div class="card-title">{{ t('promotions.abResults') }}</div>
+      <div class="table-responsive">
+        <table class="table" v-loading="loading">
+          <thead>
+            <tr>
+              <th>{{ t('promotions.variantA') }}</th>
+              <th>{{ t('promotions.variantB') }}</th>
+              <th>{{ t('promotions.samples') }}</th>
+              <th>{{ t('promotions.improvement') }}</th>
+              <th>{{ t('promotions.pValue') }}</th>
+              <th>{{ t('promotions.significant') }}</th>
+              <th>{{ t('promotions.winner') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(row, i) in abTests" :key="i">
+              <td>{{ row.variant_a }}</td>
+              <td>{{ row.variant_b }}</td>
+              <td>{{ row.sample_count }}</td>
+              <td>{{ (row.improvement_pct ?? 0).toFixed(2) }}%</td>
+              <td>{{ row.p_value?.toFixed(4) ?? '—' }}</td>
+              <td>
+                <span
+                  class="badge"
+                  :class="row.statistically_significant ? 'badge-success' : 'badge-muted'"
+                >
+                  {{ row.statistically_significant ? '✓' : '—' }}
+                </span>
+              </td>
+              <td>{{ row.winner }}</td>
+            </tr>
+            <tr v-if="abTests.length === 0">
+              <td colspan="7" class="empty-cell">{{ t('common.noData') }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -132,9 +183,78 @@ onMounted(load)
 </script>
 
 <style scoped>
-.promotions-view { padding: 24px; }
-.stat-row { margin-bottom: 16px; }
-.stat-num { font-size: 28px; font-weight: 600; }
-.stat-label { color: var(--el-text-color-secondary); }
-.section { margin-bottom: 16px; }
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.kpi-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 20px 12px;
+  text-align: center;
+  min-height: 80px;
+}
+
+.kpi-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stat-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+.gate-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.gate-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  background: var(--color-bg-tertiary);
+  border-radius: var(--radius);
+}
+
+.gate-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  text-transform: capitalize;
+}
+
+.gate-value {
+  font-size: 14px;
+  color: var(--color-text);
+  word-break: break-word;
+}
+
+.empty-cell {
+  text-align: center;
+  color: var(--color-text-muted);
+  padding: 32px 12px;
+}
+.btn-action-danger { color: var(--color-danger); }
+.btn-action-danger:hover { background: var(--color-danger-soft); }
+
+@media (max-width: 767px) {
+  .kpi-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .gate-grid {
+    grid-template-columns: 1fr;
+  }
+}
 </style>

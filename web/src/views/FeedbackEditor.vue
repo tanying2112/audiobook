@@ -6,7 +6,6 @@ import { useI18n } from '../i18n'
 
 const { t } = useI18n()
 
-
 interface FeedbackForm {
   source: string
   stage: string
@@ -41,7 +40,7 @@ const form = ref<FeedbackForm>({
   rationale: ''
 })
 
-// JSON 文本字段（v-model 绑定，提交时解析回 form）
+// JSON 文本字段(v-model 绑定,提交时解析回 form)
 const jsonText = reactive({
   input_snapshot: JSON.stringify(form.value.input_snapshot, null, 2),
   llm_output: JSON.stringify(form.value.llm_output, null, 2),
@@ -132,7 +131,7 @@ const loadSampleData = () => {
     paragraph_index: 0,
     chapter_index: 1,
     input_snapshot: {
-      paragraph_text: 'Alexander 在图书馆里查阅边防要塞的最新回报时，突然接获了宫女的紧急通报。',
+      paragraph_text: 'Alexander 在图书馆里查阅边防要塞的最新回报时,突然接获了宫女的紧急通报。',
       paragraph_index: 0,
       chapter_index: 1,
       book_meta: { title: '智慧君主', genre: '小说', difficulty: 'B', language: 'zh' }
@@ -149,7 +148,7 @@ const loadSampleData = () => {
       emotion_intensity: 0.8,
       is_dialogue: false
     },
-    rationale: '该段落描述 Alexander 亲自处理危机，说话人应为 Alexander 而非旁白，且情感应为紧张而非中性。'
+    rationale: '该段落描述 Alexander 亲自处理危机,说话人应为 Alexander 而非旁白,且情感应为紧张而非中性。'
   }
   syncJsonText()
 }
@@ -174,19 +173,19 @@ const loadSampleData = () => {
       <el-row :gutter="16">
         <el-col :xs="24" :md="12">
           <el-form-item :label="t('feedback_editor.book_id') + ' *'">
-            <el-input v-model="form.book_id" :placeholder="t('feedback_editor.book_id_placeholder')" />
+            <el-input v-model="form.book_id" :placeholder="t('feedback_editor.book_id_placeholder')" class="form-control" />
           </el-form-item>
         </el-col>
         <el-col :xs="24" :md="12">
           <el-form-item :label="t('feedback_editor.source') + ' *'">
-            <el-select v-model="form.source" style="width: 100%">
+            <el-select v-model="form.source" style="width: 100%" class="form-control">
               <el-option v-for="s in sources" :key="s" :label="t('feedback_editor.sources.' + s)" :value="s" />
             </el-select>
           </el-form-item>
         </el-col>
         <el-col :xs="24" :md="12">
           <el-form-item :label="t('feedback_editor.stage') + ' *'">
-            <el-select v-model="form.stage" style="width: 100%">
+            <el-select v-model="form.stage" style="width: 100%" class="form-control">
               <el-option v-for="s in stages" :key="s" :label="t('feedback_editor.stages.' + s)" :value="s" />
             </el-select>
           </el-form-item>
@@ -204,15 +203,15 @@ const loadSampleData = () => {
       </el-row>
 
       <el-form-item :label="t('feedback_editor.input_snapshot') + ' (JSON)'">
-        <el-input v-model="jsonText.input_snapshot" type="textarea" :rows="3" class="json-input" />
+        <el-input v-model="jsonText.input_snapshot" type="textarea" :rows="3" class="json-input form-control" />
       </el-form-item>
 
       <el-form-item :label="t('feedback_editor.llm_output') + ' (JSON)'">
-        <el-input v-model="jsonText.llm_output" type="textarea" :rows="3" class="json-input" />
+        <el-input v-model="jsonText.llm_output" type="textarea" :rows="3" class="json-input form-control" />
       </el-form-item>
 
       <el-form-item :label="t('feedback_editor.corrected_output') + ' (JSON)'">
-        <el-input v-model="jsonText.corrected_output" type="textarea" :rows="3" class="json-input" />
+        <el-input v-model="jsonText.corrected_output" type="textarea" :rows="3" class="json-input form-control" />
       </el-form-item>
 
       <el-form-item :label="t('feedback_editor.rationale') + ' *'">
@@ -221,26 +220,60 @@ const loadSampleData = () => {
           type="textarea"
           :rows="4"
           :placeholder="t('feedback_editor.rationale_placeholder')"
+          class="form-control"
         />
         <div class="char-count">{{ form.rationale.length }}/10 {{ t('feedback_editor.min_chars') }}</div>
       </el-form-item>
 
       <div class="actions">
-        <el-button type="primary" :loading="loading" @click="submitFeedback">
+        <el-button type="primary" :loading="loading" @click="submitFeedback" class="btn btn-primary">
           {{ loading ? t('feedback_editor.submitting') : t('feedback_editor.submit') }}
         </el-button>
-        <el-button @click="loadSampleData">{{ t('feedback_editor.load_sample') }}</el-button>
+        <el-button @click="loadSampleData" class="btn btn-outline">
+          {{ t('feedback_editor.load_sample') }}
+        </el-button>
       </div>
     </el-form>
   </div>
 </template>
 
 <style scoped>
-.feedback-editor { max-width: 760px; margin: 0 auto; padding: 24px; }
-.page-header { margin-bottom: 16px; }
-.page-header h2 { margin: 0; font-size: 20px; color: var(--color-text); }
-.message-alert { margin-bottom: 16px; }
-.json-input :deep(textarea) { font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); }
-.char-count { font-size: 12px; color: var(--color-text-muted); margin-top: 4px; }
-.actions { display: flex; gap: 8px; margin-top: 8px; }
+.feedback-editor {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 24px;
+}
+.page-header {
+  margin-bottom: 16px;
+}
+.page-header h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+.message-alert {
+  margin-bottom: 16px;
+}
+.json-input :deep(textarea) {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 13px;
+}
+.char-count {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-top: 4px;
+}
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* Mobile responsive */
+@media (max-width: 767px) {
+  .feedback-editor {
+    padding: 16px;
+  }
+}
 </style>

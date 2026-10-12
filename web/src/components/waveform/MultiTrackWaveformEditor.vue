@@ -164,7 +164,7 @@
       <div class="inspector-fields">
         <div class="field">
           <label>{{ t('waveform.track') }}</label>
-          <span>{{ getTrackName(selectedRegionData.trackIndex) || 'Unknown' }}</span>
+          <span>{{ getTrackName(selectedRegionData.trackIndex) || t('waveform.unknown') }}</span>
         </div>
         <div class="field">
           <label>{{ t('waveform.start_time') }}</label>
@@ -258,7 +258,7 @@
           <h3>{{ t('waveform.add_track_title') }}</h3>
           <div class="modal-field">
             <label>{{ t('waveform.track_name') }}</label>
-            <input v-model="newTrackName" type="text" placeholder="{{ t('waveform.track_name_placeholder') }}" />
+            <input v-model="newTrackName" type="text" :placeholder="t('waveform.track_name_placeholder')" />
           </div>
           <div class="modal-field">
             <label>{{ t('waveform.audio_file') }}</label>
@@ -409,7 +409,7 @@ function cancelRename() {
 }
 
 function getTrackName(trackIndex: number): string {
-  return tracks.value[trackIndex]?.name || `Track ${trackIndex + 1}`
+  return tracks.value[trackIndex]?.name || t('waveform.track_fallback', { index: trackIndex + 1 })
 }
 
 // Track drag reorder
@@ -482,9 +482,9 @@ function exportRegionsData() {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--color-bg-primary);
+  background: var(--color-bg);
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: var(--radius);
   overflow: hidden;
 }
 </style>

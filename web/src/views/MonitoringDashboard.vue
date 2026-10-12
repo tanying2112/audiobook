@@ -3,17 +3,17 @@
     <header class="dashboard-header">
       <h1>{{ t('monitoring.title') }}</h1>
       <div class="header-controls">
-        <select v-model="selectedProjectId" @change="fetchMetrics" class="project-select">
+        <select v-model="selectedProjectId" @change="fetchMetrics" class="project-select" aria-label="Select project">
           <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.title }} (ID: {{ p.id }})</option>
         </select>
-        <button @click="refreshData" :disabled="loading" class="btn btn-primary">
+        <button @click="refreshData" :disabled="loading" class="btn btn-primary" :aria-label="t('monitoring.refresh')">
           {{ loading ? t('monitoring.refreshing') : t('monitoring.refresh') }}
         </button>
       </div>
     </header>
 
     <div v-if="loading" class="loading-overlay">
-      <div class="spinner"></div>
+      <div class="spinner" role="status" :aria-label="t('monitoring.loading')"></div>
       <p>{{ t('monitoring.loading') }}</p>
     </div>
 
@@ -26,7 +26,7 @@
       <section class="chart-card">
         <h2>{{ t('monitoring.cost_pie') }}</h2>
         <div class="chart-container">
-          <canvas ref="costChart"></canvas>
+          <canvas ref="costChart" :aria-label="t('monitoring.cost_pie')" role="img"></canvas>
         </div>
         <div class="chart-legend" v-if="costChartData.labels.length > 0">
           <div v-for="(label, i) in costChartData.labels" :key="label" class="legend-item">
@@ -46,16 +46,16 @@
       <section class="chart-card">
         <h2>{{ t('monitoring.latency_leaderboard') }}</h2>
         <div class="chart-container">
-          <canvas ref="latencyChart"></canvas>
+          <canvas ref="latencyChart" :aria-label="t('monitoring.latency_leaderboard')" role="img"></canvas>
         </div>
         <div class="leaderboard-table" v-if="latencyChartData.labels.length > 0">
           <table>
             <thead>
               <tr>
-                <th>{{ t('monitoring.rank') }}</th>
-                <th>{{ t('monitoring.stage') }}</th>
-                <th>{{ t('monitoring.latency_ms') }}</th>
-                <th>{{ t('monitoring.status') }}</th>
+                <th scope="col">{{ t('monitoring.rank') }}</th>
+                <th scope="col">{{ t('monitoring.stage') }}</th>
+                <th scope="col">{{ t('monitoring.latency_ms') }}</th>
+                <th scope="col">{{ t('monitoring.status') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -77,7 +77,7 @@
         <div class="metrics-grid">
           <div class="metric-box">
             <span class="metric-label">{{ t('monitoring.llm_total_calls') }}</span>
-            <span class="metric-value">{{ resilience.llm.total_calls }}</span>
+            <span class="stat-value">{{ resilience.llm.total_calls }}</span>
           </div>
           <div class="metric-box">
             <span class="metric-label">{{ t('monitoring.llm_retries') }}</span>
@@ -89,7 +89,7 @@
           </div>
           <div class="metric-box">
             <span class="metric-label">{{ t('monitoring.tts_segments') }}</span>
-            <span class="metric-value">{{ resilience.tts.total_segments }}</span>
+            <span class="stat-value">{{ resilience.tts.total_segments }}</span>
           </div>
           <div class="metric-box">
             <span class="metric-label">{{ t('monitoring.tts_success_rate') }}</span>
@@ -97,15 +97,15 @@
           </div>
           <div class="metric-box">
             <span class="metric-label">{{ t('monitoring.synthesis_rate_ratio') }}</span>
-            <span class="metric-value">{{ latency.synthesis_rate_ratio.toFixed(2) }}</span>
+            <span class="stat-value">{{ latency.synthesis_rate_ratio.toFixed(2) }}</span>
           </div>
           <div class="metric-box">
             <span class="metric-label">{{ t('monitoring.real_time_factor') }}</span>
-            <span class="metric-value">{{ latency.real_time_factor.toFixed(2) }}</span>
+            <span class="stat-value">{{ latency.real_time_factor.toFixed(2) }}</span>
           </div>
           <div class="metric-box">
             <span class="metric-label">{{ t('monitoring.total_audio_duration') }}</span>
-            <span class="metric-value">{{ t('monitoring.seconds', { n: (latency.total_audio_duration_ms / 1000).toFixed(1) }) }}</span>
+            <span class="stat-value">{{ t('monitoring.seconds', { n: (latency.total_audio_duration_ms / 1000).toFixed(1) }) }}</span>
           </div>
         </div>
       </section>
@@ -117,14 +117,14 @@
           <table>
             <thead>
               <tr>
-                <th>{{ t('monitoring.provider') }}</th>
-                <th>{{ t('monitoring.model') }}</th>
-                <th>{{ t('monitoring.prompt_tokens') }}</th>
-                <th>{{ t('monitoring.completion_tokens') }}</th>
-                <th>{{ t('monitoring.cost_usd') }}</th>
-                <th>{{ t('monitoring.call_count') }}</th>
-                <th>{{ t('monitoring.avg_latency') }}</th>
-                <th>{{ t('monitoring.success_rate') }}</th>
+                <th scope="col">{{ t('monitoring.provider') }}</th>
+                <th scope="col">{{ t('monitoring.model') }}</th>
+                <th scope="col">{{ t('monitoring.prompt_tokens') }}</th>
+                <th scope="col">{{ t('monitoring.completion_tokens') }}</th>
+                <th scope="col">{{ t('monitoring.cost_usd') }}</th>
+                <th scope="col">{{ t('monitoring.call_count') }}</th>
+                <th scope="col">{{ t('monitoring.avg_latency') }}</th>
+                <th scope="col">{{ t('monitoring.success_rate') }}</th>
               </tr>
             </thead>
             <tbody>

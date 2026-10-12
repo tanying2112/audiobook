@@ -1,47 +1,60 @@
 <template>
-  <div class="segments-view">
-    <div class="header">
+  <div class="page-container segments-view">
+    <header class="page-header">
       <h1>{{ t('segments.title') }}</h1>
-      <div class="actions">
+      <div class="flex items-center gap-4">
         <el-button type="primary" :disabled="selected.length < 2" :loading="merging" @click="onMerge">
           {{ t('segments.mergeSelected', { n: selected.length }) }}
         </el-button>
-        <el-button :loading="loading" @click="load">{{ t('common.refresh') }}</el-button>
+        <el-button :loading="loading" @click="load" :aria-label="t('common.refresh')">{{ t('common.refresh') }}</el-button>
       </div>
+    </header>
+
+    <div v-if="loading" class="loading-state section">
+      <div class="spinner"></div>
+      <span>{{ t('common.loading') }}</span>
     </div>
 
-    <el-alert v-if="error" :title="error" type="error" :closable="false" class="mb" />
-    <el-empty v-if="!loading && segments.length === 0" :description="t('segments.empty')" />
+    <div v-else-if="error" class="alert alert-error section">{{ error }}</div>
 
-    <el-table v-else v-loading="loading" :data="segments" @selection-change="onSelectionChange">
-      <el-table-column type="selection" width="45" />
-      <el-table-column type="index" :label="t('segments.order')" width="70" />
-      <el-table-column prop="id" :label="t('segments.id')" min-width="180" show-overflow-tooltip />
-      <el-table-column :label="t('segments.duration')" width="110">
-        <template #default="scope">{{ formatDuration(scope.row.duration_ms) }}</template>
-      </el-table-column>
-      <el-table-column :label="t('segments.speaker')" width="120">
-        <template #default="scope">{{ scope.row.speaker || '—' }}</template>
-      </el-table-column>
-      <el-table-column prop="paragraph_index" :label="t('segments.paragraph')" width="90" />
-      <el-table-column :label="t('common.actions')" width="260">
-        <template #default="scope">
-          <el-button size="small" text @click="openTrim(scope.row)">{{ t('segments.trim') }}</el-button>
-          <el-button size="small" text :disabled="scope.$index === 0" @click="move(scope.$index, -1)">↑</el-button>
-          <el-button size="small" text :disabled="scope.$index === segments.length - 1" @click="move(scope.$index, 1)">↓</el-button>
-          <el-popconfirm :title="t('segments.deleteConfirm')" @confirm="onDelete(scope.row)">
-            <template #reference>
-              <el-button size="small" text type="danger">{{ t('common.delete') }}</el-button>
+    <div v-else-if="segments.length === 0" class="empty-state section">
+      <Icon icon="mdi:file-document-outline" width="48" height="48" />
+      <p>{{ t('segments.empty') }}</p>
+    </div>
+
+    <template v-else>
+      <div class="section card card-hover">
+        <el-table :data="segments" @selection-change="onSelectionChange">
+          <el-table-column type="selection" width="45" />
+          <el-table-column type="index" :label="t('segments.order')" width="70" />
+          <el-table-column prop="id" :label="t('segments.id')" min-width="180" show-overflow-tooltip />
+          <el-table-column :label="t('segments.duration')" width="110">
+            <template #default="scope">{{ formatDuration(scope.row.duration_ms) }}</template>
+          </el-table-column>
+          <el-table-column :label="t('segments.speaker')" width="120">
+            <template #default="scope">{{ scope.row.speaker || '—' }}</template>
+          </el-table-column>
+          <el-table-column prop="paragraph_index" :label="t('segments.paragraph')" width="90" />
+          <el-table-column :label="t('common.actions')" width="260">
+            <template #default="scope">
+              <el-button size="small" text :aria-label="t('segments.trim')" @click="openTrim(scope.row)">{{ t('segments.trim') }}</el-button>
+              <el-button size="small" text :aria-label="t('segments.moveUp')" :disabled="scope.$index === 0" @click="move(scope.$index, -1)">↑</el-button>
+              <el-button size="small" text :aria-label="t('segments.moveDown')" :disabled="scope.$index === segments.length - 1" @click="move(scope.$index, 1)">↓</el-button>
+              <el-popconfirm :title="t('segments.deleteConfirm')" @confirm="onDelete(scope.row)">
+                <template #reference>
+                  <el-button size="small" text type="danger" :aria-label="t('common.delete')">{{ t('common.delete') }}</el-button>
+                </template>
+              </el-popconfirm>
             </template>
-          </el-popconfirm>
-        </template>
-      </el-table-column>
-    </el-table>
+          </el-table-column>
+        </el-table>
+      </div>
 
-    <div v-if="dirty" class="footer">
-      <el-button type="primary" :loading="savingOrder" @click="saveOrder">{{ t('segments.saveOrder') }}</el-button>
-      <el-button @click="load">{{ t('common.cancel') }}</el-button>
-    </div>
+      <div v-if="dirty" class="flex items-center gap-4 mt-4">
+        <el-button type="primary" :loading="savingOrder" @click="saveOrder">{{ t('segments.saveOrder') }}</el-button>
+        <el-button @click="load">{{ t('common.cancel') }}</el-button>
+      </div>
+    </template>
 
     <el-dialog v-model="trimDialog" :title="t('segments.trimTitle')" width="420px">
       <el-form label-width="110px">
@@ -65,6 +78,7 @@ import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useI18n } from '../i18n'
+import { Icon } from '@iconify/vue'
 import {
   fetchAudioSegments,
   trimAudioSegment,
@@ -185,8 +199,16 @@ onMounted(load)
 </script>
 
 <style scoped>
-.segments-view { padding: 24px; max-width: 1200px; margin: 0 auto; }
-.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-.footer { margin-top: 16px; display: flex; gap: 8px; }
-.mb { margin-bottom: 12px; }
+.segments-view {
+  max-width: 1200px;
+}
+
+.flex-wrap {
+  flex-wrap: wrap;
+}
+
+.flex-1 {
+  flex: 1;
+  min-width: 0;
+}
 </style>

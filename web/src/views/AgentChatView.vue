@@ -3,7 +3,7 @@
     <!-- FSM Mode Header -->
     <header v-if="fsmMode" class="fsm-header">
       <div class="header-left">
-        <button class="btn btn-ghost" @click="goBack">
+        <button class="btn btn-ghost" @click="goBack" :aria-label="t('common.back')">
           <Icon icon="mdi:arrow-left" width="18" height="18" />
           <span>{{ t('common.back') }}</span>
         </button>
@@ -13,15 +13,14 @@
         </el-tag>
       </div>
       <div class="header-right">
-        <el-button type="default" @click="refreshFsmStatus" :loading="fsmLoading" size="small">
+        <button class="btn btn-outline btn-sm" @click="refreshFsmStatus" :disabled="fsmLoading" :aria-label="t('agentChat.fsm.refresh')">
           <Refresh /><span>{{ t('agentChat.fsm.refresh') }}</span>
-        </el-button>
-        <el-button type="danger" @click="stopPipeline" :disabled="!fsmIsRunning" size="small">
+        </button>
+        <button class="btn btn-danger btn-sm" @click="stopPipeline" :disabled="!fsmIsRunning" :aria-label="t('agentChat.fsm.stop')">
           <Stopwatch /><span>{{ t('agentChat.fsm.stop') }}</span>
-        </el-button>
+        </button>
       </div>
     </header>
-
     <!-- Chat Mode Header -->
     <header v-else class="chat-header">
       <ChatHeader
@@ -44,7 +43,6 @@
         @chapter-select="handleChapterSelect"
         @refresh="refreshFsmStatus"
       />
-
       <div class="fsm-main">
         <ChapterDetailPanel
           :current-chapter="currentFsmChapter"
@@ -52,7 +50,6 @@
           :fsm-mode="true"
           @annotation-click="handleAnnotationClick"
         />
-
         <FSMActionBar
           :fsm-can-confirm="fsmCanConfirm"
           :fsm-is-paused="fsmIsPaused"
@@ -81,7 +78,6 @@
         @copy-message="copyMessage"
         @regenerate="regenerateResponse"
       />
-
       <ChatInput
         v-model="inputMessage"
         :loading="loading"
@@ -103,7 +99,6 @@
       @delete-session="deleteSession"
       @new-session="newSession"
     />
-
     <ChatSettingsModal
       v-if="!fsmMode"
       :show="showSettings"
@@ -111,7 +106,6 @@
       @close="showSettings = false"
       @clear-history="clearAllHistory"
     />
-
     <ConnectionStatus v-if="!fsmMode" :connection-status="connectionStatus" />
   </div>
 </template>
@@ -121,7 +115,7 @@ import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from '../i18n'
 import { useAgentChat } from '../composables/useAgentChat'
-import { ElButton, ElTag } from 'element-plus'
+import { ElTag } from 'element-plus'
 import { Refresh, Stopwatch } from '@element-plus/icons-vue'
 import { Icon } from '@iconify/vue'
 import type { PipelineStatusResponse } from '../api'
@@ -152,78 +146,31 @@ const chat = useAgentChat({
   closable: false,
   initialMessage: '',
   fsmMode: fsmMode.value,
-  onClose: () => {
-    router.push('/projects/' + projectId)
-  },
-  onChapterChange: (chapter) => {
-    console.log('Chapter changed:', chapter)
-  },
-  onFsmStateChange: (state) => {
-    console.log('FSM state changed:', state)
-  },
+  onClose: () => { router.push('/projects/' + projectId) },
+  onChapterChange: (chapter) => { console.log('Chapter changed:', chapter) },
+  onFsmStateChange: (state) => { console.log('FSM state changed:', state) },
 })
 
 const {
-  // Chat
-  messages,
-  inputMessage,
-  loading,
-  showHistory,
-  showSettings,
-  currentSessionId,
-  sessions,
-  connectionStatus,
-  settings,
-  suggestedPrompts,
-  sendMessage,
-  loadSession,
-  newSession,
-  deleteSession,
-  clearAllHistory,
-  regenerateResponse,
-  copyMessage,
-  attachFile,
-  addNewline,
-  handleClose,
-
-  // FSM
-  fsmChapters,
-  currentFsmChapter,
-  fsmChapterDetail,
-  fsmStatus,
-  fsmLoading,
-  fsmActionLoading,
-  fsmIsRunning,
-  fsmIsPaused,
-  fsmCanConfirm,
-  pendingChapter,
-  loadChapterDetail,
-  approveChapter,
-  rejectChapter,
-  requestRerun,
-  editChapter,
+  messages, inputMessage, loading, showHistory, showSettings,
+  currentSessionId, sessions, connectionStatus, settings, suggestedPrompts,
+  sendMessage, loadSession, newSession, deleteSession, clearAllHistory,
+  regenerateResponse, copyMessage, attachFile, addNewline, handleClose,
+  fsmChapters, currentFsmChapter, fsmChapterDetail, fsmStatus, fsmLoading,
+  fsmActionLoading, fsmIsRunning, fsmIsPaused, fsmCanConfirm, pendingChapter,
+  loadChapterDetail, approveChapter, rejectChapter, requestRerun, editChapter,
 } = chat
 
 const getFsmStatusType = (status: PipelineStatusResponse | null) => {
   if (!status) return 'info'
   const state = status.current_state || status.status
   switch (state) {
-    case 'running':
-    case 'synthesizing':
-    case 'quality_check':
-    case 'exporting':
-    case 'extracting':
-    case 'analyzing':
-    case 'annotating':
-    case 'audio_postprocessing':
+    case 'running': case 'synthesizing': case 'quality_check': case 'exporting':
+    case 'extracting': case 'analyzing': case 'annotating': case 'audio_postprocessing':
       return 'primary'
-    case 'paused':
-    case 'pending_human_confirm':
-      return 'warning'
-    case 'completed':
-      return 'success'
-    case 'failed':
-      return 'danger'
+    case 'paused': case 'pending_human_confirm': return 'warning'
+    case 'completed': return 'success'
+    case 'failed': return 'danger'
     default: return 'info'
   }
 }
@@ -232,19 +179,10 @@ const getFsmStatusLabel = (status: PipelineStatusResponse | null) => {
   if (!status) return '空闲'
   const state = status.current_state || status.status
   const labels: Record<string, string> = {
-    running: '运行中',
-    paused: '暂停',
-    completed: '完成',
-    failed: '失败',
-    idle: '空闲',
-    extracting: '提取中',
-    analyzing: '分析中',
-    annotating: '标注中',
-    pending_human_confirm: '待人工确认',
-    audio_postprocessing: '音频后处理',
-    synthesizing: '合成中',
-    quality_check: '质检中',
-    exporting: '导出中',
+    running: '运行中', paused: '暂停', completed: '完成', failed: '失败',
+    idle: '空闲', extracting: '提取中', analyzing: '分析中', annotating: '标注中',
+    pending_human_confirm: '待人工确认', audio_postprocessing: '音频后处理',
+    synthesizing: '合成中', quality_check: '质检中', exporting: '导出中',
   }
   return labels[state] || state
 }
@@ -262,9 +200,7 @@ const refreshFsmStatus = async () => {
     const { fetchPipelineStatus } = await import('../api')
     const status = await fetchPipelineStatus(projectId)
     chat.fsmStatus.value = status
-    if (status.chapters) {
-      chat.fsmChapters.value = status.chapters as any
-    }
+    if (status.chapters) chat.fsmChapters.value = status.chapters as any
   } catch (e) {
     console.error('Failed to refresh FSM status:', e)
   }
@@ -272,7 +208,6 @@ const refreshFsmStatus = async () => {
 
 const stopPipeline = async () => {
   try {
-    // Use WebSocket to send stop command
     if (chat.ws?.readyState === WebSocket.OPEN) {
       chat.ws.send(JSON.stringify({ type: 'stop', project_id: projectId }))
     }
@@ -284,7 +219,6 @@ const stopPipeline = async () => {
 
 const handleStartPipeline = async () => {
   try {
-    // Use WebSocket to send start command
     if (chat.ws?.readyState === WebSocket.OPEN) {
       chat.ws.send(JSON.stringify({ type: 'start', project_id: projectId }))
     }
@@ -296,7 +230,6 @@ const handleStartPipeline = async () => {
 
 const handleResume = async () => {
   try {
-    // Use WebSocket to send resume command
     if (chat.ws?.readyState === WebSocket.OPEN) {
       chat.ws.send(JSON.stringify({ type: 'resume', project_id: projectId }))
     }
@@ -306,9 +239,7 @@ const handleResume = async () => {
   }
 }
 
-const goBack = () => {
-  router.push('/projects/' + projectId)
-}
+const goBack = () => { router.push('/projects/' + projectId) }
 </script>
 
 <style scoped>
@@ -318,11 +249,10 @@ const goBack = () => {
   height: 100%;
   min-height: 500px;
   max-height: 800px;
-  background: var(--bg-primary, #ffffff);
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
   overflow: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   position: relative;
 }
 
@@ -332,10 +262,9 @@ const goBack = () => {
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  border-bottom: 1px solid var(--border-color, #e8e8e8);
-  background: var(--bg-secondary, #fafafa);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg);
 }
-
 .header-left {
   display: flex;
   align-items: center;
@@ -345,7 +274,7 @@ const goBack = () => {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
-  color: var(--text-primary, #333);
+  color: var(--color-text);
 }
 .header-right {
   display: flex;
@@ -358,7 +287,6 @@ const goBack = () => {
   overflow: hidden;
   min-height: 0;
 }
-
 .fsm-main {
   display: flex;
   flex-direction: column;
@@ -366,21 +294,15 @@ const goBack = () => {
   min-width: 0;
   overflow: hidden;
 }
-
 .fsm-main :deep(.chapter-detail-panel) {
   flex: 1;
   min-height: 0;
 }
-
 .fsm-main :deep(.fsm-action-bar) {
   flex-shrink: 0;
 }
 
 /* Chat Mode */
-.chat-header {
-  /* ChatHeader handles its own styling */
-}
-
 .chat-layout {
   display: flex;
   flex-direction: column;
@@ -390,5 +312,31 @@ const goBack = () => {
 .chat-layout :deep(.chat-messages) {
   flex: 1;
   overflow-y: auto;
+}
+
+/* Message bubble differentiation via tokens */
+.agent-chat :deep(.message-avatar .user) {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+.agent-chat :deep(.message-avatar .assistant) {
+  background: linear-gradient(135deg, var(--color-primary), #8b5cf6);
+  color: var(--color-surface);
+}
+
+/* Mobile responsive */
+@media (max-width: 767px) {
+  .agent-chat {
+    border-radius: 0;
+    max-height: none;
+  }
+  .fsm-header {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .header-right {
+    width: 100%;
+    justify-content: flex-end;
+  }
 }
 </style>

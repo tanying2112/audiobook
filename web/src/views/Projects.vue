@@ -1,139 +1,124 @@
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, onMounted, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useProjectStore } from '../stores/projects'
 import { Icon } from '@iconify/vue'
 import { useI18n } from '../i18n'
 import EmptyState from '../components/EmptyState.vue'
+import ProjectCard from '../components/ProjectCard.vue'
+import { ElMessageBox, ElMessage } from 'element-plus'
 
 const router = useRouter()
 const store = useProjectStore()
-const searchQuery = ref('')
-const editingId = ref<number | null>(null)
-const draftTitle = ref('')
 const { t } = useI18n()
 
-// 7 阶段流程（与 AutoRunView / ChapterTimeline 一致）
-const PIPELINE_STAGES = [
-  'extract', 'analyze', 'annotate', 'edit',
-  'audio_postprocess', 'synthesize', 'quality',
-] as const
+// ── 搜索 ─────────────────────────────────────────────────────
+const searchQuery = ref('')
 
-function stageLabel(stage: string): string {
-  const map: Record<string, string> = {
-    extract: t('pipeline.stages.extract'),
-    analyze: t('pipeline.stages.analyze'),
-    annotate: t('pipeline.stages.annotate'),
-    edit: t('pipeline.stages.edit'),
-    audio_postprocess: t('pipeline.stages.audio_postprocess'),
-    synthesize: t('pipeline.stages.synthesize'),
-    quality: t('pipeline.stages.quality'),
-  }
-  return map[stage] || stage
-}
-
-/** 当前阶段在 7 阶段中的索引；'pending' → -1（未开始），'completed' → 全部完成 */
-function currentStageIndex(stage?: string): number {
-  if (!stage || stage === 'pending') return -1
-  if (stage === 'completed') return PIPELINE_STAGES.length
-  return PIPELINE_STAGES.indexOf(stage as any)
-}
-
-/** 后端 progress 为 0-100 浮点；归一化到 0-1 */
-function progressRatio(project: { progress?: number }): number {
-  const p = project.progress ?? 0
-  const ratio = p > 1 ? p / 100 : p
-  return Math.max(0, Math.min(1, ratio))
-}
-
-onMounted(() => store.loadProjects())
-
-const filteredProjects = computed(() => {
-  const q = searchQuery.value.toLowerCase()
-  const list = Array.isArray(store.projects) ? store.projects : []
-  if (!q) return list
-  return list.filter(
-    (p) =>
-      (p.title || '').toLowerCase().includes(q) ||
-      (p.description || '').toLowerCase().includes(q),
-  )
+// ── 创建项目 Dialog ──────────────────────────────────────────
+const createDialogVisible = ref(false)
+const createForm = reactive({
+  title: '', author: '', description: '', language: '', genre: '', difficulty: '',
 })
+const createLoading = ref(false)
 
-function openProject(id: number) {
-  router.push(`/projects/${id}`)
+function openCreateDialog() {
+  Object.assign(createForm, { title: '', author: '', description: '', language: '', genre: '', difficulty: '' })
+  createDialogVisible.value = true
 }
 
-async function createProject() {
-  const name = prompt(t('projects.enter_project_name'))
-  if (!name) return
+async function submitCreate() {
+  const title = createForm.title.trim()
+  if (!title) { ElMessage.warning(t('projects.enter_project_name')); return }
+  createLoading.value = true
   try {
-    await store.addProject({ title: name } as any)
+    await store.addProject({
+      title, author: createForm.author.trim() || undefined,
+      description: createForm.description.trim() || undefined,
+      language: createForm.language || undefined,
+      genre: createForm.genre || undefined,
+      difficulty: createForm.difficulty || undefined,
+    } as any)
+    createDialogVisible.value = false
+    ElMessage.success('Created')
   } catch (e: any) {
-    alert(t('projects.create_failed') + (e.message || e))
+    ElMessage.error(t('projects.create_failed') + (e.message || e))
+  } finally {
+    createLoading.value = false
   }
 }
 
+// ── 删除 ─────────────────────────────────────────────────────
 async function removeProject(id: number, title: string) {
-  if (!confirm(t('projects.delete_confirm', { title }))) return
+  try {
+    await ElMessageBox.confirm(
+      t('projects.delete_confirm', { title }),
+      t('projects.delete_tooltip'),
+      { confirmButtonText: 'OK', cancelButtonText: t('common.cancel'), type: 'warning' },
+    )
+  } catch { return }
   try {
     await store.removeProject(id)
+    ElMessage.success('Deleted')
   } catch (e: any) {
-    alert(t('projects.delete_failed') + (e.message || e))
+    ElMessage.error(t('projects.delete_failed') + (e.message || e))
   }
 }
 
-async function editProjectName(id: number, currentTitle: string) {
-  draftTitle.value = currentTitle
-  editingId.value = id
+// ── 编辑标题 ─────────────────────────────────────────────────
+const editingId = ref<number | null>(null)
+const draftTitle = ref('')
+
+function startEditTitle(id: number, currentTitle: string) {
+  draftTitle.value = currentTitle; editingId.value = id
 }
 
 async function saveEdit(id: number) {
   const name = draftTitle.value.trim()
   const idx = store.projects.findIndex((p) => p.id === id)
   const current = idx !== -1 ? (store.projects[idx].title || '') : ''
-  if (!name || name === current) {
-    editingId.value = null
-    return
-  }
-  try {
-    await store.editProject(id, { title: name } as any)
-    editingId.value = null
-  } catch (e: any) {
-    alert(t('projects.create_failed') + (e.message || e))
-  }
+  if (!name || name === current) { editingId.value = null; return }
+  try { await store.editProject(id, { title: name } as any); editingId.value = null }
+  catch (e: any) { ElMessage.error(t('projects.create_failed') + (e.message || e)) }
 }
 
-function cancelEdit() {
-  editingId.value = null
-  draftTitle.value = ''
-}
+function cancelEdit() { editingId.value = null; draftTitle.value = '' }
 
-function exportProject(id: number) {
-  router.push(`/projects/${id}/export`)
-}
+// ── 过滤 & 排序(默认按最近活动) ───────────────────────────────
+const filteredProjects = computed(() => {
+  const q = searchQuery.value.toLowerCase()
+  const list = Array.isArray(store.projects) ? [...store.projects] : []
+  const result = q
+    ? list.filter((p) =>
+        (p.title || '').toLowerCase().includes(q) ||
+        (p.author || '').toLowerCase().includes(q) ||
+        (p.description || '').toLowerCase().includes(q) ||
+        (p.genre || '').toLowerCase().includes(q))
+    : list
+  result.sort((a, b) => {
+    const da = new Date(a.updated_at || a.created_at || 0).getTime()
+    const db = new Date(b.updated_at || b.created_at || 0).getTime()
+    return db - da
+  })
+  return result
+})
 
-function openAutoRun(id: number) {
-  router.push(`/projects/${id}/auto-run`)
-}
+// ── 导航 ──────────────────────────────────────────────────────
+function openProject(id: number) { router.push(`/projects/${id}`) }
+function exportProject(id: number) { router.push(`/projects/${id}/export`) }
+function openAutoRun(id: number) { router.push(`/projects/${id}/auto-run`) }
+function openQuality(id: number) { router.push(`/projects/${id}/quality`) }
+function openTranslation(id: number) { router.push(`/projects/${id}/translation`) }
+function openCharacters(id: number) { router.push(`/projects/${id}/characters`) }
 
-function openQuality(id: number) {
-  router.push(`/projects/${id}/quality`)
-}
-
-function openTranslation(id: number) {
-  router.push(`/projects/${id}/translation`)
-}
-
-function openCharacters(id: number) {
-  router.push(`/projects/${id}/characters`)
-}
+onMounted(() => store.loadProjects())
 </script>
 
 <template>
   <div class="page-container">
     <header class="page-header">
       <h1>{{ t('projects.title') }}</h1>
-      <button class="btn btn-primary touch-target" @click="createProject">
+      <button class="btn btn-primary touch-target" @click="openCreateDialog">
         <Icon icon="mdi:plus" width="18" height="18" />
         <span class="hidden-mobile">{{ t('projects.new_project') }}</span>
       </button>
@@ -141,218 +126,114 @@ function openCharacters(id: number) {
 
     <div class="search-bar section">
       <Icon icon="mdi:magnify" width="18" height="18" class="search-icon" />
-      <input
-        v-model="searchQuery"
-        type="text"
-        :placeholder="t('projects.search_placeholder')"
-        class="form-control search-input"
-      />
+      <input v-model="searchQuery" type="text" :placeholder="t('projects.search_placeholder')" class="form-control search-input" />
     </div>
 
     <div v-if="store.loading" class="loading-section">
       <div class="spinner"></div>
       <p>{{ t('projects.loading') }}</p>
     </div>
+
     <div v-else-if="store.error" class="alert alert-error">
       {{ t('common.error') }}: {{ store.error }}
     </div>
+
     <EmptyState
       v-else-if="filteredProjects.length === 0"
       :icon="searchQuery ? 'mdi:magnify-close' : 'mdi:bookshelf'"
       :title="searchQuery ? t('projects.no_results') : t('projects.empty_state')"
+      :description="searchQuery ? t('projects.search_placeholder') : undefined"
     >
-      <button v-if="!searchQuery" class="btn btn-primary touch-target" @click="createProject">
+      <button v-if="!searchQuery" class="btn btn-primary touch-target" @click="openCreateDialog">
         <Icon icon="mdi:plus" width="18" height="18" />
         <span>{{ t('projects.new_project') }}</span>
       </button>
     </EmptyState>
 
-    <div v-else class="grid grid-auto-fill">
-      <div
+    <div v-else class="project-grid">
+      <ProjectCard
         v-for="project in filteredProjects"
         :key="project.id"
-        class="card card-hover touch-target"
-        @click="openProject(project.id)"
-      >
-        <div class="card-body">
-          <template v-if="editingId === project.id">
-            <input
-              v-model="draftTitle"
-              class="form-control"
-              :placeholder="t('projects.enter_project_name')"
-              @click.stop
-              @keyup.enter="saveEdit(project.id)"
-              @keyup.esc="cancelEdit"
-            />
-            <div class="edit-actions">
-              <button class="btn btn-primary btn-sm touch-target-sm" :title="t('common.save')" @click.stop="saveEdit(project.id)">
-                <Icon icon="mdi:check" width="18" height="18" />
-              </button>
-              <button class="btn btn-ghost btn-sm touch-target-sm" :title="t('common.cancel')" @click.stop="cancelEdit">
-                <Icon icon="mdi:close" width="18" height="18" />
-              </button>
-            </div>
-          </template>
-          <template v-else>
-            <h3 class="card-title">{{ project.title || t('projects.unnamed_project') }}</h3>
-            <p v-if="project.description" class="desc">{{ project.description }}</p>
-            <span class="meta">{{ t('projects.project_id', { id: project.id }) }}</span>
-
-            <!-- 7 阶段流程进度 -->
-            <div class="stage-progress-row">
-              <div class="stage-progress-steps">
-                <span
-                  v-for="(stage, si) in PIPELINE_STAGES"
-                  :key="stage"
-                  class="stage-dot"
-                  :class="{
-                    done: currentStageIndex(project.current_stage) > si,
-                    active: currentStageIndex(project.current_stage) === si,
-                  }"
-                  :title="stageLabel(stage)"
-                ></span>
-              </div>
-              <div class="stage-progress-bar">
-                <div
-                  class="stage-progress-fill"
-                  :style="{ width: `${Math.round(progressRatio(project) * 100)}%` }"
-                ></div>
-              </div>
-              <div class="stage-progress-meta">
-                <span class="stage-current">{{ project.current_stage ? stageLabel(project.current_stage) : t('projects.not_started') }}</span>
-                <span class="stage-percent">{{ Math.round(progressRatio(project) * 100) }}%</span>
-              </div>
-            </div>
-          </template>
-        </div>
-        <div class="card-actions">
-          <button class="btn btn-ghost btn-sm touch-target-sm" :title="t('projects.delete_tooltip')" @click.stop="removeProject(project.id, project.title || '')">
-            <Icon icon="mdi:delete-outline" width="18" height="18" />
-          </button>
-          <button v-if="editingId !== project.id" class="btn btn-ghost btn-sm touch-target-sm" :title="t('common.edit')" @click.stop="editProjectName(project.id, project.title || '')">
-            <Icon icon="mdi:pencil-outline" width="18" height="18" />
-          </button>
-          <button class="btn btn-ghost btn-sm touch-target-sm" :title="t('common.export')" @click.stop="exportProject(project.id)">
-            <Icon icon="mdi:export" width="18" height="18" />
-          </button>
-        </div>
-        <div class="card-quicklinks">
-          <button class="btn btn-primary btn-sm touch-target-sm" @click.stop="openAutoRun(project.id)">
-            <Icon icon="mdi:play-circle-outline" width="16" height="16" />
-            <span>{{ t('auto_run.title') }}</span>
-          </button>
-          <button class="btn btn-ghost btn-sm touch-target-sm" @click.stop="openCharacters(project.id)">
-            <Icon icon="mdi:account-group" width="16" height="16" />
-            <span>{{ t('project_detail.characters') }}</span>
-          </button>
-          <button class="btn btn-ghost btn-sm touch-target-sm" @click.stop="openQuality(project.id)">
-            <Icon icon="mdi:chart-bar" width="16" height="16" />
-            <span>{{ t('project_detail.quality_report') }}</span>
-          </button>
-          <button class="btn btn-ghost btn-sm touch-target-sm" @click.stop="openTranslation(project.id)">
-            <Icon icon="mdi:translate" width="16" height="16" />
-            <span>{{ t('translation.title') }}</span>
-          </button>
-          <button class="btn btn-outline btn-sm touch-target-sm" @click.stop="exportProject(project.id)">
-            <Icon icon="mdi:download" width="16" height="16" />
-            <span>{{ t('projects.export_audio') }}</span>
-          </button>
-        </div>
-      </div>
+        :project="project"
+        :editing="editingId === project.id"
+        :draft-title="draftTitle"
+        @open="openProject"
+        @delete="removeProject"
+        @edit-title="startEditTitle"
+        @save-edit="saveEdit"
+        @cancel-edit="cancelEdit"
+        @update:draft="(v: string) => (draftTitle = v)"
+        @export="exportProject"
+        @auto-run="openAutoRun"
+        @characters="openCharacters"
+        @quality="openQuality"
+        @translation="openTranslation"
+      />
     </div>
+
+    <el-dialog v-model="createDialogVisible" :title="t('projects.new_project')" width="520px" :close-on-click-modal="false" destroy-on-close>
+      <el-form label-position="top" @submit.prevent="submitCreate">
+        <el-form-item :label="t('projects.project_name')" required>
+          <el-input v-model="createForm.title" :placeholder="t('projects.enter_project_name')" autofocus @keyup.enter="submitCreate" />
+        </el-form-item>
+        <el-form-item label="Author">
+          <el-input v-model="createForm.author" placeholder="Author" />
+        </el-form-item>
+        <el-form-item :label="t('projects.project_description')">
+          <el-input v-model="createForm.description" type="textarea" :rows="3" placeholder="Description" />
+        </el-form-item>
+        <div class="form-row">
+          <el-form-item label="Language" class="form-row__item">
+            <el-select v-model="createForm.language" placeholder="Language" clearable>
+              <el-option label="中文" value="zh" />
+              <el-option label="English" value="en" />
+              <el-option label="日本語" value="ja" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="Genre" class="form-row__item">
+            <el-select v-model="createForm.genre" placeholder="Genre" clearable>
+              <el-option v-for="g in ['古典小说','现代小说','武侠小说','科幻小说','奇幻小说','历史小说','悬疑小说','言情小说','传记文学','散文随笔','儿童文学','其他']" :key="g" :label="g" :value="g" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="Difficulty" class="form-row__item">
+            <el-select v-model="createForm.difficulty" placeholder="Difficulty" clearable>
+              <el-option label="初级" value="easy" />
+              <el-option label="中级" value="medium" />
+              <el-option label="高级" value="hard" />
+            </el-select>
+          </el-form-item>
+        </div>
+      </el-form>
+      <template #footer>
+        <el-button @click="createDialogVisible = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="createLoading" @click="submitCreate">{{ t('common.confirm') }}</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <style scoped>
-/* Uses global responsive utilities from style.css */
-
-.search-bar {
-  position: relative;
-}
+.search-bar { position: relative; }
 .search-icon {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--color-text-muted);
-  pointer-events: none;
+  position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+  color: var(--color-text-muted); pointer-events: none;
 }
-.search-input {
-  padding-left: 40px !important;
-}
+.search-input { padding-left: 40px !important; }
 
-.project-card {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  cursor: pointer;
-  transition: box-shadow var(--transition), transform var(--transition-fast);
-}
-.project-card:hover {
-  box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
-}
-.project-card:active {
-  transform: translateY(0);
-}
-
-.card-body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.card-title {
-  margin: 0;
-  font-size: 17px;
-}
-.desc {
-  margin: 0;
-  color: var(--color-text-secondary);
-  font-size: 14px;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.meta {
-  color: var(--color-text-muted);
-  font-size: 12px;
-}
-
-.card-actions {
-  margin-top: 12px;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.edit-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-.card-quicklinks {
-  margin-top: 12px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  justify-content: flex-start;
-}
-
-@media (max-width: 767px) {
-  .card-quicklinks {
-    width: 100%;
-  }
+.project-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px;
 }
 
 .loading-section {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 48px 24px;
-  color: var(--color-text-secondary);
-  text-align: center;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; padding: 48px 24px; color: var(--color-text-secondary); text-align: center;
+}
+
+.form-row { display: flex; gap: 12px; }
+.form-row__item { flex: 1; min-width: 0; }
+
+@media (max-width: 767px) {
+  .project-grid { grid-template-columns: 1fr; }
+  .form-row { flex-direction: column; gap: 0; }
 }
 </style>
