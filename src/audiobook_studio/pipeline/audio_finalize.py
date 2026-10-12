@@ -438,8 +438,11 @@ class AudioFinalizer:
         if not metadata_args:
             return False
 
-        # Temporary file for atomic write
-        temp_path = audio_path.with_suffix(audio_path.suffix + ".tmp")
+        # Temporary file for atomic write. 临时文件必须保留原扩展名在后
+        # (``xxx.tmp.mp3``) — 旧写法 ``xxx.mp3.tmp`` 令 ffmpeg 无法从扩展名
+        # 推断 muxer (mp3/wav/m4b 全中招), metadata 嵌入静默失败 (2026-10-12
+        # 系统管线实测发现)。
+        temp_path = audio_path.with_name(audio_path.stem + ".tmp" + audio_path.suffix)
 
         cmd = (
             [
