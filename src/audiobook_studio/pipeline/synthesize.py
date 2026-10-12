@@ -264,13 +264,24 @@ _EDGE_TO_KOKORO: Dict[str, str] = {
     "zh-CN-YangyangNeural": "zm_yunyang",
     "zh-CN-YunhaoNeural": "zm_yunjian",
     "zh-CN-YunzeNeural": "zm_yunjian",
-    "en-US-AriaNeural": "zf_xiaoxiao",
-    "en-US-JennyNeural": "zf_xiaoxiao",
-    "en-US-GuyNeural": "zm_yunjian",
-    "en-US-ChristopherNeural": "zm_yunjian",
-    "en-US-EricNeural": "zm_yunjian",
-    "en-US-RogerNeural": "zm_yunjian",
-    "en-US-SteffanNeural": "zm_yunjian",
+    # 升级点 #2c: 英文 Edge 音色曾全部映射到中文音色 (en-US-GuyNeural→zm_yunjian)
+    # —— 英文书路由到 kokoro 后由中文音色读英文, 静默灾难。改为英文池映射
+    # (池以 reference_analysis._BLEND_TABLE / kokoro v1.0 实际音色为准)。
+    "en-US-AriaNeural": "af_bella",
+    "en-US-JennyNeural": "af_sarah",
+    "en-US-MichelleNeural": "af_nicole",
+    "en-US-AnaNeural": "af_sky",
+    "en-US-AvaNeural": "af_bella",
+    "en-US-EmmaNeural": "af_sarah",
+    "en-US-GuyNeural": "am_adam",
+    "en-US-ChristopherNeural": "am_onyx",
+    "en-US-EricNeural": "am_liam",
+    "en-US-RogerNeural": "am_michael",
+    "en-US-SteffanNeural": "am_puck",
+    "en-US-AndrewNeural": "am_fenrir",
+    "en-GB-RyanNeural": "am_fenrir",
+    "en-GB-SoniaNeural": "af_sarah",
+    "en-GB-MaisieNeural": "af_sky",
     "ja-JP-NanamiNeural": "zf_xiaoxiao",
     "ja-JP-KeitaNeural": "zm_yunjian",
     "ko-KR-SunHiNeural": "zf_xiaoxiao",
@@ -278,7 +289,9 @@ _EDGE_TO_KOKORO: Dict[str, str] = {
 }
 
 
-def _normalize_voice_id(voice_id: str, engine_choice: str, *, strict: bool = False) -> str:
+def _normalize_voice_id(
+    voice_id: str, engine_choice: str, *, strict: bool = False, lang: Optional[str] = None
+) -> str:
     """Pick a voice_id understood by the chosen TTS engine.
 
     Edge-TTS voice IDs (e.g. ``zh-CN-XiaoxiaoNeural``) are the default stored in
@@ -309,12 +322,18 @@ def _normalize_voice_id(voice_id: str, engine_choice: str, *, strict: bool = Fal
       owns the final accept/reject (it may raise honestly at synthesis time,
       which is preferable to silently swapping voices).
     """
+    # 升级点 #2c: 语言感知默认音色。此前 default/未知 ID 一律回中文音色
+    # (kokoro zf_xiaoxiao / piper zh_CN / edge zh-CN-XiaoxiaoNeural) —— 英文书
+    # 走非 strict 路径会被静默换成中文音色读英文。lang 为 None (调用方无语言
+    # 上下文, 如合成内层对端口引擎的再归一) 时保持历史 zh 行为; 但已知音色
+    # (含英文 am_/af_ 池) 不受影响。
+    is_en = (lang or "zh-CN").split("-")[0].lower() == "en"
     if voice_id == "default":
         if engine_choice == "kokoro":
-            return "zf_xiaoxiao"
+            return "am_adam" if is_en else "zf_xiaoxiao"
         if engine_choice == "piper":
-            return "zh_CN-huayan-medium"
-        return "zh-CN-XiaoxiaoNeural"
+            return "en_US-hfc_male-medium" if is_en else "zh_CN-huayan-medium"
+        return "en-US-GuyNeural" if is_en else "zh-CN-XiaoxiaoNeural"
     # v6 blend syntax (e.g. "am_onyx+am_fenrir*0.55") — explicit caller intent
     # (multi-timbre weighted mix). Pass through untouched for any engine and
     # strictness: the engine owns the honest accept/reject (kokoro_backend
@@ -327,7 +346,8 @@ def _normalize_voice_id(voice_id: str, engine_choice: str, *, strict: bool = Fal
         # Kokoro ID, else default to ``zf_xiaoxiao``.
         if voice_id in _EDGE_TO_KOKORO:
             return _EDGE_TO_KOKORO[voice_id]
-        # Already a Kokoro ID? accept as-is.
+        # Already a Kokoro ID? accept as-is. (升级点 #2c: 原白名单纯中文 8 音色,
+        # 英文 am_*/af_* 池不被识别, 走非 strict 会被静默换成 zf_xiaoxiao。)
         if voice_id in (
             "zf_xiaobei",
             "zf_xiaoni",
@@ -337,14 +357,15 @@ def _normalize_voice_id(voice_id: str, engine_choice: str, *, strict: bool = Fal
             "zm_yunxi",
             "zm_yunxia",
             "zm_yunyang",
-        ):
+        ) or voice_id.startswith(("am_", "af_")):
             return voice_id
         # Unknown — in strict mode honour it (caller explicitly named a voice,
         # e.g. a custom voice ID); the engine owns the honest accept/reject.
-        # Otherwise fall back to the canonical narrator voice (production-safe).
+        # Otherwise fall back to the canonical narrator voice (production-safe,
+        # 语言感知: en → am_adam)。
         if strict:
             return voice_id
-        return "zf_xiaoxiao"
+        return "am_adam" if is_en else "zf_xiaoxiao"
     if engine_choice == "piper":
         # Piper's Chinese preset pool is tiny (``zh_CN-huayan-medium`` narrator +
         # ``zh_CN-shaoer-medium`` child); the analyse stage writes Edge-TTS voice
@@ -356,14 +377,16 @@ def _normalize_voice_id(voice_id: str, engine_choice: str, *, strict: bool = Fal
         if voice_id.startswith("zh-"):
             return "zh_CN-huayan-medium"
         # Unknown (e.g. a custom voice ID) — strict honours it, non-strict falls
-        # back to the piper narrator default (same contract as kokoro/edge).
-        return voice_id if strict else "zh_CN-huayan-medium"
+        # back to the piper narrator default (same contract as kokoro/edge,
+        # 语言感知: en → en_US-hfc_male-medium)。
+        return voice_id if strict else ("en_US-hfc_male-medium" if is_en else "zh_CN-huayan-medium")
     # engine_choice == "edge": Edge accepts its own IDs and ignores Kokoro IDs;
     # map Kokoro IDs back to Edge if we get one (edge case).
-    if not voice_id.startswith("zh-"):
+    if not voice_id.startswith("zh-") and not voice_id.startswith("en-"):
         # Unknown / Kokoro-style ID on edge engine. Strict mode honours it
-        # (edge may reject honestly); non-strict falls back to the Edge default.
-        return voice_id if strict else "zh-CN-XiaoxiaoNeural"
+        # (edge may reject honestly); non-strict falls back to the Edge default
+        # (语言感知: en → en-US-GuyNeural)。en-* 前缀是 Edge 自家 ID, 原样接受。
+        return voice_id if strict else ("en-US-GuyNeural" if is_en else "zh-CN-XiaoxiaoNeural")
     return voice_id
 
 
@@ -1983,6 +2006,24 @@ class SynthesizePipeline:
             self._port = None
 
 
+_LANGUAGE_ALIASES = {
+    "english": "en", "eng": "en", "英语": "en", "英文": "en",
+    "chinese": "zh", "mandarin": "zh", "中文": "zh", "汉语": "zh", "普通话": "zh",
+}
+
+
+def _normalize_language(value: Optional[str]) -> str:
+    """归一化语言标签为路由语言键 (select_engine 自行取 `-` 前缀比较).
+
+    BookMeta.language 契约为 ISO 639-1, 但 LLM 分析输出未强校验 Literal —
+    "English"/"中文" 等常见别名诚实归一; 空值回退历史默认 zh-CN。
+    """
+    v = (value or "").strip()
+    if not v:
+        return "zh-CN"
+    return _LANGUAGE_ALIASES.get(v.lower(), v)
+
+
 def make_tts_routing_decision(inp: TtsRoutingInput) -> TtsRoutingDecision:
     """Make TTS routing decision using capability-aware selector.
 
@@ -2005,9 +2046,13 @@ def make_tts_routing_decision(inp: TtsRoutingInput) -> TtsRoutingDecision:
     voice_id: str = suggested or "default"
 
     # Determine engine via capability-aware selector
-    # Language from paragraph annotation or default to zh-CN
-    lang = inp.paragraph_annotation.emotion or "zh-CN"  # rough fallback; ideally from text analysis
-    # prefer_local override still respected
+    # 语言键: TtsRoutingInput.language (来自 BookMeta.language, build_routing_input
+    # 从 chapter.analyzed_json 注入)。曾误用 annotation.emotion (14 枚举标签, 如
+    # "tense") 当语言码 → select_engine 的 lang_prefix 解析成 "tense",
+    # priority_by_lang en:1 永不命中, 英文书语言路由形同虚设 (升级点 #2)。
+    lang = _normalize_language(inp.language)
+    # prefer_local (升级点 #2): True=本地优先 (select_engine 仅在本地引擎中选,
+    # 无本地语言匹配才放行云端); False=用户显式要云端 → 强制 edge。schema 默认 True。
     prefer_local = inp.prefer_local if inp.prefer_local is not None else True  # default to local
     # Emotion capability requested?
     need_emotion = bool(inp.paragraph_annotation.emotion and inp.paragraph_annotation.emotion != "neutral")
@@ -2017,8 +2062,16 @@ def make_tts_routing_decision(inp: TtsRoutingInput) -> TtsRoutingDecision:
         language=lang,
         need_clone=need_clone,
         need_emotion=need_emotion,
+        prefer_local=prefer_local,
         gpu_available=gpu_backends_enabled(),
     )
+    # 注册键归一 (升级点 #2b): yaml engine 名 (``edge_tts``) → EngineChoice
+    # 枚举值 (``edge``)。TtsRoutingDecision.engine_choice 是 Literal, 裸传
+    # 注册键在 pydantic 校验时直接 422 —— 显式云端路径 (prefer_local=False)
+    # 一旦走到该分支即炸, 此前从未暴露只因语言键 bug 让 select_engine 恒回
+    # piper (全局 priority 0)。
+    if engine == "edge_tts":
+        engine = "edge"
     # Map mode back to engine_choice/fallback for compatibility
     if mode == "preset":
         # Cloning requested but no GPU clone backend -> CPU preset engine
@@ -2033,7 +2086,7 @@ def make_tts_routing_decision(inp: TtsRoutingInput) -> TtsRoutingDecision:
         engine_choice = "edge"
         fallback_engine = "kokoro"
 
-    reasoning = f"Capability routing: {engine_choice} (mode={mode}), {fallback_engine} fallback (gpu={gpu_backends_enabled()}, need_emotion={need_emotion})"
+    reasoning = f"Capability routing: {engine_choice} (mode={mode}), {fallback_engine} fallback (gpu={gpu_backends_enabled()}, need_emotion={need_emotion}, lang={lang}, prefer_local={prefer_local})"
     # Voice IDs are engine-specific. The book analyse stage writes
     # Edge-TTS voice IDs (``zh-CN-XiaoxiaoNeural`` etc.) since that is the
     # default suggested_voice_id in CharacterVoiceBinding. Kokoro voices a
@@ -2049,7 +2102,7 @@ def make_tts_routing_decision(inp: TtsRoutingInput) -> TtsRoutingDecision:
     # the honest accept/reject at synthesis time. When no binding matched
     # (``char is None``, voice_id == "default") keep the production-safe
     # fallback. See ``_normalize_voice_id`` docstring for the contract.
-    voice_id = _normalize_voice_id(voice_id, engine_choice, strict=(char is not None))
+    voice_id = _normalize_voice_id(voice_id, engine_choice, strict=(char is not None), lang=lang)
     # P1.9 red-line #1: ``prosody_overrides`` MUST carry the emotion-derived
     # ``volume`` and the emotion tag itself, not just rate/pitch. The acoustic
     # emotion map (``config.acoustic_mapping.get_emotion_map``) already maps
@@ -2099,12 +2152,12 @@ def make_tts_routing_decision(inp: TtsRoutingInput) -> TtsRoutingDecision:
     # —— Edge↔Kokoro ID 交叉映射 —— 避免跨引擎非法 ID 流到合成。
     if inp.manual_engine:
         if inp.manual_engine != engine_choice and not inp.manual_voice_id:
-            voice_id = _normalize_voice_id(voice_id, inp.manual_engine, strict=(char is not None))
+            voice_id = _normalize_voice_id(voice_id, inp.manual_engine, strict=(char is not None), lang=lang)
         engine_choice = inp.manual_engine
         fallback_engine = "kokoro" if engine_choice == "edge" else "edge"
         reasoning += f"; manual engine override → {engine_choice}"
     if inp.manual_voice_id:
-        voice_id = _normalize_voice_id(inp.manual_voice_id, engine_choice, strict=True)
+        voice_id = _normalize_voice_id(inp.manual_voice_id, engine_choice, strict=True, lang=lang)
         reasoning += f"; manual voice override → {voice_id}"
 
     prosody_overrides = {
@@ -2140,8 +2193,10 @@ def build_routing_input(
 
     Shared by the synthesis path (``SynthesizeStage.run``) and the review-gate
     routing preview so the two constructions can never drift. Mirrors the
-    historical inline construction verbatim, including the ``or`` coercions,
-    the default narrator voice-map fallback and ``prefer_local=False``.
+    historical inline construction verbatim, including the ``or`` coercions
+    and the default narrator voice-map fallback. ``prefer_local`` now follows
+    the schema default ``True`` (local-first, 升级点 #2: 历史硬编码 False 曾
+    无条件强制云端 edge, 而 edge 免费端点 403 不可达时英文书合成整体失败).
 
     Returns ``None`` for paragraphs with empty/whitespace text — the
     ``edited_text == ""`` case (edit stage intentionally cleared a
@@ -2183,11 +2238,15 @@ def build_routing_input(
 
     # Build voice_map from chapter's analyzed_json
     voice_map: List[CharacterVoiceBinding] = []
+    language: Optional[str] = None  # BookMeta.language (升级点 #2 语言路由键)
     if chapter and chapter.analyzed_json:
         raw = chapter.analyzed_json
         if isinstance(raw, str):
             raw = json.loads(raw)
         voice_map = [CharacterVoiceBinding(**c) for c in raw.get("character_voice_map", [])]
+        book_meta_raw = raw.get("book_meta")
+        if isinstance(book_meta_raw, dict):
+            language = (book_meta_raw.get("language") or "").strip() or None
 
     if not voice_map:
         voice_map = [
@@ -2217,12 +2276,13 @@ def build_routing_input(
         text=text,
         character_voice_map=voice_map,
         book_id=str(project_id) if project_id is not None else "",
+        language=language,
         chapter_index=chapter.index if chapter else 1,
         paragraph_index=para.index if para else 0,
         cumulative_cost_usd=0.0,
         cost_limit_per_book=20.0,
         cost_limit_per_chapter=5.0,
-        prefer_local=False,
+        prefer_local=True,
         # 人工终审覆盖 (Manual Review Gate)：getattr 容错 —— 测试替身/旧
         # 段落对象无此属性时不覆盖，走自动决策。
         manual_voice_id=(getattr(para, "manual_voice_id", None) if para else None),

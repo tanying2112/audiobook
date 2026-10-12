@@ -94,6 +94,12 @@ class TtsRoutingInput(BaseModel):
     # voice/engine，优先于角色绑定与能力路由 (NULL=自动决策)
     manual_voice_id: Optional[str] = Field(default=None, description="人工覆盖音色 ID (终审门)")
     manual_engine: Optional[EngineChoice] = Field(default=None, description="人工覆盖引擎 (终审门)")
+    # 目标语言 (ISO 639-1/BCP-47, 来自 BookAnalysisOutput.book_meta.language,
+    # 由 build_routing_input 从 chapter.analyzed_json 注入)。引擎能力路由的语言键;
+    # None → 回退 zh-CN (历史默认)。
+    # 升级点 #2: 此前路由误用 paragraph_annotation.emotion (14 枚举标签) 当
+    # 语言码, 英文书 priority_by_lang en:1 永不命中, 语言路由形同虚设。
+    language: Optional[str] = Field(default=None, description="目标语言 (ISO 639-1/BCP-47, 来自 BookMeta.language)")
     contract_version: int = Field(default=1, description="契约版本号，用于追踪 schema 变更")
 
 

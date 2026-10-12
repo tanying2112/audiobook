@@ -38,6 +38,7 @@ FALLBACK_PROVIDERS: List[Dict[str, object]] = [
         "engine": "piper",
         "priority": 0,
         "enabled": True,
+        "local": True,
         "capabilities": {"cloning": False, "emotion": False, "languages": ["zh", "en"], "min_compute": "cpu"},
         "license": {"commercial_use": True, "name": "Piper (MIT/Apache)", "verified_at": None},
     },
@@ -46,6 +47,7 @@ FALLBACK_PROVIDERS: List[Dict[str, object]] = [
         "engine": "kokoro",
         "priority": 1,
         "enabled": True,
+        "local": True,
         "capabilities": {"cloning": False, "emotion": False, "languages": ["zh", "en"], "min_compute": "cpu"},
         "license": {"commercial_use": True, "name": "Kokoro-82M Apache-2.0", "verified_at": None},
     },
@@ -54,6 +56,7 @@ FALLBACK_PROVIDERS: List[Dict[str, object]] = [
         "engine": "edge_tts",
         "priority": 2,
         "enabled": True,
+        "local": False,
         "capabilities": {"cloning": False, "emotion": False, "languages": ["zh", "en"], "min_compute": "cpu"},
         "license": {"commercial_use": None, "name": "Edge-TTS (Microsoft cloud, ToS-restricted)", "verified_at": None},
     },
@@ -139,6 +142,9 @@ def load_tts_provider_config(path: Optional[str] = None) -> List[Dict[str, objec
                     "default_voice": p.get("default_voice"),
                     "auto_download": bool(p.get("auto_download", False)),
                     "model_dir": p.get("model_dir"),
+                    # 升级点 #2: 本地离线引擎标记 (云端 edge=false)。缺失默认
+                    # false —— 只有显式声明才承认本地, prefer_local 不会误放行。
+                    "local": bool(p.get("local", False)),
                     "capabilities": {
                         "cloning": bool(cap.get("cloning", False)),
                         "emotion": bool(cap.get("emotion", False)),
@@ -211,6 +217,7 @@ def select_engine(
     language: str = "zh-CN",
     need_clone: bool = False,
     need_emotion: bool = False,
+    prefer_local: bool = False,
     gpu_available: Optional[bool] = None,
     path: Optional[str] = None,
 ) -> Tuple[str, str]:
@@ -254,6 +261,15 @@ def select_engine(
         if cap is None:
             return True  # unknown engine: don't filter on language
         return lang_prefix in [str(lang).split("-")[0].lower() for lang in cap.languages]
+
+    # prefer_local (升级点 #2): 本地优先 —— 有本地引擎 (`local: true`) 能服务
+    # 该语言时, 仅在本地引擎中选择; 无本地匹配时诚实放行全量候选 (云端兜底)。
+    # 该语义此前从未生效: select_engine 不区分本地/云端, 生产构造器又硬编码
+    # prefer_local=False 强制云端 edge, edge 端点 403 不可达时英文书合成整体失败。
+    if prefer_local:
+        local_feasible = [p for p in feasible if p.get("local", False)]
+        if any(_lang_match(p["engine"]) for p in local_feasible):
+            feasible = local_feasible
 
     # Sort feasible by effective priority for this language (lower = higher priority)
     feasible.sort(key=lambda p: _get_effective_priority(p, lang_prefix))
