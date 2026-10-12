@@ -348,8 +348,18 @@ def check_audio_quality(
     mos_threshold: float = 3.5,
     wer_threshold: float = 0.15,
     speaker_cosine_threshold: float = 0.85,
+    isolate_vocals: bool = False,
 ) -> AudioQualityReport:
-    """Run all three quality metrics and return unified report."""
+    """Run all three quality metrics and return unified report.
+
+    Args:
+        isolate_vocals: 差距 E 记录 (2026-10-13) — 评测带音乐床的参考音频
+            (原声有声书等) 时设 True: 先 mid/side STFT 软掩蔽人声分离再转写,
+            WER 召回 68.5%→72.8%。SenseVoice-small 在掩蔽后仍有 ~27% 固有
+            漏听 (床居中间奏, 识别器极限) — 更深提升需 demucs 级分离或更大
+            ASR 模型, 本地 CPU 条件下性价比低, 诚实记录不追。合成产物
+            (无床) 评测保持 False (历史默认)。
+    """
     report = AudioQualityReport(
         mos_threshold=mos_threshold,
         wer_threshold=wer_threshold,
@@ -359,7 +369,7 @@ def check_audio_quality(
     report.mos = predict_mos(wav_path)
 
     if reference_text:
-        report.wer = compute_wer(wav_path, reference_text, language)
+        report.wer = compute_wer(wav_path, reference_text, language, isolate_vocals=isolate_vocals)
 
     if reference_wav:
         report.speaker_cosine = voice_cosine(reference_wav, wav_path)
