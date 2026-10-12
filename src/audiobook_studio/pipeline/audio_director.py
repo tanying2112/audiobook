@@ -95,14 +95,34 @@ class AudioDirectorPipeline:
             is_dialogue=input_data.is_dialogue,
             language=input_data.language,
             voice_id=input_data.voice_id,
+            available_voices=input_data.available_voices,
+            difficulty=input_data.difficulty,
             schema_json=AudioDirectorOutput.model_json_schema(),
             few_shot_examples=self._load_few_shot("audio_director"),
         )
 
+    @staticmethod
+    def _voice_id_is_valid(voice_id: str, available_voices: list[str]) -> bool:
+        """Gap G: voice_id 必须是引擎合法音色 (支持 blend, 组件全须在表内)."""
+        if not available_voices:
+            return True  # 调用方未提供音色表 → 无法校验, 透传 (合成侧归一化兜底)
+        if voice_id in available_voices:
+            return True
+        # blend 语法 "am_onyx*0.65+am_fenrir*0.35": 拆组件逐一对照
+        if "+" in voice_id:
+            comps = [
+                p.split("*")[0].strip()
+                for p in voice_id.split("+")
+                if p.strip()
+            ]
+            return bool(comps) and all(c in available_voices for c in comps)
+        return False
+
     def _sanitize(
-        self, output: AudioDirectorOutput, n_sentences: int
+        self, output: AudioDirectorOutput, n_sentences: int,
+        available_voices: Optional[list[str]] = None,
     ) -> AudioDirectorOutput:
-        """丢弃越界/空建议, clamp 数值 (LLM 输出不信任原则)."""
+        """丢弃越界/空建议, clamp 数值, 校验 voice_id (LLM 输出不信任原则)."""
         clean: list[SentenceOverrideSuggestion] = []
         for ovr in output.sentence_overrides:
             if ovr.idx >= n_sentences:
@@ -110,6 +130,16 @@ class AudioDirectorPipeline:
                     "audio_director: 丢弃越界建议 idx=%d (共 %d 句)", ovr.idx, n_sentences
                 )
                 continue
+            # Gap G fix: 语义角色标签 ("coach"/"lenda") 不是引擎音色 → 丢弃该轴
+            # (其余轴保留), 合成侧 voice 归一化仍有 production-safe 兜底。
+            if ovr.voice_id and not self._voice_id_is_valid(
+                ovr.voice_id, available_voices or []
+            ):
+                logger.warning(
+                    "audio_director: voice_id=%r 不在引擎音色表 (%d 项), 丢弃该轴 idx=%d",
+                    ovr.voice_id, len(available_voices or []), ovr.idx,
+                )
+                ovr.voice_id = None
             if all(
                 getattr(ovr, f) is None
                 for f in ("voice_id", "speed", "pitch_st", "gain_db", "pause_after_ms", "pause_category")
@@ -171,7 +201,7 @@ class AudioDirectorPipeline:
                     confidence=0.0,
                 )
             output: AudioDirectorOutput = result.output
-            output = self._sanitize(output, n)
+            output = self._sanitize(output, n, available_voices=input_data.available_voices)
             logger.info(
                 "audio_director: %d/%d 句获演绎建议 (confidence=%.2f, model=%s)",
                 len(output.sentence_overrides), n, output.confidence, result.model,

@@ -667,9 +667,39 @@ class AudioDirectorStage(StageHandler):
             )
 
         # 与合成侧同源切句, 保证 idx 对齐 (SynthesizeStage 消费同一切分)
-        from .synthesize import _split_sentences
+        from .synthesize import _split_sentences, _find_voice_binding, list_engine_voices
 
         sentences = _split_sentences(paragraph_text)
+
+        # Gap G fix (2026-10-12): 导演 voice_id 契约 — 注入 language + 引擎合法
+        # 音色表 + 段落当前音色。此前三样全缺, 导演把语义角色名 ("coach"/"lenda")
+        # 当 voice_id 输出, 合成引擎音色表里不存在 → 崩。
+        language = "zh"
+        difficulty: Optional[str] = None  # Gap D: BookMeta.difficulty → 导演语速校准
+        paragraph_voice_id: Optional[str] = None
+        chapter = kwargs.get("chapter")
+        if chapter and getattr(chapter, "analyzed_json", None):
+            import json as _json
+
+            raw = chapter.analyzed_json
+            if isinstance(raw, str):
+                try:
+                    raw = _json.loads(raw)
+                except (ValueError, TypeError):
+                    raw = {}
+            bm = raw.get("book_meta") or {}
+            language = bm.get("language") or "zh"
+            difficulty = (bm.get("difficulty") or "").strip() or None
+            cvm_raw = raw.get("character_voice_map") or []
+            from ..schemas.book import CharacterVoiceBinding
+
+            cvm = [CharacterVoiceBinding(**c) for c in cvm_raw if isinstance(c, dict)]
+            binding = _find_voice_binding(
+                cvm, (para.speaker_canonical_name if para else "_narrator_") or "_narrator_"
+            )
+            paragraph_voice_id = binding.suggested_voice_id if binding else None
+        available_voices = list_engine_voices(language, "kokoro")
+
         input_data = AudioDirectorInput(
             paragraph_text=paragraph_text,
             sentences=sentences,
@@ -677,6 +707,10 @@ class AudioDirectorStage(StageHandler):
             emotion=(para.emotion or "neutral") if para else "neutral",
             emotion_intensity=(para.emotion_intensity or 0.5) if para else 0.5,
             is_dialogue=(para.is_dialogue or False) if para else False,
+            language=language,
+            voice_id=paragraph_voice_id,
+            available_voices=available_voices,
+            difficulty=difficulty,
         )
         pipeline = AudioDirectorPipeline()
         return pipeline.run(input_data)

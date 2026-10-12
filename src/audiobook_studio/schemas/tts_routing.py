@@ -100,6 +100,11 @@ class TtsRoutingInput(BaseModel):
     # 升级点 #2: 此前路由误用 paragraph_annotation.emotion (14 枚举标签) 当
     # 语言码, 英文书 priority_by_lang en:1 永不命中, 语言路由形同虚设。
     language: Optional[str] = Field(default=None, description="目标语言 (ISO 639-1/BCP-47, 来自 BookMeta.language)")
+    # Gap D fix (2026-10-12): 书籍难度等级 (来自 BookMeta.difficulty, build_routing_input
+    # 从 chapter.analyzed_json 注入)。A = 分级读物/学习者级别 → 段落级语速按
+    # DIFFICULTY_RATE_SCALE 放慢 (Oxford Bookworms L1 实测 115 wpm_p vs 系统 200
+    # wpm_p; BookMeta.difficulty 一直在数据里但从未传导到合成参数)。None → 不缩放。
+    difficulty: Optional[str] = Field(default=None, description="书籍难度等级 A/B/C/D (来自 BookMeta.difficulty; A=分级读物→语速缩放)")
     contract_version: int = Field(default=1, description="契约版本号，用于追踪 schema 变更")
 
 

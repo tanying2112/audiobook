@@ -144,6 +144,18 @@ PAUSE_CATEGORY_DEFAULTS_MS = {
 # 校准 dB 封顶 (v6 CALIB_CAP 系统化为 ±3dB)
 VOICE_CALIB_CAP_DB = 3.0
 
+# Gap D fix (2026-10-12): 书籍难度 → 段落级语速缩放系数。
+# A = 分级读物 (Oxford Bookworms 等学习者材料, 刻意慢速; 原声对照实测 115 wpm_p
+# vs 系统默认 ~200 wpm_p → 0.75× 基准 ≈ 150 wpm_p, 向原声档靠拢且不过分拖沓)。
+# B/C/D = 母语成人向, 不缩放。BookMeta.difficulty 一直在分析数据里, 但此前
+# 从未传导到合成参数 — 系统不知道「这是分级读物, 该放慢」。
+DIFFICULTY_RATE_SCALE: Dict[str, float] = {
+    "A": 0.75,
+    "B": 1.0,
+    "C": 1.0,
+    "D": 1.0,
+}
+
 
 def _CALIB_TARGET_LUFS() -> float:
     """Target integrated loudness — utils/loudness.py audiobook 档的 I (EBU R128)."""
@@ -177,19 +189,26 @@ def merge_sentence_prosody(
 ) -> tuple[str, dict[str, Any]]:
     """Merge a sentence-level director override onto the paragraph prosody.
 
-    Field semantics (v6 逐句三轴):
+    Field semantics (v6 逐句三轴; speed 语义 Gap D 修正 2026-10-12):
       - ``gain_db``: delta ADDED onto the paragraph volume (dB)
-      - ``speed``: REPLACES the paragraph rate
+      - ``speed``: MULTIPLIES the paragraph rate (base × speed; 1.0 = 不变)
       - ``pitch_st``: REPLACES the paragraph pitch (semitones)
       - ``voice_id``: REPLACES the sentence voice
     Missing/None fields inherit the paragraph-level value untouched.
+
+    Gap D 语义修正: speed 此前是 REPLACE — 与导演契约「1.0=不变」矛盾:
+    段落基线 rate≠1.0 (difficulty 缩放 / 标注 speech_rate≠1) 时, 导演
+    speed=1.0 (不干预) 会把基线顶回 1.0, 分级读物的慢速设定被逐句覆盖丢失。
+    乘法语义: rate = base_rate × speed。基线 1.0 时与 REPLACE 完全等价
+    (历史数据不受影响); 基线≠1.0 时导演倍率相对「本书基线」解释, 与
+    prompt 中 speed 的相对倍率定义一致。
 
     Returns (effective_voice_id, effective_prosody); the input dicts are not
     mutated (a copy is returned).
     """
     prosody = dict(paragraph_prosody)
     if override.get("speed") is not None:
-        prosody["rate"] = float(override["speed"])
+        prosody["rate"] = float(prosody.get("rate") or 1.0) * float(override["speed"])
     if override.get("pitch_st") is not None:
         prosody["pitch"] = float(override["pitch_st"])
     if override.get("gain_db") is not None:
@@ -244,6 +263,37 @@ def _override_pause_ms(override: dict[str, Any], default_ms: int) -> int:
         if cat_ms is not None:
             return int(cat_ms)
     return int(default_ms)
+
+
+def compute_declared_pause_ms(
+    text: str, sentence_overrides: Optional[list[dict[str, Any]]] = None
+) -> int:
+    """Gap C fix: 计算本段「声明停顿预算」总毫秒 (质检门静音扣除项).
+
+    与 _synthesize_paragraph_with_overrides 的插入逻辑同源:
+    每个非末句 pause = _override_pause_ms(ovr, _sentence_pause_default_ms(sent)),
+    末句 = _override_pause_ms(ovr, 0)。逐句路径实际插入的静音恰好等于本和,
+    质检门据此区分「导演声明的停顿」(dramatic/paragraph/标点分级) 与
+    「意外静音」(engine 哑段/截断), 前者不算 Excessive silence 违规。
+    """
+    sentences = _split_sentences(text)
+    n = len(sentences)
+    if n == 0:
+        return 0
+    ovr_by_idx: Dict[int, dict[str, Any]] = {}
+    for ovr in sentence_overrides or []:
+        if not isinstance(ovr, dict):
+            continue
+        try:
+            ovr_by_idx[int(ovr.get("idx"))] = ovr
+        except (TypeError, ValueError):
+            continue
+    total = 0
+    for k, sent in enumerate(sentences):
+        ovr = ovr_by_idx.get(k, {})
+        default = _sentence_pause_default_ms(sent) if k < n - 1 else 0
+        total += _override_pause_ms(ovr, default)
+    return total
 
 
 # Edge-TTS voice ID -> Kokoro voice ID mapping
@@ -1052,6 +1102,8 @@ class SynthesizePipeline:
         sentence_overrides: List[dict[str, Any]],
         output_path: Path,
         segment_id: str,
+        engine_choice: str = "kokoro",
+        language: Optional[str] = None,
     ) -> tuple[int, str]:
         """Synthesize a paragraph sentence-by-sentence per the v6 director table.
 
@@ -1109,6 +1161,14 @@ class SynthesizePipeline:
                 voice_id, prosody = merge_sentence_prosody(
                     paragraph_voice_id, paragraph_prosody, ovr
                 )
+                # Gap G fix (2026-10-12): 导演 (LLM) 的 sentence voice_id 可能是
+                # 语义角色标签 ("coach"/"lenda") 而非引擎音色 — 未知 ID 经非 strict
+                # 归一化落引擎安全默认 (已知 ID/blend 原样或跨引擎映射), 不让
+                # LLM 幻觉标签炸掉整段合成。人工编辑的已知 ID 不受影响。
+                if ovr.get("voice_id") is not None:
+                    voice_id = _normalize_voice_id(
+                        voice_id, engine_choice, strict=False, lang=language
+                    )
                 # P2a: per-voice calibration on the effective sentence voice
                 prosody = self._apply_voice_calibration(voice_id, prosody)
 
@@ -1332,6 +1392,8 @@ class SynthesizePipeline:
                         sentence_overrides,
                         output_path,
                         segment_id,
+                        engine_choice=decision.engine_choice,
+                        language=inp.language,
                     )
                 elif enable_streaming:
                     # Run streaming synthesis with WebSocket progress
@@ -1522,6 +1584,8 @@ class SynthesizePipeline:
                             retry_overrides,
                             retry_output,
                             f"{seg_id}_retry{attempt}",
+                            engine_choice=decision.engine_choice,
+                            language=seg_input.language,
                         )
                     else:
                         retry_duration, retry_engine = await self._synthesize_via_port(
@@ -1555,6 +1619,17 @@ class SynthesizePipeline:
                 for inp in inputs
             }
 
+            # Gap C fix (2026-10-12): 透传 segment_id -> 导演声明停顿预算给质量层。
+            # 逐句路径实际插入的句间静音 (dramatic/paragraph/标点分级) 是演绎意图,
+            # 不应计入 Excessive silence 比例 (p0/p4 短段 dramatic 停顿曾把静音
+            # 比例顶到 57%/44% 三振人工复核, 复核根因即此规则冲突)。
+            pause_budget_map = {
+                f"{inp.book_id}_ch{inp.chapter_index}_p{inp.paragraph_index}": compute_declared_pause_ms(
+                    inp.text, getattr(inp, "sentence_overrides", None)
+                )
+                for inp in inputs
+            }
+
             # Run quality checks with auto-retry
             quality_report: QualityReport = await check_all_segments(
                 segment_files=segment_files,
@@ -1564,6 +1639,7 @@ class SynthesizePipeline:
                 max_retries=2,
                 retry_callback=retry_callback,
                 speaker_map=speaker_map,
+                pause_budget_map=pause_budget_map,
             )
 
             # Save quality report
@@ -2011,6 +2087,33 @@ _LANGUAGE_ALIASES = {
     "chinese": "zh", "mandarin": "zh", "中文": "zh", "汉语": "zh", "普通话": "zh",
 }
 
+# kokoro 原生音色白名单 (升级点 #2c 与 _normalize_voice_id 同源维护)
+_KOKORO_ZH_VOICES = (
+    "zf_xiaobei", "zf_xiaoni", "zf_xiaoxuan", "zf_xiaoxiao",
+    "zm_yunjian", "zm_yunxi", "zm_yunxia", "zm_yunyang",
+)
+
+
+def list_engine_voices(language: Optional[str], engine: str = "kokoro") -> list[str]:
+    """List the engine-native voice IDs for a language (Gap G fix).
+
+    audio_director 的 available_voices 输入来源: 导演 prompt 只能从本表
+    选 voice_id, _sanitize 对照本表丢弃越界标签 (曾把语义角色 "coach"/
+    "lenda" 当 voice_id 输出, 引擎音色表不存在 → 合成崩)。
+    """
+    lang = _normalize_language(language).split("-")[0].lower()
+    if engine == "kokoro":
+        if lang == "en":
+            return [k for k in _EDGE_TO_KOKORO.values() if k.startswith(("am_", "af_"))]
+        return list(_KOKORO_ZH_VOICES)
+    if engine == "piper":
+        return ["zh_CN-huayan-medium"] if lang != "en" else ["en_US-hfc_male-medium"]
+    # edge: 本表 _EDGE_TO_KOKORO 的键即 Edge ID 全集 (zh-CN-* / en-US-*)
+    return [
+        k for k, v in _EDGE_TO_KOKORO.items()
+        if k.split("-")[0].lower() == lang
+    ]
+
 
 def _normalize_language(value: Optional[str]) -> str:
     """归一化语言标签为路由语言键 (select_engine 自行取 `-` 前缀比较).
@@ -2022,6 +2125,47 @@ def _normalize_language(value: Optional[str]) -> str:
     if not v:
         return "zh-CN"
     return _LANGUAGE_ALIASES.get(v.lower(), v)
+
+
+def _normalize_speaker_name(name: str) -> str:
+    """Normalize a speaker name for binding lookup (Gap B fix).
+
+    annotate 输出 ``_narrator_`` / ``Narrator`` / ``narrator``，分析期
+    character_voice_map 又可能写 ``旁白``/``Narrator`` — 三种拼写同一角色
+    此前永不匹配 (``==`` 严格比较), Narrator 绑定的 suggested_voice_id
+    从未生效, 一律落到 "default"。统一成小写去下划线/空格键比较;
+    中文习惯名 ``旁白``/``旁白者`` 亦归一到 ``narrator``。
+    """
+    v = (name or "").strip().strip("_").replace(" ", "").lower()
+    return {"旁白": "narrator", "旁白者": "narrator"}.get(v, v)
+
+
+def _find_voice_binding(
+    cvm: List[CharacterVoiceBinding], speaker: str
+) -> Optional[CharacterVoiceBinding]:
+    """Resolve the voice binding for a speaker (Gap B fix).
+
+    匹配优先级: canonical_name 精确 > canonical_name 归一化 > aliases 归一化。
+    历史上只有第一条路, annotate 的 ``_narrator_`` 永远找不到 cvm 的
+    ``Narrator`` 绑定。
+    """
+    if not speaker:
+        return None
+    # 1. exact canonical match (historical fast path)
+    for c in cvm:
+        if c.canonical_name == speaker:
+            return c
+    # 2. normalized canonical match (Gap B: _narrator_ ↔ Narrator ↔ narrator)
+    key = _normalize_speaker_name(speaker)
+    for c in cvm:
+        if _normalize_speaker_name(c.canonical_name) == key:
+            return c
+    # 3. alias match (normalized) — 分析期登记的别名 (the coach → Coach Zangado)
+    for c in cvm:
+        for alias in getattr(c, "aliases", None) or []:
+            if _normalize_speaker_name(alias) == key:
+                return c
+    return None
 
 
 def make_tts_routing_decision(inp: TtsRoutingInput) -> TtsRoutingDecision:
@@ -2038,10 +2182,9 @@ def make_tts_routing_decision(inp: TtsRoutingInput) -> TtsRoutingDecision:
     """
     from ..tts.providers_config import gpu_backends_enabled, select_engine
 
-    char = next(
-        (c for c in inp.character_voice_map if c.canonical_name == inp.paragraph_annotation.speaker_canonical_name),
-        None,
-    )
+    # Gap B fix: _narrator_ ↔ Narrator ↔ narrator/旁白 此前严格 == 永不匹配,
+    # Narrator 绑定的 suggested_voice_id 从未生效。归一化三段式解析。
+    char = _find_voice_binding(inp.character_voice_map, inp.paragraph_annotation.speaker_canonical_name)
     suggested = char.suggested_voice_id if char else None
     voice_id: str = suggested or "default"
 
@@ -2161,13 +2304,21 @@ def make_tts_routing_decision(inp: TtsRoutingInput) -> TtsRoutingDecision:
         reasoning += f"; manual voice override → {voice_id}"
 
     prosody_overrides = {
-        "rate": float(annotation.speech_rate) if annotation.speech_rate else 1.0,
+        # Gap D fix: 段落级语速 = 标注 speech_rate × 难度缩放系数。
+        # difficulty="A" (分级读物) → ×0.75: BookMeta.difficulty 首次传导到
+        # 合成参数 (此前分析数据里有难度但合成层一概不知, 英文分级读物按
+        # 母语成人语速 ~200 wpm_p 播, 原声对照实测 115 wpm_p)。
+        "rate": (
+            float(annotation.speech_rate) if annotation.speech_rate else 1.0
+        ) * DIFFICULTY_RATE_SCALE.get(inp.difficulty or "B", 1.0),
         "pitch": (float(annotation.pitch_shift_semitones) if annotation.pitch_shift_semitones is not None else 0.0),
         # emotion-derived volume (dB); angry>0, whisper<0, neutral=0.
         "volume": volume_db,
         # pass the emotion tag through for engines that support emotion
         "emotion": emotion_tag,
     }
+    if DIFFICULTY_RATE_SCALE.get(inp.difficulty or "B", 1.0) != 1.0:
+        reasoning += f"; difficulty={inp.difficulty} graded-reader rate ×{DIFFICULTY_RATE_SCALE[inp.difficulty]}"
     # P2.13: 注入参考音频到 prosody (引擎若支持 reference_audio 则用于声纹对齐).
     if ref_audio_for_prosody:
         prosody_overrides["reference_audio"] = ref_audio_for_prosody
@@ -2239,6 +2390,7 @@ def build_routing_input(
     # Build voice_map from chapter's analyzed_json
     voice_map: List[CharacterVoiceBinding] = []
     language: Optional[str] = None  # BookMeta.language (升级点 #2 语言路由键)
+    difficulty: Optional[str] = None  # BookMeta.difficulty (Gap D 语速缩放键)
     if chapter and chapter.analyzed_json:
         raw = chapter.analyzed_json
         if isinstance(raw, str):
@@ -2247,6 +2399,7 @@ def build_routing_input(
         book_meta_raw = raw.get("book_meta")
         if isinstance(book_meta_raw, dict):
             language = (book_meta_raw.get("language") or "").strip() or None
+            difficulty = (book_meta_raw.get("difficulty") or "").strip() or None
 
     if not voice_map:
         voice_map = [
@@ -2277,6 +2430,7 @@ def build_routing_input(
         character_voice_map=voice_map,
         book_id=str(project_id) if project_id is not None else "",
         language=language,
+        difficulty=difficulty,
         chapter_index=chapter.index if chapter else 1,
         paragraph_index=para.index if para else 0,
         cumulative_cost_usd=0.0,

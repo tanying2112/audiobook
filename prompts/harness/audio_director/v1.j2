@@ -22,10 +22,12 @@
 | 内心独白 | 0.8-0.9 | -2.0~-3.0 | 0 | dramatic 于独白前后 |
 | 对白轮转 | 按角色 | ±1 | 按角色差 | turn 切换处 clause-dramatic |
 
-## 对白换声（voice_id）
+## 对白换声（voice_id）— Gap G 契约
 - 仅当段落含多角色对白且需要区分说话人时标注 voice_id
-- voice_id 必须取自输入的可用音色列表；单角色段落**不要**换声
-- 支持 blend 语法（如 "am_onyx*0.6+am_fenrir*0.4"）但仅限输入列表已给出的组合
+- **voice_id 只能从下方「可用音色表」选取，逐字复制**；说话人名/角色名/别名（如 "coach"、"lenda"）**不是** voice_id，直接写会令合成失败
+- 表为空时**禁止**标注 voice_id 轴（该引擎音色未知，交给段落级决策）
+- 支持 blend 语法（如 "am_onyx*0.6+am_fenrir*0.4"）但组件音色必须在表内
+- 单角色段落**不要**换声
 
 ## 输入信息
 - 段落文本：{{ paragraph_text }}
@@ -36,7 +38,16 @@
 - 说话人：{{ speaker_name }}{% if is_dialogue %}（对白段）{% endif %}
 - 情感标注：{{ emotion }}（强度 {{ emotion_intensity }}）
 - 语言：{{ language }}
+- 难度等级：{{ difficulty or "未指定" }}{% if difficulty == "A" %}（分级读物 — 面向语言学习者的刻意慢速风格：speed 建议基线偏慢 0.75-0.9，紧张/愤怒也少超 1.05，绝不建议 >1.1）{% endif %}
 - 段落当前音色：{{ voice_id or "（未指定）" }}
+- 可用音色表（voice_id 唯一合法取值域）：
+{%- if available_voices %}
+{%- for v in available_voices %}
+  - {{ v }}
+{%- endfor %}
+{%- else %}
+  （空——本段禁止标注 voice_id）
+{%- endif %}
 
 ## 输出要求
 ✅ **必须**输出且**仅输出**一个有效的 JSON 对象（符合下方 schema）
@@ -58,4 +69,5 @@
 □ 平淡句是否真的没有标注？
 □ 停顿是否优先用了 pause_category？
 □ 愤怒句是否靠 gain_db+停顿 而非把 speed 拉到极端？
+□ 每个 voice_id 是否逐字来自可用音色表（不是角色名）？
 □ JSON 是否可直接解析？

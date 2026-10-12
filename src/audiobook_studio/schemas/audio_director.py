@@ -62,7 +62,19 @@ class AudioDirectorInput(BaseModel):
     emotion_intensity: float = Field(default=0.5, ge=0.0, le=1.0, description="情感强度 0-1")
     is_dialogue: bool = Field(default=False, description="是否对白")
     language: str = Field(default="zh", description="目标语言 (zh/en)")
+    # Gap D fix (2026-10-12): 书籍难度等级 — 导演需要知道「这是分级读物该放慢」。
+    # A = 学习者分级读物 (导演 speed 建议相对已放慢的基线解释, 见 prompt)。
+    difficulty: Optional[str] = Field(
+        None, description="书籍难度等级 A/B/C/D (A=分级读物, 导演语速建议按学习者慢速风格校准)"
+    )
     voice_id: Optional[str] = Field(None, description="段落当前音色 (供导演参考, 不强制沿用)")
+    # Gap G fix (2026-10-12): 导演曾输出语义角色标签 ("coach"/"lenda") 当 voice_id,
+    # 引擎音色表里不存在 → 合成崩。prompt v2 把本表渲染进「对白换声」节,
+    # _sanitize 对照它校验 voice_id, 越界即丢弃该轴。
+    available_voices: List[str] = Field(
+        default_factory=list,
+        description="引擎合法音色 ID 表 (目标语言+引擎的 kokoro/edge 音色; 导演 voice_id 只能从中选)",
+    )
 
 
 class AudioDirectorOutput(BaseModel):
