@@ -1,0 +1,84 @@
+{
+  "system_run": {
+    "file": "/Users/guwj/Documents/audiobook/output/football_forever_ch1/system_run/football_forever_ch1_final.mp3",
+    "duration_s": 359.6,
+    "wpm_overall": 155.2,
+    "wpm_phonation": 199.9,
+    "n_pauses": 104,
+    "pause_budget_s": 80.5,
+    "pause_median_s": 0.92,
+    "pause_p90_s": 1.22,
+    "pause_max_s": 1.68,
+    "lufs_i": -70.0,
+    "true_peak_dbfs": -3.5,
+    "utmos_chunked": 4.3843,
+    "wer_vs_gold": {
+      "wer": 0.1731,
+      "errors": 161,
+      "ref_words": 930,
+      "hyp_words": 1008
+    },
+    "wer_vs_synth_input": {
+      "wer": 0.1731,
+      "errors": 161,
+      "ref_words": 930,
+      "hyp_words": 1008
+    }
+  },
+  "original_ref": {
+    "file": "/Users/guwj/Documents/audiobook/scratch/football_test/ref/ch1_ref.wav",
+    "duration_s": 540.0,
+    "wpm_overall": 103.3,
+    "wpm_phonation": 114.9,
+    "n_pauses": 64,
+    "pause_budget_s": 54.4,
+    "pause_median_s": 0.7,
+    "pause_p90_s": 1.33,
+    "pause_max_s": 5.4,
+    "lufs_i": -70.0,
+    "true_peak_dbfs": -6.2,
+    "utmos_chunked": 2.5652,
+    "wer_vs_gold": {
+      "wer": 0.3194,
+      "errors": 297,
+      "ref_words": 930,
+      "hyp_words": 671
+    }
+  },
+  "original_ref_vocal_isolation": {
+    "probe": {
+      "speech": {
+        "rms_mid": 0.06524,
+        "rms_side": 0.01951,
+        "side_mid_ratio": 0.299
+      },
+      "interlude": {
+        "rms_mid": 0.05878,
+        "rms_side": 0.0087,
+        "side_mid_ratio": 0.148
+      },
+      "tail": {
+        "rms_mid": 0.07849,
+        "rms_side": 0.01286,
+        "side_mid_ratio": 0.164
+      }
+    },
+    "beta": 1.5,
+    "variants": {
+      "mid_baseline": {
+        "ref_words": 930,
+        "hyp_words": 671,
+        "hits": 637,
+        "recall": 0.6849,
+        "wer": 0.3194
+      },
+      "vocals_masked": {
+        "ref_words": 930,
+        "hyp_words": 718,
+        "hits": 677,
+        "recall": 0.728,
+        "wer": 0.2753
+      }
+    }
+  }
+}

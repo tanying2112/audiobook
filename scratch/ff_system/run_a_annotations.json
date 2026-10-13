@@ -1,0 +1,3138 @@
+{
+  "book": {
+    "book_meta": {
+      "title": "Football Forever",
+      "author": "Oxford Dominoes Level 1 graded reader (football story, Brazil)",
+      "genre": "小说",
+      "difficulty": "A",
+      "language": "en",
+      "era": "现代",
+      "total_chapters_estimated": 10,
+      "contract_version": 1
+    },
+    "character_voice_map": [
+      {
+        "canonical_name": "Tino (Albertino)",
+        "aliases": [
+          "Albertino",
+          "Tino"
+        ],
+        "gender": "male",
+        "age_range": "young",
+        "suggested_voice_id": "en-US-ChristopherNeural",
+        "sample_quote": "I'm only sixteen, but I live football. In the day, I play football; at night, I sleep football. I eat and drink football! The beautiful game!",
+        "contract_version": 1
+      },
+      {
+        "canonical_name": "Coach Zangado",
+        "aliases": [
+          "Zangado",
+          "the coach"
+        ],
+        "gender": "male",
+        "age_range": "elderly",
+        "suggested_voice_id": "en-US-GuyNeural",
+        "sample_quote": "Bad! Very bad! We must win this game! Do you want to win the Cup or not?",
+        "contract_version": 1
+      },
+      {
+        "canonical_name": "Junior",
+        "aliases": [],
+        "gender": "male",
+        "age_range": "young",
+        "suggested_voice_id": "en-US-EricNeural",
+        "sample_quote": "Junior looks at me and gives a big smile.",
+        "contract_version": 1
+      },
+      {
+        "canonical_name": "Lenda",
+        "aliases": [
+          "the captain"
+        ],
+        "gender": "male",
+        "age_range": "adult",
+        "suggested_voice_id": "en-US-RogerNeural",
+        "sample_quote": "He's thinking, 'Who is this boy? How good is he? Can he help us win?'",
+        "contract_version": 1
+      },
+      {
+        "canonical_name": "Nakano",
+        "aliases": [],
+        "gender": "male",
+        "age_range": "adult",
+        "suggested_voice_id": "en-US-DavisNeural",
+        "sample_quote": "Yes, coach.",
+        "contract_version": 1
+      },
+      {
+        "canonical_name": "Mother",
+        "aliases": [
+          "my mother"
+        ],
+        "gender": "female",
+        "age_range": "adult",
+        "suggested_voice_id": "en-US-JennyNeural",
+        "sample_quote": "Here, Tino, take this for luck. You're little now, but one day you're going to be a big star, an amazing player.",
+        "contract_version": 1
+      },
+      {
+        "canonical_name": "Narrator",
+        "aliases": [
+          "旁白"
+        ],
+        "gender": "neutral",
+        "age_range": "adult",
+        "suggested_voice_id": "en-US-AriaNeural",
+        "sample_quote": "It's the last game of the year. We need to win to get the Cup.",
+        "contract_version": 1
+      }
+    ],
+    "emotion_snapshot": {
+      "chapter": 1,
+      "dominant_emotion": "tense",
+      "intensity": 0.8,
+      "notes": "球队落后两球，更衣室气氛压抑，教练愤怒斥责，主角即将首次登场的紧张与期待交织",
+      "contract_version": 1
+    },
+    "story_line_summary": "十六岁的巴西少年Tino（Albertino）加入Stars足球队，在赛季决赛中球队上半场0-2落后于Stripes队。愤怒的教练Zangado在中场休息时做出人员调整，让替补席上的Tino首发出场与队长Lenda搭档锋线。Tino怀揣母亲给的幸运小星星，带着对足球的纯粹热爱和初登大舞台的紧张兴奋走上球场。故事聚焦于这场逆境中的关键下半场，展现年轻球员的成长、团队的凝聚力以及巴西足球的激情与信念。",
+    "global_style_notes": "第一人称青少年视角叙事，语言简洁明快，符合分级读物Level 1特点。对话占比大，需体现巴西葡萄牙语语境下的英语口语特色。教练Zangado台词需表现权威与愤怒；Tino内心独白需传达纯真热血；Lenda台词需体现老将的冷静与审视。环境音效建议包含球场观众呐喊、哨声、脚步声等。",
+    "scene_tags": [
+      "更衣室",
+      "足球场",
+      "中场休息",
+      "球员通道",
+      "看台观众",
+      "绿茵场",
+      "巴西足球氛围"
+    ]
+  },
+  "records": [
+    {
+      "idx": 0,
+      "source_text": "'Bad! Very bad!' the coach says angrily.",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 0,
+        "text": "",
+        "speaker_canonical_name": "Coach Zangado",
+        "is_dialogue": true,
+        "emotion": "angry",
+        "emotion_intensity": 0.9,
+        "confidence": 0.98,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "教练在中场休息时愤怒斥责球队表现，符合本章紧张愤怒的情感快照",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "'Bad! Very bad!' the coach says angrily.",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "'Bad! Very bad!' the coach says angrily.",
+      "sentences": [
+        "'Bad!",
+        "Very bad!'",
+        "the coach says angrily."
+      ],
+      "director": {
+        "sentence_overrides": [
+          {
+            "idx": 0,
+            "voice_id": null,
+            "speed": 0.95,
+            "pitch_st": null,
+            "gain_db": 2.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 1,
+            "voice_id": null,
+            "speed": 0.95,
+            "pitch_st": null,
+            "gain_db": 2.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 2,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": 0.5,
+            "pause_after_ms": null,
+            "pause_category": null
+          }
+        ],
+        "rationale": "Coach Zangado's angry outburst ('Bad! Very bad!') requires heightened intensity. Sentences 0 and 1 (the dialogue) use increased gain (+2dB) and slightly faster speed (0.95x) for forceful delivery, with dramatic pauses (900ms) after each exclamation to emphasize severity. Sentence 2 (narration tag) slows to 0.85x with moderate gain (+0.5dB) to contrast the coach's anger with calm narration, fitting the A-level deliberate pace baseline. No voice_id change needed as only one speaker is voiced.",
+        "confidence": 0.92
+      },
+      "ok": true
+    },
+    {
+      "idx": 1,
+      "source_text": "It's the last game of the year. We need to win to get the Cup. 'We' is Stars, my new football team, and I'm Albertino, or Tino to my friends.",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 1,
+        "text": "",
+        "speaker_canonical_name": "Tino (Albertino)",
+        "is_dialogue": false,
+        "emotion": "tense",
+        "emotion_intensity": 0.8,
+        "confidence": 0.95,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "主角Tino的第一人称开篇独白，确立比赛重要性和身份认同，呼应本章紧张基调",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "It's the last game of the year. We need to win to get the Cup. 'We' is Stars, my new football team, and I'm Albertino, or Tino to my friends.",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "It's the last game of the year. We need to win to get the Cup. 'We' is Stars, my new football team, and I'm Albertino, or Tino to my friends.",
+      "sentences": [
+        "It's the last game of the year.",
+        "We need to win to get the Cup.",
+        "'We' is Stars, my new football team, and I'm Albertino, or Tino to my friends."
+      ],
+      "director": {
+        "sentence_overrides": [
+          {
+            "idx": 0,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": 0.5,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 1,
+            "voice_id": null,
+            "speed": 0.9,
+            "pitch_st": null,
+            "gain_db": 1.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 2,
+            "voice_id": null,
+            "speed": 0.8,
+            "pitch_st": null,
+            "gain_db": -0.5,
+            "pause_after_ms": null,
+            "pause_category": "paragraph"
+          }
+        ],
+        "rationale": "段落为A级分级读物，基线语速偏慢(0.75-0.9)。情感tense强度0.8，表现为紧张的期待感。第0句设定高风险背景，稍降语速增重增益并用戏剧性停顿制造悬念；第1句明确目标，语速微快、增益最大、戏剧性停顿强化决心；第2句自我介绍为内心独白性质，语速最慢、增益降低、段落收束停顿。全段单一叙述人Tino，无需换声。",
+        "confidence": 0.88
+      },
+      "ok": true
+    },
+    {
+      "idx": 2,
+      "source_text": "Our team are losing two-nil to Stripes. They've got some good players and are playing well, but I know we can play better.",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 2,
+        "text": "",
+        "speaker_canonical_name": "Tino (Albertino)",
+        "is_dialogue": false,
+        "emotion": "tense",
+        "emotion_intensity": 0.7,
+        "confidence": 0.9,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "主角Tino的第一人称内心独白，球队落后两球但他保持信心，体现青少年球员的紧张与坚定",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "Our team are losing two-nil to Stripes. They've got some good players and are playing well, but I know we can play better.",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "Our team are losing two-nil to Stripes. They've got some good players and are playing well, but I know we can play better.",
+      "sentences": [
+        "Our team are losing two-nil to Stripes.",
+        "They've got some good players and are playing well, but I know we can play better."
+      ],
+      "director": {
+        "sentence_overrides": [
+          {
+            "idx": 0,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": -1.0,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 1,
+            "voice_id": null,
+            "speed": 0.8,
+            "pitch_st": -1.0,
+            "gain_db": -1.0,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          }
+        ],
+        "rationale": "段落情感为 tense（紧张，强度0.7），难度等级A要求基线偏慢（0.75-0.9）。第0句陈述落后比分，用稍快于基线的0.85语速、+1.5dB增益、-1半音音高传达紧迫感，句后用dramatic停顿（900ms）制造悬念。第1句前半客观分析对手，后半转折表达信心，整体语速降至0.8，增益-1dB、音高-1半音体现冷静克制，转折处用clause停顿（300ms）模拟换气思考。全段单一说话人Tino，无需换声。",
+        "confidence": 0.88
+      },
+      "ok": true
+    },
+    {
+      "idx": 3,
+      "source_text": "'Bad! Very bad!' the coach says again. They call him 'Zangado', 'angry' in Portuguese. He looks around the changing room. His hair is white, his face is red.",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 3,
+        "text": "",
+        "speaker_canonical_name": "Coach Zangado",
+        "is_dialogue": true,
+        "emotion": "angry",
+        "emotion_intensity": 0.9,
+        "confidence": 0.95,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "教练Zangado在更衣室中场休息时愤怒斥责球员，葡萄牙语昵称'Zangado'意为'愤怒的'，符合角色设定",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "'Bad! Very bad!' the coach says again. They call him 'Zangado', 'angry' in Portuguese. He looks around the changing room. His hair is white, his face is red.",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "'Bad! Very bad!' the coach says again. They call him 'Zangado', 'angry' in Portuguese. He looks around the changing room. His hair is white, his face is red.",
+      "sentences": [
+        "'Bad!",
+        "Very bad!'",
+        "the coach says again.",
+        "They call him 'Zangado', 'angry' in Portuguese.",
+        "He looks around the changing room.",
+        "His hair is white, his face is red."
+      ],
+      "director": {
+        "sentence_overrides": [
+          {
+            "idx": 0,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": -1.0,
+            "gain_db": 2.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 1,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": -1.0,
+            "gain_db": 2.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 2,
+            "voice_id": null,
+            "speed": 0.8,
+            "pitch_st": -1.0,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 3,
+            "voice_id": null,
+            "speed": 0.8,
+            "pitch_st": -1.0,
+            "gain_db": 1.0,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 4,
+            "voice_id": null,
+            "speed": 0.8,
+            "pitch_st": -1.0,
+            "gain_db": 0.5,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 5,
+            "voice_id": null,
+            "speed": 0.75,
+            "pitch_st": -1.0,
+            "gain_db": 0.0,
+            "pause_after_ms": null,
+            "pause_category": "paragraph"
+          }
+        ],
+        "rationale": "段落描写教练愤怒训斥场景，情感强度0.9。按A级难度基线偏慢(0.75-0.9)且愤怒不超1.05原则，前两句直接引语'Bad! Very bad!'用speed 0.85+gain_db+2dB+pitch_st -1半音体现愤怒爆发力，配合dramatic停顿(900ms)强化冲击力；第2句叙述语速稍降至0.8，gain_db+1.5dB维持威严感；第3-4句描写性叙述进一步降速至0.8，gain_db递减至+1.0/+0.5dB，pitch_st统一-1半音保持低沉威严基调，clause停顿(300ms)服务分级读物慢速节奏；末句收束用最慢0.75速度、基线音量、paragraph停顿(1200ms)完成段落闭合。全段单一说话人Coach Zangado，沿用段落音色en-US-GuyNeural无需换声。",
+        "confidence": 0.92
+      },
+      "ok": true
+    },
+    {
+      "idx": 4,
+      "source_text": "'We must win this game! Do you want to win the Cup or not?'",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 4,
+        "text": "",
+        "speaker_canonical_name": "Coach Zangado",
+        "is_dialogue": true,
+        "emotion": "angry",
+        "emotion_intensity": 0.9,
+        "confidence": 0.98,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "教练在中场休息时愤怒斥责球员，要求赢得比赛，语气强硬权威",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "'We must win this game! Do you want to win the Cup or not?'",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "'We must win this game! Do you want to win the Cup or not?'",
+      "sentences": [
+        "'We must win this game!",
+        "Do you want to win the Cup or not?'"
+      ],
+      "director": {
+        "sentence_overrides": [
+          {
+            "idx": 0,
+            "voice_id": null,
+            "speed": 0.95,
+            "pitch_st": -1.0,
+            "gain_db": 2.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 1,
+            "voice_id": null,
+            "speed": 1.0,
+            "pitch_st": 0.0,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "paragraph"
+          }
+        ],
+        "rationale": "Coach Zangado is angry (intensity 0.9) and urging the team. Both sentences are imperative/rhetorical questions delivered with authority. Per difficulty level A (graded reader), base speed is kept slow (0.75-0.9); anger only slightly raises speed to 0.95-1.0, never >1.05. Gain +1.5~+2.0 dB and pitch -1~0 st convey force without shouting. Dramatic pause before the challenge (sentence 0) and paragraph pause after the final question (sentence 1) give weight. Single speaker → no voice_id change.",
+        "confidence": 0.92
+      },
+      "ok": true
+    },
+    {
+      "idx": 5,
+      "source_text": "We want to win, but nobody answers. The players are looking down, all but three of us. The first is my friend, Junior. He's nineteen and comes from my hometown. He's a good player and my best friend. I like him a lot. I remember we played futsal when we were children. Futsal is football with only five players in the team. It's a fast game!",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 5,
+        "text": "",
+        "speaker_canonical_name": "Tino (Albertino)",
+        "is_dialogue": false,
+        "emotion": "contemplative",
+        "emotion_intensity": 0.6,
+        "confidence": 0.9,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "主角Tino的第一人称内心独白/叙述，回忆与好友Junior的童年踢五人制足球经历，语气怀念且平静，为后续上场做铺垫",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "We want to win, but nobody answers. The players are looking down, all but three of us. The first is my friend, Junior. He's nineteen and comes from my hometown. He's a good player and my best friend. I like him a lot. I remember we played futsal when we were children. Futsal is football with only five players in the team. It's a fast game!",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "We want to win, but nobody answers. The players are looking down, all but three of us. The first is my friend, Junior. He's nineteen and comes from my hometown. He's a good player and my best friend. I like him a lot. I remember we played futsal when we were children. Futsal is football with only five players in the team. It's a fast game!",
+      "sentences": [
+        "We want to win, but nobody answers.",
+        "The players are looking down, all but three of us.",
+        "The first is my friend, Junior.",
+        "He's nineteen and comes from my hometown.",
+        "He's a good player and my best friend.",
+        "I like him a lot.",
+        "I remember we played futsal when we were children.",
+        "Futsal is football with only five players in the team.",
+        "It's a fast game!"
+      ],
+      "director": {
+        "sentence_overrides": [
+          {
+            "idx": 0,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": -1.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 1,
+            "voice_id": null,
+            "speed": 0.8,
+            "pitch_st": null,
+            "gain_db": -1.5,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 2,
+            "voice_id": null,
+            "speed": 0.9,
+            "pitch_st": null,
+            "gain_db": 0.5,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 3,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": 0.0,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 4,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": 0.5,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 5,
+            "voice_id": null,
+            "speed": 0.8,
+            "pitch_st": null,
+            "gain_db": -1.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 6,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": -0.5,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 7,
+            "voice_id": null,
+            "speed": 0.9,
+            "pitch_st": null,
+            "gain_db": 0.0,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 8,
+            "voice_id": null,
+            "speed": 1.0,
+            "pitch_st": null,
+            "gain_db": 1.0,
+            "pause_after_ms": null,
+            "pause_category": "paragraph"
+          }
+        ],
+        "rationale": "段落整体为contemplative基调(强度0.6)，A级难度要求基线偏慢。前两句表达失落无奈，降速降益并用dramatic停顿强化氛围；第2-4句介绍好友Junior时语速微快、音量微增，体现亲切感；第5句内心独白转折处用dramatic停顿；第6-7句回忆解释futsal时保持叙述节奏；最后一句感叹号结尾用paragraph停顿收束，语速恢复基线、音量微增表达兴奋。全段单一说话人Tino，无需换声。",
+        "confidence": 0.88
+      },
+      "ok": true
+    },
+    {
+      "idx": 6,
+      "source_text": "The second is Lenda. He's thirty and he comes from Sao Paulo. He's the captain of Stars and a very good player. He played for the Brazilian team when he was younger. I saw him play and I had a picture of him in my bedroom. But he doesn't like me because I'm new... and very young.",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 6,
+        "text": "The second is Lenda. He's thirty and he comes from Sao Paulo. He's the captain of Stars and a very good player. He played for the Brazilian team when he was younger. I saw him play and I had a picture of him in my bedroom. But he doesn't like me because I'm new... and very young.",
+        "speaker_canonical_name": "Tino (Albertino)",
+        "is_dialogue": false,
+        "emotion": "contemplative",
+        "emotion_intensity": 0.6,
+        "confidence": 0.9,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "主角Tino的第一人称内心独白，介绍队长Lenda的背景并表达自己作为新人被队长不喜欢的忐忑心情",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "The second is Lenda. He's thirty and he comes from Sao Paulo. He's the captain of Stars and a very good player. He played for the Brazilian team when he was younger. I saw him play and I had a picture of him in my bedroom. But he doesn't like me because I'm new... and very young.",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "The second is Lenda. He's thirty and he comes from Sao Paulo. He's the captain of Stars and a very good player. He played for the Brazilian team when he was younger. I saw him play and I had a picture of him in my bedroom. But he doesn't like me because I'm new... and very young.",
+      "sentences": [
+        "The second is Lenda.",
+        "He's thirty and he comes from Sao Paulo.",
+        "He's the captain of Stars and a very good player.",
+        "He played for the Brazilian team when he was younger.",
+        "I saw him play and I had a picture of him in my bedroom.",
+        "But he doesn't like me because I'm new...",
+        "and very young."
+      ],
+      "director": {
+        "sentence_overrides": [
+          {
+            "idx": 4,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": -1.0,
+            "gain_db": -1.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 5,
+            "voice_id": null,
+            "speed": 0.8,
+            "pitch_st": -1.0,
+            "gain_db": -1.5,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 6,
+            "voice_id": null,
+            "speed": 0.75,
+            "pitch_st": -2.0,
+            "gain_db": -2.0,
+            "pause_after_ms": null,
+            "pause_category": "paragraph"
+          }
+        ],
+        "rationale": "The paragraph is a first-person contemplative monologue by Tino reflecting on Lenda. Sentences 0-3 are factual narration delivered at the paragraph baseline (slow A-level pace). Starting at sentence 4, the tone shifts to personal memory and vulnerability ('I saw him play...'), warranting a softer, slower, slightly lower-pitched delivery with a dramatic pause before the revelation. Sentence 5 ('But he doesn't like me...') deepens the intimacy and hurt, so we further reduce speed/gain/pitch and use a clause pause to let the 'because' clause land. Sentence 6 ('and very young') is a fragile afterthought — the quietest, slowest, lowest note — ending with a paragraph pause for emotional closure. No voice_id changes: single speaker throughout.",
+        "confidence": 0.92
+      },
+      "ok": true
+    },
+    {
+      "idx": 7,
+      "source_text": "The third is me, Tino. I'm only sixteen, but I live football. In the day, I play football; at night, I sleep football. I eat and drink football! The beautiful game! Stars is my first big team and I'm very happy to be here. I know I'm young, but it doesn't matter. I've got two quick feet, I'm not tall, but I'm very fast, and stronger than other boys of sixteen. I can play forever.",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 7,
+        "text": "",
+        "speaker_canonical_name": "Tino (Albertino)",
+        "is_dialogue": false,
+        "emotion": "happy",
+        "emotion_intensity": 0.85,
+        "confidence": 0.95,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "主角Tino的第一人称独白，表达对足球的纯粹热爱与自信，语言简洁有力，符合Level 1分级读物特点",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "The third is me, Tino. I'm only sixteen, but I live football. In the day, I play football; at night, I sleep football. I eat and drink football! The beautiful game! Stars is my first big team and I'm very happy to be here. I know I'm young, but it doesn't matter. I've got two quick feet, I'm not tall, but I'm very fast, and stronger than other boys of sixteen. I can play forever.",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "The third is me, Tino. I'm only sixteen, but I live football. In the day, I play football; at night, I sleep football. I eat and drink football! The beautiful game! Stars is my first big team and I'm very happy to be here. I know I'm young, but it doesn't matter. I've got two quick feet, I'm not tall, but I'm very fast, and stronger than other boys of sixteen. I can play forever.",
+      "sentences": [
+        "The third is me, Tino.",
+        "I'm only sixteen, but I live football.",
+        "In the day, I play football; at night, I sleep football.",
+        "I eat and drink football!",
+        "The beautiful game!",
+        "Stars is my first big team and I'm very happy to be here.",
+        "I know I'm young, but it doesn't matter.",
+        "I've got two quick feet, I'm not tall, but I'm very fast, and stronger than other boys of sixteen.",
+        "I can play forever."
+      ],
+      "director": {
+        "sentence_overrides": [
+          {
+            "idx": 0,
+            "voice_id": null,
+            "speed": null,
+            "pitch_st": null,
+            "gain_db": null,
+            "pause_after_ms": null,
+            "pause_category": "paragraph"
+          },
+          {
+            "idx": 1,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": 1.0,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 2,
+            "voice_id": null,
+            "speed": 0.8,
+            "pitch_st": null,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 3,
+            "voice_id": null,
+            "speed": 0.9,
+            "pitch_st": 1.0,
+            "gain_db": 2.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 4,
+            "voice_id": null,
+            "speed": 0.75,
+            "pitch_st": 1.0,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 5,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": 0.5,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 6,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": 0.5,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 7,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": 1.0,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 8,
+            "voice_id": null,
+            "speed": 0.8,
+            "pitch_st": -1.0,
+            "gain_db": 1.0,
+            "pause_after_ms": null,
+            "pause_category": "paragraph"
+          }
+        ],
+        "rationale": "This is a first-person monologue by a 16-year-old football enthusiast (Tino) with high happiness intensity (0.85). The text uses repetitive, rhythmic phrasing ('I play football; at night, I sleep football') to convey obsession and joy. For graded readers (Level A), baseline speed is kept slow (0.75-0.9). Key performative choices: 1) Sentence 0 gets a paragraph pause to establish the speaker. 2) Sentences 1-4 (the 'football' litany) progressively increase gain and slightly raise pitch to build excitement, with dramatic pauses after the rhythmic parallelism (sentences 2, 3) and the exclamation 'The beautiful game!' (sentence 4). 3) Sentences 5-7 (facts about the team and self) use clause pauses for clear articulation and moderate gain for confident happiness. 4) Sentence 8 ('I can play forever') slows down, lowers pitch slightly for warmth/conviction, and ends with a paragraph pause for closure. No voice_id changes needed (single speaker).",
+        "confidence": 0.92
+      },
+      "ok": true
+    },
+    {
+      "idx": 8,
+      "source_text": "I didn't play in the first half. I waited and watched, but I could do nothing, of course. We went one-nil down after ten minutes, then two-nil down five minutes before half time. Ouch!",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 8,
+        "text": "",
+        "speaker_canonical_name": "Tino (Albertino)",
+        "is_dialogue": false,
+        "emotion": "tense",
+        "emotion_intensity": 0.7,
+        "confidence": 0.95,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "主角Tino的第一人称内心独白，回顾上半场替补经历，球队0-2落后的紧张挫败感",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "I didn't play in the first half. I waited and watched, but I could do nothing, of course. We went one-nil down after ten minutes, then two-nil down five minutes before half time. Ouch!",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "I didn't play in the first half. I waited and watched, but I could do nothing, of course. We went one-nil down after ten minutes, then two-nil down five minutes before half time. Ouch!",
+      "sentences": [
+        "I didn't play in the first half.",
+        "I waited and watched, but I could do nothing, of course.",
+        "We went one-nil down after ten minutes, then two-nil down five minutes before half time.",
+        "Ouch!"
+      ],
+      "director": {
+        "sentence_overrides": [
+          {
+            "idx": 0,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": -1.0,
+            "gain_db": -1.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 1,
+            "voice_id": null,
+            "speed": 0.8,
+            "pitch_st": -1.0,
+            "gain_db": -1.5,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 2,
+            "voice_id": null,
+            "speed": 0.9,
+            "pitch_st": -1.0,
+            "gain_db": -0.5,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 3,
+            "voice_id": null,
+            "speed": 0.75,
+            "pitch_st": -2.0,
+            "gain_db": -2.0,
+            "pause_after_ms": null,
+            "pause_category": "paragraph"
+          }
+        ],
+        "rationale": "段落呈现紧张/无力感，主角作为替补目睹球队落后。整体采用A级分级读物慢速基线(0.75-0.9)，通过降低音高、减弱音量表现内心压抑。第0句开场确立无力感用dramatic停顿；第1句'waited and watched'用clause停顿模拟观察节奏；第2句比分连述加dramatic停顿强化打击感；第3句'Ouch!'作为情感爆发点用最慢语速、最低音高、paragraph收束停顿。单角色独白无需换声。",
+        "confidence": 0.88
+      },
+      "ok": true
+    },
+    {
+      "idx": 9,
+      "source_text": "'OK,' the coach says suddenly. 'I want much more from all of you in the second half. We must play better, so I'm going to make some changes.'",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 9,
+        "text": "",
+        "speaker_canonical_name": "Coach Zangado",
+        "is_dialogue": true,
+        "emotion": "angry",
+        "emotion_intensity": 0.85,
+        "confidence": 0.95,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "教练在中场休息时愤怒斥责球员并宣布人员调整，语气权威且急切",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "'OK,' the coach says suddenly. 'I want much more from all of you in the second half. We must play better, so I'm going to make some changes.'",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "'OK,' the coach says suddenly. 'I want much more from all of you in the second half. We must play better, so I'm going to make some changes.'",
+      "sentences": [
+        "'OK,' the coach says suddenly.",
+        "'I want much more from all of you in the second half.",
+        "We must play better, so I'm going to make some changes.'"
+      ],
+      "director": {
+        "sentence_overrides": [
+          {
+            "idx": 0,
+            "voice_id": null,
+            "speed": null,
+            "pitch_st": null,
+            "gain_db": null,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 1,
+            "voice_id": null,
+            "speed": 1.05,
+            "pitch_st": null,
+            "gain_db": 2.0,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 2,
+            "voice_id": null,
+            "speed": 1.05,
+            "pitch_st": -1.0,
+            "gain_db": 2.0,
+            "pause_after_ms": null,
+            "pause_category": "paragraph"
+          }
+        ],
+        "rationale": "Coach Zangado is angry (intensity 0.85) and addressing the team. Sentence 0 ('OK,') is a sudden, sharp interjection — a dramatic pause after it heightens the authoritative tone. Sentences 1 and 2 contain the core angry directives; per the angry style guide and Level A constraints (speed ≤ 1.05), I raise gain_db to +2 dB for intensity, slightly increase speed to 1.05 for urgency, and lower pitch by -1 semitone on the final sentence for gravitas. Pause categories mark the rhetorical structure: clause pause after the demand in sentence 1, paragraph pause after the concluding announcement in sentence 2. Single speaker (Coach) so no voice_id change needed; base voice en-US-GuyNeural is retained.",
+        "confidence": 0.92
+      },
+      "ok": true
+    },
+    {
+      "idx": 10,
+      "source_text": "Now all the players look up.",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 10,
+        "text": "",
+        "speaker_canonical_name": "Narrator",
+        "is_dialogue": false,
+        "emotion": "tense",
+        "emotion_intensity": 0.8,
+        "confidence": 0.9,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "叙述性描写，球员们抬头看教练，延续更衣室紧张压抑氛围",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "Now all the players look up.",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "Now all the players look up.",
+      "sentences": [
+        "Now all the players look up."
+      ],
+      "director": {
+        "sentence_overrides": [],
+        "rationale": "单句段落无逐句演绎空间",
+        "confidence": 0.0
+      },
+      "ok": true
+    },
+    {
+      "idx": 11,
+      "source_text": "'You and you,' the coach says to two players. 'You worked well, but I'm making two changes.'",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 11,
+        "text": "",
+        "speaker_canonical_name": "Coach Zangado",
+        "is_dialogue": true,
+        "emotion": "angry",
+        "emotion_intensity": 0.85,
+        "confidence": 0.95,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "教练在中场休息时愤怒斥责球员并宣布换人，体现权威与不满",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "'You and you,' the coach says to two players. 'You worked well, but I'm making two changes.'",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "'You and you,' the coach says to two players. 'You worked well, but I'm making two changes.'",
+      "sentences": [
+        "'You and you,' the coach says to two players.",
+        "'You worked well, but I'm making two changes.'"
+      ],
+      "director": {
+        "sentence_overrides": [
+          {
+            "idx": 0,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": -1.0,
+            "gain_db": 2.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 1,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": -1.0,
+            "gain_db": 2.0,
+            "pause_after_ms": null,
+            "pause_category": "paragraph"
+          }
+        ],
+        "rationale": "Coach Zangado is angry (intensity 0.85) and addressing players directly. Both sentences are dialogue requiring authoritative, firm delivery. Using slower speed (0.85) per graded-reader baseline, increased gain (+2dB) and lowered pitch (-1 semitone) convey anger without extreme speed. Dramatic pause after first sentence emphasizes the address 'You and you'; paragraph pause after final sentence closes the announcement.",
+        "confidence": 0.92
+      },
+      "ok": true
+    },
+    {
+      "idx": 12,
+      "source_text": "'Nakano, are you ready?' he asks a different player.",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 12,
+        "text": "",
+        "speaker_canonical_name": "Coach Zangado",
+        "is_dialogue": true,
+        "emotion": "tense",
+        "emotion_intensity": 0.8,
+        "confidence": 0.9,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "教练在中场休息时询问替补球员Nakano是否准备好上场，语气紧迫权威，符合球队落后两球的紧张氛围",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "'Nakano, are you ready?' he asks a different player.",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "'Nakano, are you ready?' he asks a different player.",
+      "sentences": [
+        "'Nakano, are you ready?'",
+        "he asks a different player."
+      ],
+      "director": {
+        "sentence_overrides": [
+          {
+            "idx": 0,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 1,
+            "voice_id": null,
+            "speed": 0.8,
+            "pitch_st": null,
+            "gain_db": -1.0,
+            "pause_after_ms": null,
+            "pause_category": null
+          }
+        ],
+        "rationale": "Coach Zangado's tense address to Nakano requires authoritative projection (gain +1.5dB) with deliberate pacing (speed 0.85) for learner clarity, followed by dramatic pause to heighten tension. The narrative tag 'he asks a different player' shifts to quieter observational tone (gain -1dB, slower 0.8) to contrast the direct address.",
+        "confidence": 0.88
+      },
+      "ok": true
+    },
+    {
+      "idx": 13,
+      "source_text": "'Yes, coach,' says Nakano.",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 13,
+        "text": "",
+        "speaker_canonical_name": "Nakano",
+        "is_dialogue": true,
+        "emotion": "neutral",
+        "emotion_intensity": 0.5,
+        "confidence": 0.95,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "Nakano对教练指令的简短回应，服从语气",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "'Yes, coach,' says Nakano.",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "'Yes, coach,' says Nakano.",
+      "sentences": [
+        "'Yes, coach,' says Nakano."
+      ],
+      "director": {
+        "sentence_overrides": [],
+        "rationale": "单句段落无逐句演绎空间",
+        "confidence": 0.0
+      },
+      "ok": true
+    },
+    {
+      "idx": 14,
+      "source_text": "'OK. You're on.' Then he looks around. Who's the next player? I feel my hands get hot. Coach Zangado looks past me. Then he looks back. 'Tino, are you ready?'",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 14,
+        "text": "",
+        "speaker_canonical_name": "Coach Zangado",
+        "is_dialogue": true,
+        "emotion": "tense",
+        "emotion_intensity": 0.8,
+        "confidence": 0.95,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "教练在更衣室紧张时刻指派主角首发，语气权威且急切",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "'OK. You're on.' Then he looks around. Who's the next player? I feel my hands get hot. Coach Zangado looks past me. Then he looks back. 'Tino, are you ready?'",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "'OK. You're on.' Then he looks around. Who's the next player? I feel my hands get hot. Coach Zangado looks past me. Then he looks back. 'Tino, are you ready?'",
+      "sentences": [
+        "'OK.",
+        "You're on.'",
+        "Then he looks around.",
+        "Who's the next player?",
+        "I feel my hands get hot.",
+        "Coach Zangado looks past me.",
+        "Then he looks back.",
+        "'Tino, are you ready?'"
+      ],
+      "director": {
+        "sentence_overrides": [
+          {
+            "idx": 0,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 1,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 2,
+            "voice_id": null,
+            "speed": 0.8,
+            "pitch_st": null,
+            "gain_db": -1.0,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 3,
+            "voice_id": null,
+            "speed": 0.8,
+            "pitch_st": 1.0,
+            "gain_db": -1.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 4,
+            "voice_id": null,
+            "speed": 0.75,
+            "pitch_st": -1.0,
+            "gain_db": -2.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 5,
+            "voice_id": null,
+            "speed": 0.8,
+            "pitch_st": null,
+            "gain_db": -1.0,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 6,
+            "voice_id": null,
+            "speed": 0.8,
+            "pitch_st": null,
+            "gain_db": -1.0,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 7,
+            "voice_id": "am_onyx",
+            "speed": 0.85,
+            "pitch_st": -1.0,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "paragraph"
+          }
+        ],
+        "rationale": "段落呈现紧张感(tense,强度0.8)的比赛场景,教练Zangado对白占主导。基线语速0.85符合A级分级读物慢速要求。句0-1教练简短指令用dramatic停顿制造权威感,+1.5dB增强穿透力。句2-3叙述视角切换至主角内心,降速至0.8,-1dB表现紧张观察,句3疑问句升半音+pitch_st=1体现焦虑上扬。句4心理描写'手心发热'最核心张力点,速度最慢0.75,-2dB低语感,-1半音压抑音高,dramatic停顿酝酿爆发。句5-6教练动作描写维持叙述张力。句7教练二次对白切换am_onyx音色(可用表中最深沉男声)区分说话人,-1半音威严感,+1.5dB权威,paragraph收束段落。全程未超1.05速度上限,参数均在边界内。",
+        "confidence": 0.92
+      },
+      "ok": true
+    },
+    {
+      "idx": 15,
+      "source_text": "'Who, me?' I ask.",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 15,
+        "text": "",
+        "speaker_canonical_name": "Tino (Albertino)",
+        "is_dialogue": true,
+        "emotion": "surprised",
+        "emotion_intensity": 0.7,
+        "confidence": 0.95,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "主角Tino对教练让他首发出场感到惊讶和不敢置信，第一人称视角的直接对话",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "'Who, me?' I ask.",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "'Who, me?' I ask.",
+      "sentences": [
+        "'Who, me?'",
+        "I ask."
+      ],
+      "director": {
+        "sentence_overrides": [
+          {
+            "idx": 0,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": 1.5,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 1,
+            "voice_id": null,
+            "speed": 0.8,
+            "pitch_st": null,
+            "gain_db": -0.5,
+            "pause_after_ms": null,
+            "pause_category": null
+          }
+        ],
+        "rationale": "First sentence 'Who, me?' shows surprise with rising intonation and emphasis, so slightly faster than baseline, higher pitch, louder, and a dramatic pause after to let the surprise land. Second sentence 'I ask' is a quiet narrative tag, so slower and softer to contrast.",
+        "confidence": 0.88
+      },
+      "ok": true
+    },
+    {
+      "idx": 16,
+      "source_text": "'Yes, you. You're the only Tino here.'",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 16,
+        "text": "",
+        "speaker_canonical_name": "Coach Zangado",
+        "is_dialogue": true,
+        "emotion": "angry",
+        "emotion_intensity": 0.8,
+        "confidence": 0.9,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "教练愤怒地指派Tino上场，语气强硬权威，符合更衣室紧张氛围",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "'Yes, you. You're the only Tino here.'",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "'Yes, you. You're the only Tino here.'",
+      "sentences": [
+        "'Yes, you.",
+        "You're the only Tino here.'"
+      ],
+      "director": {
+        "sentence_overrides": [
+          {
+            "idx": 0,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": -1.0,
+            "gain_db": 2.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 1,
+            "voice_id": null,
+            "speed": 0.9,
+            "pitch_st": -1.0,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": null
+          }
+        ],
+        "rationale": "Coach Zangado is speaking angrily (intensity 0.8) in a graded reader (Level A). Both sentences receive slightly slower-than-baseline speed (0.85, 0.9) to respect the deliberate-slow style, with increased gain (+2.0, +1.5 dB) and lowered pitch (-1 st) for authoritative anger. A dramatic pause (900 ms) after the first short sentence 'Yes, you.' heightens the accusatory tone. No voice_id change because only one speaker is present and the available voice list contains no clearly 'coach-like' male voice that would improve on the paragraph default (en-US-GuyNeural).",
+        "confidence": 0.88
+      },
+      "ok": true
+    },
+    {
+      "idx": 17,
+      "source_text": "'Er, yes, coach. I'm ready.'",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 17,
+        "text": "",
+        "speaker_canonical_name": "Tino (Albertino)",
+        "is_dialogue": true,
+        "emotion": "tense",
+        "emotion_intensity": 0.8,
+        "confidence": 0.95,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "Tino回应教练Zangado的点名，虽表面答应但'Er'显露内心紧张与不安，符合章节压抑紧张氛围及主角初登场心理",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "'Er, yes, coach. I'm ready.'",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "'Er, yes, coach. I'm ready.'",
+      "sentences": [
+        "'Er, yes, coach.",
+        "I'm ready.'"
+      ],
+      "director": {
+        "sentence_overrides": [
+          {
+            "idx": 0,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": 0.5,
+            "pause_after_ms": null,
+            "pause_category": "comma"
+          },
+          {
+            "idx": 1,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": 0.5,
+            "pause_after_ms": null,
+            "pause_category": "paragraph"
+          }
+        ],
+        "rationale": "Tino以紧张情绪回应教练，属于分级读物A级难度的对白场景。基线语速建议0.75-0.9，结合tense强度0.8，设定speed=0.85体现紧张时的刻意控制；gain_db=+0.5dB表现紧绷时的微弱音量提升；第0句'Er, yes, coach.'含犹豫语气词和称呼，用comma类别停顿(150ms)模拟自然换气；第1句'I'm ready.'为回应收束，用paragraph类别停顿(1200ms)体现段落结束感。单角色对白无需换声，音高保持基线不调整。",
+        "confidence": 0.88
+      },
+      "ok": true
+    },
+    {
+      "idx": 18,
+      "source_text": "'OK. You're up front, with Lenda. We need a goal early in the second half. Understand?'",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 18,
+        "text": "",
+        "speaker_canonical_name": "Coach Zangado",
+        "is_dialogue": true,
+        "emotion": "angry",
+        "emotion_intensity": 0.85,
+        "confidence": 0.95,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "教练在中场休息时愤怒地指派Tino首发，语气急切且具有命令性",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "'OK. You're up front, with Lenda. We need a goal early in the second half. Understand?'",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "'OK. You're up front, with Lenda. We need a goal early in the second half. Understand?'",
+      "sentences": [
+        "'OK.",
+        "You're up front, with Lenda.",
+        "We need a goal early in the second half.",
+        "Understand?'"
+      ],
+      "director": {
+        "sentence_overrides": [
+          {
+            "idx": 0,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": -1.0,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 1,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": -1.0,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 2,
+            "voice_id": null,
+            "speed": 0.9,
+            "pitch_st": -1.0,
+            "gain_db": 2.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 3,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": -1.0,
+            "gain_db": 2.0,
+            "pause_after_ms": null,
+            "pause_category": "paragraph"
+          }
+        ],
+        "rationale": "Coach Zangado is angry (intensity 0.85) and giving tactical instructions. Using a slower base speed (0.85-0.9) per difficulty level A, with increased gain (+1.5 to +2.0 dB) and lowered pitch (-1 semitone) to convey authority and anger. Dramatic pauses before key instructions (sentences 0, 2) and after final command (sentence 3) for emphasis. Clause pause in sentence 1 for natural phrasing. Single speaker (Coach) so no voice_id changes needed.",
+        "confidence": 0.9
+      },
+      "ok": true
+    },
+    {
+      "idx": 19,
+      "source_text": "'Yes, coach.'",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 19,
+        "text": "",
+        "speaker_canonical_name": "Nakano",
+        "is_dialogue": true,
+        "emotion": "tense",
+        "emotion_intensity": 0.8,
+        "confidence": 0.95,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "Nakano对教练愤怒斥责的简短回应，体现更衣室高压氛围下的服从与紧张",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "'Yes, coach.'",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "'Yes, coach.'",
+      "sentences": [
+        "'Yes, coach.'"
+      ],
+      "director": {
+        "sentence_overrides": [],
+        "rationale": "单句段落无逐句演绎空间",
+        "confidence": 0.0
+      },
+      "ok": true
+    },
+    {
+      "idx": 20,
+      "source_text": "Junior looks at me and gives a big smile. Lenda looks at me, but he doesn't smile. He's thinking, 'Who is this boy? How good is he? Can he help us win?'",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 20,
+        "text": "",
+        "speaker_canonical_name": "Narrator",
+        "is_dialogue": false,
+        "emotion": "tense",
+        "emotion_intensity": 0.7,
+        "confidence": 0.9,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "旁白描述队友Junior和队长Lenda对主角Tino上场的不同反应，体现更衣室紧张氛围和老将的审视",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "Junior looks at me and gives a big smile. Lenda looks at me, but he doesn't smile. He's thinking, 'Who is this boy? How good is he? Can he help us win?'",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "Junior looks at me and gives a big smile. Lenda looks at me, but he doesn't smile. He's thinking, 'Who is this boy? How good is he? Can he help us win?'",
+      "sentences": [
+        "Junior looks at me and gives a big smile.",
+        "Lenda looks at me, but he doesn't smile.",
+        "He's thinking, 'Who is this boy?",
+        "How good is he?",
+        "Can he help us win?'"
+      ],
+      "director": {
+        "sentence_overrides": [
+          {
+            "idx": 0,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": 0.5,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 1,
+            "voice_id": null,
+            "speed": 0.8,
+            "pitch_st": -1.0,
+            "gain_db": -0.5,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 2,
+            "voice_id": null,
+            "speed": 0.75,
+            "pitch_st": -1.0,
+            "gain_db": -2.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 3,
+            "voice_id": null,
+            "speed": 0.75,
+            "pitch_st": -1.0,
+            "gain_db": -2.0,
+            "pause_after_ms": null,
+            "pause_category": "comma"
+          },
+          {
+            "idx": 4,
+            "voice_id": null,
+            "speed": 0.75,
+            "pitch_st": -1.0,
+            "gain_db": -2.0,
+            "pause_after_ms": null,
+            "pause_category": "paragraph"
+          }
+        ],
+        "rationale": "段落基调紧张(tense, 强度0.7)，属分级读物A级(基线speed 0.75-0.9)。第0句Junior微笑，稍快速度0.85、微增响度表现轻松；第1句Lenda不笑转折，降速0.8、降音高-1半音、降响度-0.5dB，句后dramatic停顿引入内心独白；第2-4句为He's thinking内心独白三问，统一内心独白风格：速度0.75(基线下限)、响度-2dB、音高-1半音，第2句后dramatic停顿强调独白开始，第3句comma微顿维持语流，第4句paragraph收束。全段单一Narrator视角，无需换声voice_id。",
+        "confidence": 0.9
+      },
+      "ok": true
+    },
+    {
+      "idx": 21,
+      "source_text": "I can't answer these questions, but I feel very happy and excited. My shirt is white: number 20 with 'TINO' in big black letters on the back. On the front is a big star. I pull up my right sock, then my left. In my left sock there is something for good luck: a little star.",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 21,
+        "text": "",
+        "speaker_canonical_name": "Tino (Albertino)",
+        "is_dialogue": false,
+        "emotion": "happy",
+        "emotion_intensity": 0.8,
+        "confidence": 0.95,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "主角Tino的第一人称内心独白，表达首发登场前的喜悦与兴奋，提及母亲给的幸运小星星细节",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "I can't answer these questions, but I feel very happy and excited. My shirt is white: number 20 with 'TINO' in big black letters on the back. On the front is a big star. I pull up my right sock, then my left. In my left sock there is something for good luck: a little star.",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "I can't answer these questions, but I feel very happy and excited. My shirt is white: number 20 with 'TINO' in big black letters on the back. On the front is a big star. I pull up my right sock, then my left. In my left sock there is something for good luck: a little star.",
+      "sentences": [
+        "I can't answer these questions, but I feel very happy and excited.",
+        "My shirt is white: number 20 with 'TINO' in big black letters on the back.",
+        "On the front is a big star.",
+        "I pull up my right sock, then my left.",
+        "In my left sock there is something for good luck: a little star."
+      ],
+      "director": {
+        "sentence_overrides": [
+          {
+            "idx": 0,
+            "voice_id": null,
+            "speed": 1.05,
+            "pitch_st": 1.0,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 1,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": null,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 2,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": 1.0,
+            "gain_db": 0.5,
+            "pause_after_ms": null,
+            "pause_category": null
+          },
+          {
+            "idx": 3,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": null,
+            "pause_after_ms": null,
+            "pause_category": "comma"
+          },
+          {
+            "idx": 4,
+            "voice_id": null,
+            "speed": 0.8,
+            "pitch_st": -1.0,
+            "gain_db": -1.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          }
+        ],
+        "rationale": "Paragraph expresses happy excitement (intensity 0.8) from a single speaker (Tino). Level A baseline is slow (0.75-0.9). Sentence 0 opens with strong emotion → slight speed-up, gain +1.5 dB, pitch +1 st, dramatic pause after to let excitement land. Sentences 1-3 are descriptive narration → drop to 0.85× for clarity, clause/comma pauses for learner-friendly phrasing. Sentence 2 (big star) gets a small gain/pitch lift for visual emphasis. Sentence 4 reveals the lucky star — intimate, secretive tone → slowest 0.8×, softer -1 dB, pitch -1 st, dramatic pause to end the paragraph on a warm note. No voice_id changes needed (single speaker).",
+        "confidence": 0.92
+      },
+      "ok": true
+    },
+    {
+      "idx": 22,
+      "source_text": "My mother gave the little star to me when I began to play futsal. 'Here, Tino, take this for luck. You're little now, but one day you're going to be a big star, an amazing player. I know it. You're going to play for a big team.' I love my mother. She's here today, with my younger brother, Alex, and my little sister, Talita. My hometown is watching the game on TV, but my father isn't here today.",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 22,
+        "text": "",
+        "speaker_canonical_name": "Tino (Albertino)",
+        "is_dialogue": false,
+        "emotion": "tender",
+        "emotion_intensity": 0.8,
+        "confidence": 0.95,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "主角回忆母亲给幸运星星的温馨场景，第一人称叙述包含母亲的直接引语，情感基调温暖深情",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "My mother gave the little star to me when I began to play futsal. 'Here, Tino, take this for luck. You're little now, but one day you're going to be a big star, an amazing player. I know it. You're going to play for a big team.' I love my mother. She's here today, with my younger brother, Alex, and my little sister, Talita. My hometown is watching the game on TV, but my father isn't here today.",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "My mother gave the little star to me when I began to play futsal. 'Here, Tino, take this for luck. You're little now, but one day you're going to be a big star, an amazing player. I know it. You're going to play for a big team.' I love my mother. She's here today, with my younger brother, Alex, and my little sister, Talita. My hometown is watching the game on TV, but my father isn't here today.",
+      "sentences": [
+        "My mother gave the little star to me when I began to play futsal.",
+        "'Here, Tino, take this for luck.",
+        "You're little now, but one day you're going to be a big star, an amazing player.",
+        "I know it.",
+        "You're going to play for a big team.'",
+        "I love my mother.",
+        "She's here today, with my younger brother, Alex, and my little sister, Talita.",
+        "My hometown is watching the game on TV, but my father isn't here today."
+      ],
+      "director": {
+        "sentence_overrides": [
+          {
+            "idx": 1,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": 1.0,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 2,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": 1.0,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": null
+          },
+          {
+            "idx": 3,
+            "voice_id": null,
+            "speed": 0.8,
+            "pitch_st": null,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 4,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": 1.0,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "paragraph"
+          },
+          {
+            "idx": 7,
+            "voice_id": null,
+            "speed": 0.8,
+            "pitch_st": -1.0,
+            "gain_db": -1.5,
+            "pause_after_ms": null,
+            "pause_category": "paragraph"
+          }
+        ],
+        "rationale": "The paragraph is a tender first-person recollection by Tino. The mother's direct speech (sentences 1-4) is the emotional core: warm, encouraging, and prophetic. I apply a slightly faster speed (0.85 vs baseline ~0.8), a gentle upward pitch shift (+1st), and a modest gain boost (+1.5dB) to distinguish her voice from the narrator's without changing voice_id. Dramatic pauses before 'I know it' and after the prophecy create the intimate, storytelling rhythm. The final sentence (7) shifts to a quieter, sadder register (slower, lower pitch, -1.5dB) to contrast the mother's presence with the father's absence, ending with a paragraph pause for closure.",
+        "confidence": 0.92
+      },
+      "ok": true
+    },
+    {
+      "idx": 23,
+      "source_text": "He doesn't want to come, he says.",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 23,
+        "text": "",
+        "speaker_canonical_name": "Lenda",
+        "is_dialogue": true,
+        "emotion": "contemplative",
+        "emotion_intensity": 0.6,
+        "confidence": 0.85,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "队长Lenda对Tino母亲不愿到场的评述，语气平静中带观察思考",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "He doesn't want to come, he says.",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "He doesn't want to come, he says.",
+      "sentences": [
+        "He doesn't want to come, he says."
+      ],
+      "director": {
+        "sentence_overrides": [],
+        "rationale": "单句段落无逐句演绎空间",
+        "confidence": 0.0
+      },
+      "ok": true
+    },
+    {
+      "idx": 24,
+      "source_text": "'Sshh! Now listen to me,' says the coach. Everybody in the changing room is suddenly very quiet, and we can hear the big clock.",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 24,
+        "text": "",
+        "speaker_canonical_name": "Coach Zangado",
+        "is_dialogue": true,
+        "emotion": "angry",
+        "emotion_intensity": 0.9,
+        "confidence": 0.95,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "教练在更衣室中场休息时愤怒斥责球员，要求安静听战术安排，权威感强",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "'Sshh! Now listen to me,' says the coach. Everybody in the changing room is suddenly very quiet, and we can hear the big clock.",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "'Sshh! Now listen to me,' says the coach. Everybody in the changing room is suddenly very quiet, and we can hear the big clock.",
+      "sentences": [
+        "'Sshh!",
+        "Now listen to me,' says the coach.",
+        "Everybody in the changing room is suddenly very quiet, and we can hear the big clock."
+      ],
+      "director": {
+        "sentence_overrides": [
+          {
+            "idx": 0,
+            "voice_id": null,
+            "speed": 0.75,
+            "pitch_st": null,
+            "gain_db": 2.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 1,
+            "voice_id": null,
+            "speed": 0.95,
+            "pitch_st": -1.0,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 2,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": -1.0,
+            "pause_after_ms": null,
+            "pause_category": "paragraph"
+          }
+        ],
+        "rationale": "Coach Zangado is angry (intensity 0.9) in a graded reader (Level A). Sentence 0 'Sshh!' is a sharp command to silence the room: slower speed (0.75) for clarity, +2 dB gain for authority, and a dramatic pause after to let the silence land. Sentence 1 'Now listen to me,' continues the command with slightly faster but still controlled speed (0.95), moderate gain (+1.5 dB), lowered pitch (-1 st) for sternness, and a clause pause before the narrative shifts. Sentence 2 describes the resulting quiet atmosphere: slower speed (0.85) matching Level A baseline, reduced gain (-1 dB) to contrast the coach's volume, and a paragraph pause to close the scene. No voice_id changes needed as only the coach speaks.",
+        "confidence": 0.92
+      },
+      "ok": true
+    },
+    {
+      "idx": 25,
+      "source_text": "'It isn't finished. OK, we're two-nil down. Not good. But we've got forty-five minutes. Anything can happen in football, you know that. Stars is a good team; Stripes is an OK team. They've got one good player: their keeper. He's a big man and he can stop a lot, but he's only one man. Let's play our game. Move the ball and work for the team. Don't stand and think. Play with your feet, and when you can, shoot! This is Brazilian football. It's easy!'",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 25,
+        "text": "",
+        "speaker_canonical_name": "Coach Zangado",
+        "is_dialogue": true,
+        "emotion": "tense",
+        "emotion_intensity": 0.85,
+        "confidence": 0.95,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "教练中场休息时的战术部署与激励，权威中透着紧迫感，体现巴西足球'简单快乐'的理念",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "'It isn't finished. OK, we're two-nil down. Not good. But we've got forty-five minutes. Anything can happen in football, you know that. Stars is a good team; Stripes is an OK team. They've got one good player: their keeper. He's a big man and he can stop a lot, but he's only one man. Let's play our game. Move the ball and work for the team. Don't stand and think. Play with your feet, and when you can, shoot! This is Brazilian football. It's easy!'",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "'It isn't finished. OK, we're two-nil down. Not good. But we've got forty-five minutes. Anything can happen in football, you know that. Stars is a good team; Stripes is an OK team. They've got one good player: their keeper. He's a big man and he can stop a lot, but he's only one man. Let's play our game. Move the ball and work for the team. Don't stand and think. Play with your feet, and when you can, shoot! This is Brazilian football. It's easy!'",
+      "sentences": [
+        "'It isn't finished.",
+        "OK, we're two-nil down.",
+        "Not good.",
+        "But we've got forty-five minutes.",
+        "Anything can happen in football, you know that.",
+        "Stars is a good team; Stripes is an OK team.",
+        "They've got one good player: their keeper.",
+        "He's a big man and he can stop a lot, but he's only one man.",
+        "Let's play our game.",
+        "Move the ball and work for the team.",
+        "Don't stand and think.",
+        "Play with your feet, and when you can, shoot!",
+        "This is Brazilian football.",
+        "It's easy!'"
+      ],
+      "director": {
+        "sentence_overrides": [
+          {
+            "idx": 0,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 1,
+            "voice_id": null,
+            "speed": 0.8,
+            "pitch_st": null,
+            "gain_db": -0.5,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 2,
+            "voice_id": null,
+            "speed": 0.75,
+            "pitch_st": null,
+            "gain_db": -1.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 3,
+            "voice_id": null,
+            "speed": 0.9,
+            "pitch_st": null,
+            "gain_db": 1.0,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 4,
+            "voice_id": null,
+            "speed": 0.95,
+            "pitch_st": null,
+            "gain_db": 1.0,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 5,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": null,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 6,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": null,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 7,
+            "voice_id": null,
+            "speed": 0.8,
+            "pitch_st": null,
+            "gain_db": null,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 8,
+            "voice_id": null,
+            "speed": 0.9,
+            "pitch_st": null,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 9,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": 1.0,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 10,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": 1.0,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 11,
+            "voice_id": null,
+            "speed": 1.0,
+            "pitch_st": null,
+            "gain_db": 2.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 12,
+            "voice_id": null,
+            "speed": 0.9,
+            "pitch_st": null,
+            "gain_db": 1.0,
+            "pause_after_ms": null,
+            "pause_category": "paragraph"
+          },
+          {
+            "idx": 13,
+            "voice_id": null,
+            "speed": 0.95,
+            "pitch_st": null,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "paragraph"
+          }
+        ],
+        "rationale": "Coach Zangado delivers a tense halftime pep talk (intensity 0.85) to a trailing team. The speech moves from blunt reality-check (sentences 0-2) through tactical analysis (3-7) to a rousing call-to-action (8-13). Because this is a graded-reader (Level A), the baseline tempo is kept deliberately slow (0.75-0.95) with only the final rallying cry ('shoot!') touching 1.0. Gain is used for authoritative presence (+1.0 to +2.0 dB) rather than extreme speed. Dramatic pauses frame the emotional beats: after the opening hook, after the bleak 'Not good', before the strategic pivot ('But we've got...'), before the climactic 'Let's play our game', and on the final two slogan-like sentences. Clause pauses break the tactical sentences into digestible chunks for learners. Single speaker throughout — no voice_id changes needed.",
+        "confidence": 0.92
+      },
+      "ok": true
+    },
+    {
+      "idx": 26,
+      "source_text": "The players are looking at coach Zangado. 'He's right,' says Lenda. 'The game isn't finished. We can do it.'",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 26,
+        "text": "",
+        "speaker_canonical_name": "Lenda",
+        "is_dialogue": true,
+        "emotion": "tense",
+        "emotion_intensity": 0.8,
+        "confidence": 0.95,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "队长Lenda在更衣室回应教练的斥责，表现出冷静坚定的领袖气质，试图鼓舞士气扭转局势",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "The players are looking at coach Zangado. 'He's right,' says Lenda. 'The game isn't finished. We can do it.'",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "The players are looking at coach Zangado. 'He's right,' says Lenda. 'The game isn't finished. We can do it.'",
+      "sentences": [
+        "The players are looking at coach Zangado.",
+        "'He's right,' says Lenda.",
+        "'The game isn't finished.",
+        "We can do it.'"
+      ],
+      "director": {
+        "sentence_overrides": [
+          {
+            "idx": 0,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": null,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 1,
+            "voice_id": "af_sarah",
+            "speed": 0.8,
+            "pitch_st": null,
+            "gain_db": -1.0,
+            "pause_after_ms": null,
+            "pause_category": "comma"
+          },
+          {
+            "idx": 2,
+            "voice_id": "af_sarah",
+            "speed": 0.8,
+            "pitch_st": null,
+            "gain_db": -1.0,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 3,
+            "voice_id": "af_sarah",
+            "speed": 0.9,
+            "pitch_st": 1.0,
+            "gain_db": 1.0,
+            "pause_after_ms": null,
+            "pause_category": "paragraph"
+          }
+        ],
+        "rationale": "Paragraph opens with narrative (idx 0) at learner-friendly slow pace with clause pause. Dialogue by Lenda (idx 1-3) switches to female voice af_sarah from available list. Tense emotion conveyed via slightly slower speed, reduced gain for quiet intensity, and strategic pauses. Final sentence (idx 3) gains confidence with higher gain, raised pitch, and paragraph closure pause.",
+        "confidence": 0.88
+      },
+      "ok": true
+    },
+    {
+      "idx": 27,
+      "source_text": "'But do you want to win?' asks the coach.",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 27,
+        "text": "",
+        "speaker_canonical_name": "Coach Zangado",
+        "is_dialogue": true,
+        "emotion": "angry",
+        "emotion_intensity": 0.9,
+        "confidence": 0.95,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "教练在更衣室愤怒斥责球员，语气强硬逼迫，延续前文'Bad! Very bad!'的高压氛围",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "'But do you want to win?' asks the coach.",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "'But do you want to win?' asks the coach.",
+      "sentences": [
+        "'But do you want to win?'",
+        "asks the coach."
+      ],
+      "director": {
+        "sentence_overrides": [
+          {
+            "idx": 0,
+            "voice_id": null,
+            "speed": 0.95,
+            "pitch_st": -1.0,
+            "gain_db": 2.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 1,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": -1.0,
+            "pause_after_ms": null,
+            "pause_category": null
+          }
+        ],
+        "rationale": "Coach Zangado is angry (intensity 0.9). Sentence 0 is the angry challenge: slightly faster than baseline, louder, slightly lower pitch, and a dramatic pause after to let the question land. Sentence 1 is the attribution 'asks the coach' — quieter and slower to de-emphasize narration. No voice_id change needed as only one speaker.",
+        "confidence": 0.92
+      },
+      "ok": true
+    },
+    {
+      "idx": 28,
+      "source_text": "'Yes,' some of the players say.",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 28,
+        "text": "",
+        "speaker_canonical_name": "Narrator",
+        "is_dialogue": false,
+        "emotion": "tense",
+        "emotion_intensity": 0.8,
+        "confidence": 0.9,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "叙述者描写球员们对教练愤怒斥责的回应，延续更衣室压抑紧张氛围",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "'Yes,' some of the players say.",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "'Yes,' some of the players say.",
+      "sentences": [
+        "'Yes,' some of the players say."
+      ],
+      "director": {
+        "sentence_overrides": [],
+        "rationale": "单句段落无逐句演绎空间",
+        "confidence": 0.0
+      },
+      "ok": true
+    },
+    {
+      "idx": 29,
+      "source_text": "'I can't hear you,' says the coach. 'Do you want to win?'",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 29,
+        "text": "",
+        "speaker_canonical_name": "Coach Zangado",
+        "is_dialogue": true,
+        "emotion": "angry",
+        "emotion_intensity": 0.9,
+        "confidence": 0.95,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "教练愤怒斥责球员，要求表态是否想赢球，情绪高涨",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "'I can't hear you,' says the coach. 'Do you want to win?'",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "'I can't hear you,' says the coach. 'Do you want to win?'",
+      "sentences": [
+        "'I can't hear you,' says the coach.",
+        "'Do you want to win?'"
+      ],
+      "director": {
+        "sentence_overrides": [
+          {
+            "idx": 0,
+            "voice_id": null,
+            "speed": 0.95,
+            "pitch_st": -1.0,
+            "gain_db": 2.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 1,
+            "voice_id": null,
+            "speed": 1.0,
+            "pitch_st": -1.0,
+            "gain_db": 2.5,
+            "pause_after_ms": null,
+            "pause_category": "paragraph"
+          }
+        ],
+        "rationale": "Coach Zangado is angry (intensity 0.9) and speaking to a player. Both sentences are dialogue by the same character, so no voice change is needed. The paragraph-level voice (en-US-GuyNeural) is kept. For angry coaching tone: slightly faster than baseline (0.95 for first sentence, 1.0 for second), increased loudness (+2.0 and +2.5 dB), slightly lower pitch (-1 semitone). A dramatic pause after the first sentence emphasizes the challenge; a paragraph pause after the second concludes the utterance. Speed kept within A-level limits (≤1.05).",
+        "confidence": 0.92
+      },
+      "ok": true
+    },
+    {
+      "idx": 30,
+      "source_text": "This time all of the players shout 'Yes!'",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 30,
+        "text": "",
+        "speaker_canonical_name": "Narrator",
+        "is_dialogue": false,
+        "emotion": "tense",
+        "emotion_intensity": 0.8,
+        "confidence": 0.95,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "旁白描述全队球员齐声回应教练，展现团队士气高涨、紧张备战的氛围",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "This time all of the players shout 'Yes!'",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "This time all of the players shout 'Yes!'",
+      "sentences": [
+        "This time all of the players shout 'Yes!'"
+      ],
+      "director": {
+        "sentence_overrides": [],
+        "rationale": "单句段落无逐句演绎空间",
+        "confidence": 0.0
+      },
+      "ok": true
+    },
+    {
+      "idx": 31,
+      "source_text": "'And can you do it?' asks the coach.",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 31,
+        "text": "",
+        "speaker_canonical_name": "Coach Zangado",
+        "is_dialogue": true,
+        "emotion": "tense",
+        "emotion_intensity": 0.8,
+        "confidence": 0.95,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "教练在更衣室中场休息时对主角Tino的质问，语气严厉且充满压力，考验年轻球员的心理素质",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "'And can you do it?' asks the coach.",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "'And can you do it?' asks the coach.",
+      "sentences": [
+        "'And can you do it?'",
+        "asks the coach."
+      ],
+      "director": {
+        "sentence_overrides": [
+          {
+            "idx": 0,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 1,
+            "voice_id": "am_onyx",
+            "speed": 0.8,
+            "pitch_st": null,
+            "gain_db": -1.0,
+            "pause_after_ms": null,
+            "pause_category": "paragraph"
+          }
+        ],
+        "rationale": "Sentence 0 is the coach's direct question to the player, marked as tense (intensity 0.8). Increased gain_db (+1.5) and dramatic pause after convey authority and tension. Speed 0.85 respects the A-level slow baseline while slightly faster than neutral for urgency. Sentence 1 is the narrative tag 'asks the coach' — switched to a distinct narrator voice (am_onyx from available list), slower (0.8) and quieter (-1.0 dB) to differentiate from dialogue, with paragraph pause for closure.",
+        "confidence": 0.92
+      },
+      "ok": true
+    },
+    {
+      "idx": 32,
+      "source_text": "'Yes!' shout the players.",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 32,
+        "text": "",
+        "speaker_canonical_name": "Narrator",
+        "is_dialogue": false,
+        "emotion": "tense",
+        "emotion_intensity": 0.8,
+        "confidence": 0.95,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "叙述者描写球员们的集体回应，体现更衣室紧张气氛中士气的提振",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "'Yes!' shout the players.",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "'Yes!' shout the players.",
+      "sentences": [
+        "'Yes!'",
+        "shout the players."
+      ],
+      "director": {
+        "sentence_overrides": [
+          {
+            "idx": 0,
+            "voice_id": null,
+            "speed": 1.05,
+            "pitch_st": null,
+            "gain_db": 2.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 1,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": null,
+            "pause_after_ms": null,
+            "pause_category": null
+          }
+        ],
+        "rationale": "Sentence 0 ('Yes!') is a sharp, tense shout from the players — brief burst of energy: slightly faster than the A-level baseline, +2 dB for projection, and a dramatic pause after to let the exclamation land. Sentence 1 ('shout the players') is the narrator's calm attribution; slowing to 0.85 keeps the learner-friendly pace and contrasts the players' outburst.",
+        "confidence": 0.92
+      },
+      "ok": true
+    },
+    {
+      "idx": 33,
+      "source_text": "'Come on, we can do it!' the captain shouts. He looks in our eyes. 'OK, let's go!'",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 33,
+        "text": "",
+        "speaker_canonical_name": "Lenda",
+        "is_dialogue": true,
+        "emotion": "tense",
+        "emotion_intensity": 0.8,
+        "confidence": 0.95,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "队长Lenda在中场休息时鼓舞士气，球队落后两球，语气紧迫且坚定",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "'Come on, we can do it!' the captain shouts. He looks in our eyes. 'OK, let's go!'",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "'Come on, we can do it!' the captain shouts. He looks in our eyes. 'OK, let's go!'",
+      "sentences": [
+        "'Come on, we can do it!'",
+        "the captain shouts.",
+        "He looks in our eyes.",
+        "'OK, let's go!'"
+      ],
+      "director": {
+        "sentence_overrides": [
+          {
+            "idx": 0,
+            "voice_id": null,
+            "speed": 1.05,
+            "pitch_st": 1.0,
+            "gain_db": 2.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 1,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": -1.0,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 2,
+            "voice_id": null,
+            "speed": 0.8,
+            "pitch_st": null,
+            "gain_db": -1.5,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 3,
+            "voice_id": null,
+            "speed": 1.05,
+            "pitch_st": 1.0,
+            "gain_db": 2.0,
+            "pause_after_ms": null,
+            "pause_category": "paragraph"
+          }
+        ],
+        "rationale": "Captain's motivational dialogue in tense scene: opening shout (idx 0) needs energy with faster speed, higher gain, raised pitch, and dramatic pause for impact. Narrator line (idx 1) slows down with reduced gain for observational tone. Internal focus moment (idx 2) uses slower speed, lower gain, and dramatic pause for tension buildup. Final rallying cry (idx 3) mirrors opening energy with paragraph pause for closure. All within Level A constraints (speed ≤1.05). Single speaker (captain) so no voice_id changes needed.",
+        "confidence": 0.9
+      },
+      "ok": true
+    },
+    {
+      "idx": 34,
+      "source_text": "We all walk out of the changing room. I've got butterflies in me, but I feel good. Butterflies are OK in my first big game! The fans shout when we run onto the pitch. The noise is amazing. The pitch is very green and it suddenly feels very, very big. I look around. There are thousands and thousands of fans, some in white shirts, some in red shirts. White is our colour; red is the colour of Stripes. They're all watching the game, and watching me. 'Come on, Tino!' I say quietly. I know I can do it!",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 34,
+        "text": "",
+        "speaker_canonical_name": "Tino (Albertino)",
+        "is_dialogue": false,
+        "emotion": "tense",
+        "emotion_intensity": 0.7,
+        "confidence": 0.9,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "主角Tino第一人称内心独白，首次登场大赛前的紧张与兴奋交织，蝴蝶隐喻心跳加速，自我鼓励展现纯真热血",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "We all walk out of the changing room. I've got butterflies in me, but I feel good. Butterflies are OK in my first big game! The fans shout when we run onto the pitch. The noise is amazing. The pitch is very green and it suddenly feels very, very big. I look around. There are thousands and thousands of fans, some in white shirts, some in red shirts. White is our colour; red is the colour of Stripes. They're all watching the game, and watching me. 'Come on, Tino!' I say quietly. I know I can do it!",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "We all walk out of the changing room. I've got butterflies in me, but I feel good. Butterflies are OK in my first big game! The fans shout when we run onto the pitch. The noise is amazing. The pitch is very green and it suddenly feels very, very big. I look around. There are thousands and thousands of fans, some in white shirts, some in red shirts. White is our colour; red is the colour of Stripes. They're all watching the game, and watching me. 'Come on, Tino!' I say quietly. I know I can do it!",
+      "sentences": [
+        "We all walk out of the changing room.",
+        "I've got butterflies in me, but I feel good.",
+        "Butterflies are OK in my first big game!",
+        "The fans shout when we run onto the pitch.",
+        "The noise is amazing.",
+        "The pitch is very green and it suddenly feels very, very big.",
+        "I look around.",
+        "There are thousands and thousands of fans, some in white shirts, some in red shirts.",
+        "White is our colour; red is the colour of Stripes.",
+        "They're all watching the game, and watching me.",
+        "'Come on, Tino!'",
+        "I say quietly.",
+        "I know I can do it!"
+      ],
+      "director": {
+        "sentence_overrides": [
+          {
+            "idx": 0,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": null,
+            "pause_after_ms": null,
+            "pause_category": "paragraph"
+          },
+          {
+            "idx": 1,
+            "voice_id": null,
+            "speed": 0.8,
+            "pitch_st": -1.0,
+            "gain_db": -1.0,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 2,
+            "voice_id": null,
+            "speed": 0.9,
+            "pitch_st": 1.0,
+            "gain_db": 1.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 3,
+            "voice_id": null,
+            "speed": 0.95,
+            "pitch_st": null,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 4,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": 1.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 5,
+            "voice_id": null,
+            "speed": 0.8,
+            "pitch_st": -1.0,
+            "gain_db": -0.5,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 6,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": null,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 7,
+            "voice_id": null,
+            "speed": 0.8,
+            "pitch_st": null,
+            "gain_db": -1.0,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 8,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": null,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 9,
+            "voice_id": null,
+            "speed": 0.75,
+            "pitch_st": -1.0,
+            "gain_db": -1.5,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 10,
+            "voice_id": null,
+            "speed": 0.8,
+            "pitch_st": -2.0,
+            "gain_db": -2.5,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 11,
+            "voice_id": null,
+            "speed": 0.75,
+            "pitch_st": -1.0,
+            "gain_db": -2.0,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 12,
+            "voice_id": null,
+            "speed": 0.9,
+            "pitch_st": 1.0,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "paragraph"
+          }
+        ],
+        "rationale": "This is a first-person narrative from a young player (Tino) experiencing his first big game. The emotional arc moves from nervous anticipation (tense, intensity 0.7) through overwhelming sensory input to quiet self-encouragement and finally determined confidence. As a graded reader (Level A), the baseline speed is deliberately slow (0.75-0.9). Key directorial choices: 1) Sentences 1-2 (butterflies/nerves) use slower speed, lower pitch/gain for internal anxiety. 2) Sentences 3-5 (running out, noise, pitch size) gradually build energy with slight speed/gain increases. 3) Sentences 6-9 (looking around, seeing crowds) slow down with reduced gain/pitch for awe/overwhelm. 4) Sentences 10-11 (quiet self-talk) are intimate internal monologue - very slow, quiet, low pitch. 5) Sentence 12 (final resolve) lifts in energy/confidence. Pauses: dramatic before key emotional shifts (sentences 2, 4, 5, 9, 10), clause for descriptive lists (7, 8), paragraph for scene boundaries (0, 12). Single narrator throughout - no voice_id changes needed.",
+        "confidence": 0.92
+      },
+      "ok": true
+    }
+  ]
+}
