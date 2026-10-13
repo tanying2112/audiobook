@@ -40,7 +40,9 @@ def test_normalize_default_edge() -> None:
 
 
 def test_normalize_edge_to_kokoro_map() -> None:
-    assert _normalize_voice_id("en-US-AriaNeural", "kokoro") == "zf_xiaoxiao"
+    # f7ae71f: 英文 Edge→kokoro 映射修复 (此前英文音色错落 zf_ 中文音色)
+    assert _normalize_voice_id("en-US-AriaNeural", "kokoro") == "af_bella"
+    assert _normalize_voice_id("en-US-GuyNeural", "kokoro") == "am_adam"
 
 
 def test_normalize_kokoro_passthrough() -> None:
@@ -497,11 +499,11 @@ class _FakeFFResult:
         return None
 
 
-async def _ffmpeg_ok(cmd, timeout=None):  # noqa: ANN001
+async def _ffmpeg_ok(cmd, timeout=None, **kwargs):  # noqa: ANN001
     return _FakeFFResult()
 
 
-async def _ffmpeg_fail(cmd, timeout=None):  # noqa: ANN001
+async def _ffmpeg_fail(cmd, timeout=None, **kwargs):  # noqa: ANN001
     raise RuntimeError("ffmpeg boom")
 
 
@@ -849,7 +851,7 @@ class _FakeFFResultFail:
         raise subprocess.CalledProcessError(self.returncode, "ffmpeg", stderr=self.stderr)
 
 
-async def _ffmpeg_fail_rc(cmd, timeout=None):  # noqa: ANN001
+async def _ffmpeg_fail_rc(cmd, timeout=None, **kwargs):  # noqa: ANN001
     return _FakeFFResultFail()
 
 
