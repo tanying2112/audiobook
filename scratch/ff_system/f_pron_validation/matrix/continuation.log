@@ -1,0 +1,121 @@
+[fm] 矩阵: 4 词 × 10 音色; state=resume
+21:31:33 - LiteLLM:WARNING: get_model_cost_map.py:300 - LiteLLM: model cost map fetch attempt 1/3 failed (ConnectError fetching https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json: [Errno 54] Connection reset by peer); retrying in 2.5s
+21:31:33 - LiteLLM:WARNING: get_model_cost_map.py:655 - LiteLLM: Failed to fetch remote model cost map from https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json: ConnectError fetching https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json: [Errno 54] Connection reset by peer. Falling back to local backup.
+21:31:36 - LiteLLM:WARNING: get_model_cost_map.py:300 - LiteLLM: model cost map fetch attempt 2/3 failed (ConnectError fetching https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json: [Errno 54] Connection reset by peer); retrying in 4.3s
+21:31:41 - LiteLLM:WARNING: get_model_cost_map.py:576 - LiteLLM: Failed to fetch remote model cost map from https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json after 3 attempts; keeping local backup
+[transformers] Disabling PyTorch because PyTorch >= 2.5 is required but found 2.2.2
+[transformers] PyTorch was not found. Models won't be available and only tokenizers, configuration and file/data utilities can be used.
+warning: The `fitz` API is deprecated and will be removed in future. Use `import pymupdf` instead.
+[fm] Tino     变体搜索 am_onyx    Tin oh       ✗
+[fm] Tino     变体搜索 am_liam    Tin oh       ✗
+[fm] Tino     变体搜索 am_michael Tin oh       ✗
+[fm] Tino     变体搜索 am_puck    Tin oh       ✗
+[fm] Tino     变体搜索 am_fenrir  Tin oh       ✗
+[fm] Zangado  变体搜索 am_fenrir  Zangadoh     ✗
+[fm] Zangado  变体搜索 am_fenrir  Zan Gado     ✗
+[fm] Zangado  变体搜索 am_fenrir  Zangahdoh    ✗
+[fm] Zangado  变体搜索 am_fenrir  Zan-gar-doh  ✗
+[fm] Nakano   变体搜索 af_bella   Nah-kah-no   ✗
+[fm] Nakano   变体搜索 af_bella   Nakanoh      ✗
+[fm] Nakano   变体搜索 af_bella   Naka no      ✗
+[fm] Nakano   变体搜索 af_bella   Nakahnno     ✗
+[fm] Nakano   变体搜索 af_sarah   Nah-kah-no   ✗
+[fm] Nakano   变体搜索 af_sarah   Nakanoh      ✗
+[fm] Nakano   变体搜索 af_sarah   Naka no      ✗
+[fm] Nakano   变体搜索 af_sarah   Nakahnno     ✗
+[fm] Nakano   变体搜索 af_nicole  Nah-kah-no   ✗
+[fm] Nakano   变体搜索 af_nicole  Nakanoh      ✗
+[fm] Nakano   变体搜索 af_nicole  Naka no      ✗
+[fm] Nakano   变体搜索 af_nicole  Nakahnno     ✗
+[fm] Nakano   变体搜索 af_sky     Nah-kah-no   ✗
+[fm] Nakano   变体搜索 af_sky     Nakanoh      ✗
+[fm] Nakano   变体搜索 af_sky     Naka no      ✗
+[fm] Nakano   变体搜索 af_sky     Nakahnno     ✗
+[fm] Nakano   变体搜索 am_adam    Nah-kah-no   ✗
+[fm] Nakano   变体搜索 am_adam    Nakanoh      ✗
+[fm] Nakano   变体搜索 am_adam    Naka no      ✗
+[fm] Nakano   变体搜索 am_adam    Nakahnno     ✗
+[fm] Nakano   变体搜索 am_onyx    Nah-kah-no   ✗
+[fm] Nakano   变体搜索 am_onyx    Nakanoh      ✗
+[fm] Nakano   变体搜索 am_onyx    Naka no      ✗
+[fm] Nakano   变体搜索 am_onyx    Nakahnno     ✗
+[fm] Nakano   变体搜索 am_liam    Nah-kah-no   ✗
+[fm] Nakano   变体搜索 am_liam    Nakanoh      ✗
+[fm] Nakano   变体搜索 am_liam    Naka no      ✗
+[fm] Nakano   变体搜索 am_liam    Nakahnno     ✗
+[fm] Nakano   变体搜索 am_michael Nah-kah-no   ✗
+[fm] Nakano   变体搜索 am_michael Nakanoh      ✗
+[fm] Nakano   变体搜索 am_michael Naka no      ✗
+[fm] Nakano   变体搜索 am_michael Nakahnno     ✗
+[fm] Nakano   变体搜索 am_puck    Nah-kah-no   ✗
+[fm] Nakano   变体搜索 am_puck    Nakanoh      ✗
+[fm] Nakano   变体搜索 am_puck    Naka no      ✗
+[fm] Nakano   变体搜索 am_puck    Nakahnno     ✗
+[fm] Nakano   变体搜索 am_fenrir  Nah-kah-no   ✗
+[fm] Nakano   变体搜索 am_fenrir  Nakanoh      ✗
+[fm] Nakano   变体搜索 am_fenrir  Naka no      ✗
+[fm] Nakano   变体搜索 am_fenrir  Nakahnno     ✗
+[fm] futsal   变体搜索 af_bella   footsal      ✗
+[fm] futsal   变体搜索 af_bella   footsall     ✗
+[fm] futsal   变体搜索 af_bella   futsall      ✗
+[fm] futsal   变体搜索 af_bella   fut sal      ✗
+[fm] futsal   变体搜索 af_bella   fut SAW      ✗
+[fm] futsal   变体搜索 af_bella   footzall     ✗
+[fm] futsal   变体搜索 af_sarah   footsal      ✗
+[fm] futsal   变体搜索 af_sarah   footsall     ✗
+[fm] futsal   变体搜索 af_sarah   futsall      ✗
+[fm] futsal   变体搜索 af_sarah   fut sal      ✗
+[fm] futsal   变体搜索 af_sarah   fut SAW      ✗
+[fm] futsal   变体搜索 af_sarah   footzall     ✗
+[fm] futsal   变体搜索 af_nicole  footsal      ✗
+[fm] futsal   变体搜索 af_nicole  footsall     ✗
+[fm] futsal   变体搜索 af_nicole  futsall      ✗
+[fm] futsal   变体搜索 af_nicole  fut sal      ✗
+[fm] futsal   变体搜索 af_nicole  fut SAW      ✗
+[fm] futsal   变体搜索 af_nicole  footzall     ✗
+[fm] futsal   变体搜索 af_sky     footsal      ✗
+[fm] futsal   变体搜索 af_sky     footsall     ✗
+[fm] futsal   变体搜索 af_sky     futsall      ✗
+[fm] futsal   变体搜索 af_sky     fut sal      ✗
+[fm] futsal   变体搜索 af_sky     fut SAW      ✗
+[fm] futsal   变体搜索 af_sky     footzall     ✗
+[fm] futsal   变体搜索 am_adam    footsal      ✗
+[fm] futsal   变体搜索 am_adam    footsall     ✗
+[fm] futsal   变体搜索 am_adam    futsall      ✗
+[fm] futsal   变体搜索 am_adam    fut sal      ✗
+[fm] futsal   变体搜索 am_adam    fut SAW      ✗
+[fm] futsal   变体搜索 am_adam    footzall     ✗
+[fm] futsal   变体搜索 am_onyx    footsal      ✗
+[fm] futsal   变体搜索 am_onyx    footsall     ✗
+[fm] futsal   变体搜索 am_onyx    futsall      ✗
+[fm] futsal   变体搜索 am_onyx    fut sal      ✗
+[fm] futsal   变体搜索 am_onyx    fut SAW      ✗
+[fm] futsal   变体搜索 am_onyx    footzall     ✗
+[fm] futsal   变体搜索 am_liam    footsal      ✗
+[fm] futsal   变体搜索 am_liam    footsall     ✗
+[fm] futsal   变体搜索 am_liam    futsall      ✗
+[fm] futsal   变体搜索 am_liam    fut sal      ✗
+[fm] futsal   变体搜索 am_liam    fut SAW      ✗
+[fm] futsal   变体搜索 am_liam    footzall     ✗
+[fm] futsal   变体搜索 am_michael footsal      ✗
+[fm] futsal   变体搜索 am_michael footsall     ✗
+[fm] futsal   变体搜索 am_michael futsall      ✗
+[fm] futsal   变体搜索 am_michael fut sal      ✗
+[fm] futsal   变体搜索 am_michael fut SAW      ✗
+[fm] stage2 预算耗尽 (96)
+[fm] summary Tino     分支 C: pass=0/10 winners=5 universal=None no_harm=[]
+[fm] summary Zangado  分支 C: pass=1/10 winners=0 universal=None no_harm=[]
+[fm] summary Nakano   分支 C: pass=0/10 winners=0 universal=None no_harm=[]
+[fm] summary futsal   分支 C: pass=0/10 winners=0 universal=None no_harm=[]
+[fm] 
+[fm] word       cond     bella  sarah nicole    sky   adam   onyx   liam michae   puck fenrir
+[fm] Tino       base      ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗  
+[fm] Tino       respell   ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗  
+[fm]            winner   onyx→Tinnoh liam→Tinnoh michae→Tinnoh puck→Tinnoh fenrir→Tinnoh
+[fm] Zangado    base      ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗  
+[fm] Zangado    respell   ✗     ✓     ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗  
+[fm] Nakano     base      ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗  
+[fm] Nakano     respell   ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗  
+[fm] futsal     base      ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗  
+[fm] futsal     respell   ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗  
+[fm] 完成 → /Users/guwj/Documents/audiobook/scratch/ff_system/f_pron_validation/matrix/voice_matrix.json

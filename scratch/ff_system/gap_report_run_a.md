@@ -101,9 +101,11 @@ futsal→futzsel, sao paulo→salo paullo), 叠加弱读连读 (two nil→too nl
 4. ~~差距 D: difficulty→语速策略传导~~ ✅ 已修 (0.75× 全链 + MULTIPLY 语义)
 5. ~~Run B (可选): 掩蔽 ASR 文本 → LLM 清洗 → 端到端演示 (718 词召回文本)~~ ✅ 已完成 (2026-10-13, 见「五」: 语速对齐原声 2.9% / UTMOS 4.07 / 零三振)
 6. ~~s2 重标注验证~~ ✅ 已完成 (2026-10-13 真实 LLM 重标注, 34/35 非中性 + 5 角色归属, 见「四·五」表; 判定脚本 s2_gap_verify.py PASS)
-7. 词条音色矩阵回听验证: `Lenda→Len da` 在 am_adam 实证通过但 am_onyx 下回听 "le da" — 词条音色敏感，回听验证需按音色矩阵逐音色核对后再入项目级词典
+7. ~~词条音色矩阵回听验证~~ ✅ 已完成 (2026-10-13, 见「六」: Lenda 分支 C 升级 voices: 分音色注音 [33f5b6e]; 其余 4 词池尽证实裁判天花板, 维持不加词条)
 8. A 级 dramatic 停顿默认再压实证: 当前 900ms 默认致停顿中位 1.03s vs 原声 0.70s, A 级下偏戏剧化 — 需实证对比 600ms 量级对 UTMOS/WER/停顿分布的影响
 9. Run A 音频侧重跑 (可选): 修复后标注 (34/35 非中性 + 5 角色) 重新走 s3/s4, 量化标注层改进对音频指标的边际贡献
+10. 句级 voice-aware 字典应用: voice_variants 按段落级路由音色选注音 — 句级 voice override (sentence_overrides) 晚于字典应用解析, 句级换音色的句子仍按段落音色选注音 (见「六」限制 a)
+11. synthesize.py `load_pronunciation_dict()` 无 project_dir: 项目级字典主路径从未加载 (docstring 声称覆盖但失效) — 独立 bug, 需项目目录推导设计后修复 (勿与 #7 混淆)
 
 
 ## 四·五、差距修复端到端实证汇总 (2026-10-13, 真实 LLM 重标注 Run A 35 段)
@@ -161,7 +163,7 @@ futsal→futzsel, sao paulo→salo paullo), 叠加弱读连读 (two nil→too nl
 - **漏读 0 (deletions=0)** — 内容忠实度 100%，无遗漏
 - **插入 16** — ASR 幻听额外词 (弱读/连读推理)
 - **替换块 40** — 主要错误类：
-  1. **专名天花板** (回听偏移): `albertino→alberino`, `tinino→tenino`, `zangado→zanggado`, `futsal→futzsel` — 词典有 `Lenda→Len da` (am_adam 实证 ✓) 但 `am_onyx` 下回听为 "le da"，**词条音色敏感，需按音色矩阵验证** (新观察)
+  1. **专名天花板** (回听偏移): `albertino→alberino`, `tinino→tenino`, `zangado→zanggado`, `futsal→futzsel` — 词典有 `Lenda→Len da` (am_adam 实证 ✓) 但 `am_onyx` 下回听为 "le da"，**词条音色敏感，需按音色矩阵验证** (新观察; 已验 2026-10-13 见「六」: am_onyx 池内不可修回落默认, 分支 C 分音色注音)
   2. **Dramatic 停顿切段误导 ASR**: `halftime bad → half im glad` (停顿把词边界切断)
   3. **Tokenization 差异**: `twozero↔two zero`, `hometown↔home town` (归一 token 口径下不计错)
   4. **弱读/连读**: `a lot→aah` (学习者分级读物常见弱读)
@@ -177,3 +179,35 @@ futsal→futzsel, sao paulo→salo paullo), 叠加弱读连读 (two nil→too nl
 4. **停顿过重新观察**: 中位 1.03s vs 原声 0.70s，dramatic 900ms 默认在 A 级下偏戏剧化 — 后续实证再压 (目标 600ms 量级，见后续可行动项)。
 
 5. **Run A 音频侧未重跑** (可选后续): 修复后标注 (Run A 35 段 34/35 非中性 + 5 角色) 尚未重新走 s3/s4 音频管线；如重跑可量化标注层改进对音频指标的边际贡献。
+
+---
+
+## 六、词条音色矩阵验证 (行动项 #7, 2026-10-13)
+
+方法: 5 词 × (base / respell) × 10 kokoro 英文音色 = 100 格; respell 失败格逐音色扫描变体池 (Lenda 6 候选 / Tino 6 / Zangado 5 / Nakano 4 / futsal 6, 扫至命中或池尽); per-voice winner 补全扫描未测音色判 universal; Lenda respell 失败格 confirm 复跑 2 次。共 339 次合成+回听实测 (矩阵 100 + confirm 4 + 变体 223 + 补全 12; 预算计数器 96/次调用, 3 次调用+冒烟完成, resume 逐格跳过已测, 计数器与 JSON 逐条计数一致)。每格: kokoro 合成载句 → SenseVoice 子进程回听 → word_hit 整词命中。脚本 `f_pron_voice_matrix.py`, 终态 `f_pron_validation/matrix/voice_matrix.json` (wav 产物 ~42MB 留存工作区未入库)。
+
+| 词 | base | respell | 变体搜索 | 判定 |
+|---|---|---|---|---|
+| **Lenda** | 0/10 (全 'linda') | **6/10** | am_liam/am_michael/am_puck → **"Lenn-dah"** ✓; am_onyx 词条+6 变体 7 种拼写全 ✗ (池内不可修) | **分支 C — voices: 分音色注音** (yaml 已加; 代码 33f5b6e) |
+| Tino | 0/10 ('tinino') | 0/10 ('teenno') | **"Tinnoh" 命中 5 男声** (onyx/liam/michael/puck/fenrir); 女声 4 + am_adam 共 5 音色全池尽 ✗ | **不采纳**: 读音分歧 TIN-no ≠ TEE-no (回听命中≠读音正确); 人工核验候选 |
+| Zangado | 0/10 | 1/10 (af_sarah) | 5 候选 × 9 音色尽, 0 命中 (回听 'zanarddo'/'zangarddo') | 不入词条 (裁判天花板) |
+| Nakano | 0/10 ('naano') | 0/10 ('nakao') | 4 候选 × 10 音色尽, 0 命中 | 不入词条 (裁判天花板) |
+| futsal | 0/10 | 0/10 | 6 候选 × 10 音色尽, 0 命中 | 不入词条 (裁判天花板) |
+
+Lenda per-voice 终局 (✓=SenseVoice 整词命中):
+
+| 条件 | bella | sarah | nicole | sky | adam | onyx | liam | michael | puck | fenrir |
+|---|---|---|---|---|---|---|---|---|---|---|
+| base | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| "Len da" | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ 'le da' | ✗ 'le da' | ✗ 'ly da' | ✗ 'le da' | ✓ |
+| 终局注音 | 默认 | 默认 | 默认 | 默认 | 默认 | 不可修→默认 | **Lenn-dah** ✓ | **Lenn-dah** ✓ | **Lenn-dah** ✓ | 默认 |
+
+结论与声明:
+
+1. **词条音色敏感证实**: "Len da" 单音色 (am_adam) 验证不可靠 — 10 音色矩阵才暴露 4 个失败音色 (onyx/liam/michael/puck)。词典条目现按段落级路由音色选注音 (synthesize.py 传 decision.voice_id, 提交 33f5b6e; 不传 voice_id 旧语义不变)。
+2. **"Lenn-dah" 非通用体** (排除分支 B): 补全扫描 7 个未测音色仅 sarah/nicole 命中 (二者默认注音已覆盖), bella/sky/adam/onyx/fenrir 失败 → 只能走 per-voice variants (分支 C)。
+3. **裁判循环性 (差距 E 天花板矩阵尺度复现)**: 4 词 base 回听全是近失拼写 ('tinino'/'zanarddo'/'naano'/'nakao') 而非漏读 — kokoro 在读, SenseVoice 在拼错; 差距 F 既有证据里原声叙述者同样不命中。变体池全耗尽无通用命中 → **维持 Gap F 不加词条判定**。
+4. **回听命中 ≠ 读音正确 (新发现)**: Tino "Tinnoh" 是唯一裁判可识别拼写, 但它以读音改为 "TIN-no" 换取裁判认可 (原声 "TEE-no" 侧 SenseVoice 写 'tinino', 二者听感必然不同); 且女声听成 'tinno'/'tin know' 仍不命中 (**命中本身也音色敏感**)。不采纳, 留人工核验 (wav: `matrix/Tino_v4_am_*.wav`, v4=池内第 5 候选)。
+5. **不伤害红线全清**: 5 词 base 全 0/10 → 无回归基线可伤; Lenda 词条对 6/10 音色纯增益, am_onyx 回落默认 (base 同败, 无害); no_harm violations = 0。
+6. **噪声声明 (诚实边界)**: confirm 复跑仅覆盖 Lenda respell 失败格 (4 格, 2 次复跑全一致判负); **其余 4 词失败格与全部命中格为单次回听** — 0/10 (base 与 respell) + 池尽的证据量级下, 单次噪声不翻转「不采纳」判定; Lenda 6 个命中格未复跑 (弱阳性, 生产按命中采用)。
+7. **限制**: (a) 段落级音色 — 句级 voice override 晚于字典应用解析 (后续项 #10); (b) kokoro zh 8 音色未矩阵; (c) project_dir 字典加载 bug 独立存在 (后续项 #11); (d) 载句验证 ≠ 上下文验证 (整段文本中的表现未矩阵验)。

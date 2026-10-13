@@ -1,0 +1,64 @@
+[fm] 矩阵: 1 词 × 10 音色; state=new
+19:15:59 - LiteLLM:WARNING: get_model_cost_map.py:300 - LiteLLM: model cost map fetch attempt 1/3 failed (ConnectError fetching https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json: [Errno 54] Connection reset by peer); retrying in 2.5s
+19:15:59 - LiteLLM:WARNING: get_model_cost_map.py:655 - LiteLLM: Failed to fetch remote model cost map from https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json: ConnectError fetching https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json: [Errno 54] Connection reset by peer. Falling back to local backup.
+19:16:02 - LiteLLM:WARNING: get_model_cost_map.py:300 - LiteLLM: model cost map fetch attempt 2/3 failed (ConnectError fetching https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json: [Errno 54] Connection reset by peer); retrying in 4.1s
+19:16:07 - LiteLLM:WARNING: get_model_cost_map.py:576 - LiteLLM: Failed to fetch remote model cost map from https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json after 3 attempts; keeping local backup
+[transformers] Disabling PyTorch because PyTorch >= 2.5 is required but found 2.2.2
+[transformers] PyTorch was not found. Models won't be available and only tokenizers, configuration and file/data utilities can be used.
+warning: The `fitz` API is deprecated and will be removed in future. Use `import pymupdf` instead.
+[fm] Lenda    base    af_bella   ✗ 'the second is linda the captain of stars'
+[fm] Lenda    respell af_bella   ✓ 'the second is lenda the captain of stars'
+[fm] Lenda    base    af_sarah   ✗ 'the second is linda the captain of stars'
+[fm] Lenda    respell af_sarah   ✓ 'the second is lenda the captain of stars'
+[fm] Lenda    base    af_nicole  ✗ 'the second is linda the captain of stars'
+[fm] Lenda    respell af_nicole  ✓ 'the second is lenda the captain of stars'
+[fm] Lenda    base    af_sky     ✗ 'the second is linda the captain of stars'
+[fm] Lenda    respell af_sky     ✓ 'the second is lenda the captain of stars'
+[fm] Lenda    base    am_adam    ✗ 'the second is linda the captain of stars'
+[fm] Lenda    respell am_adam    ✓ 'the second is lenda the captain of stars'
+[fm] Lenda    base    am_onyx    ✗ 'the second is linda the captain of stars'
+[fm] Lenda    respell am_onyx    ✗ 'the second is le da the captain of stars'
+[fm] Lenda    confirm am_onyx    一致(失败) 'the second is le da the captain of stars'
+[fm] Lenda    base    am_liam    ✗ 'the second is linda the captain of stars'
+[fm] Lenda    respell am_liam    ✗ 'the second is le da the captain of stars'
+[fm] Lenda    confirm am_liam    一致(失败) 'the second is le da the captain of stars'
+[fm] Lenda    base    am_michael ✗ 'the second is linda the captain of stars'
+[fm] Lenda    respell am_michael ✗ 'the second is ly da the captain of stars'
+[fm] Lenda    confirm am_michael 一致(失败) 'the second is ly da the captain of stars'
+[fm] Lenda    base    am_puck    ✗ 'the second is linda the captain of stars'
+[fm] Lenda    respell am_puck    ✗ 'the second is le da the captain of stars'
+[fm] Lenda    confirm am_puck    一致(失败) 'the second is le da the captain of stars'
+[fm] Lenda    base    am_fenrir  ✗ 'the second is linda the captain of stars'
+[fm] Lenda    respell am_fenrir  ✓ 'the second is lenda the captain of stars'
+[fm] Lenda    变体搜索 am_onyx    Lenn da      ✗
+[fm] Lenda    变体搜索 am_onyx    Lendah       ✗
+[fm] Lenda    变体搜索 am_onyx    Lehnda       ✗
+[fm] Lenda    变体搜索 am_onyx    Lenn-dah     ✗
+[fm] Lenda    变体搜索 am_onyx    Lehn-dah     ✗
+[fm] Lenda    变体搜索 am_onyx    Landah       ✗
+[fm] Lenda    变体搜索 am_liam    Lenn da      ✗
+[fm] Lenda    变体搜索 am_liam    Lendah       ✗
+[fm] Lenda    变体搜索 am_liam    Lehnda       ✗
+[fm] Lenda    变体搜索 am_liam    Lenn-dah     ✓
+[fm] Lenda    变体搜索 am_michael Lenn da      ✗
+[fm] Lenda    变体搜索 am_michael Lendah       ✗
+[fm] Lenda    变体搜索 am_michael Lehnda       ✗
+[fm] Lenda    变体搜索 am_michael Lenn-dah     ✓
+[fm] Lenda    变体搜索 am_puck    Lenn da      ✗
+[fm] Lenda    变体搜索 am_puck    Lendah       ✗
+[fm] Lenda    变体搜索 am_puck    Lehnda       ✗
+[fm] Lenda    变体搜索 am_puck    Lenn-dah     ✓
+[fm] Lenda    补全 af_bella   Lenn-dah     ✗
+[fm] Lenda    补全 af_sarah   Lenn-dah     ✓
+[fm] Lenda    补全 af_nicole  Lenn-dah     ✓
+[fm] Lenda    补全 af_sky     Lenn-dah     ✗
+[fm] Lenda    补全 am_adam    Lenn-dah     ✗
+[fm] Lenda    补全 am_onyx    Lenn-dah     ✗
+[fm] Lenda    补全 am_fenrir  Lenn-dah     ✗
+[fm] summary Lenda    分支 C: pass=6/10 winners=3 universal=None no_harm=[]
+[fm] 
+[fm] word       cond     bella  sarah nicole    sky   adam   onyx   liam michae   puck fenrir
+[fm] Lenda      base      ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗  
+[fm] Lenda      respell   ✓     ✓     ✓     ✓     ✓     ✗     ✗     ✗     ✗     ✓  
+[fm]            winner   liam→Lenn-dah michae→Lenn-dah puck→Lenn-dah
+[fm] 完成 → /Users/guwj/Documents/audiobook/scratch/ff_system/f_pron_validation/matrix/voice_matrix.json
