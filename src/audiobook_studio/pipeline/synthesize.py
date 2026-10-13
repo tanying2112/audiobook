@@ -1269,7 +1269,15 @@ class SynthesizePipeline:
 
             # P2.12: 合成前按字典对 inp.text 做注音替换 (在 hash 前, 保证 cache 键与
             # 实际合成文本幂等一致; 无条目原样透传, 不破主路径)。就地改 inp.text 局部副本安全。
-            inp.text = apply_pronunciation_dict(inp.text, pronunciation_registry)
+            # Gap #7 (2026-10-13): 传段落路由音色 → 条目 voice_variants 分音色选注音
+            # (矩阵实证: "Len da" 6/10 音色命中, am_liam/am_michael/am_puck 需
+            # "Lenn-dah"; am_onyx 池内不可修 → 未列出即回落默认)。限制: 这是段落级
+            # 音色 — 句级 voice override 在 _synthesize_paragraph_with_overrides
+            # 内晚于此解析, 句级换音色的句子按段落音色选注音 (范围外, gap_report
+            # 记后续项)。voice_id 未命中 variants 时 apply 内部回落默认, 主路径不崩。
+            inp.text = apply_pronunciation_dict(
+                inp.text, pronunciation_registry, voice_id=decision.voice_id
+            )
 
             # v6 逐句三轴导演：非空 sentence_overrides → 走逐句合成路径。
             # 过滤非 dict 项；idx 越界在句路径内 warn 忽略。

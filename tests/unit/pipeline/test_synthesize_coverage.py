@@ -645,7 +645,7 @@ def _mock_run_pipeline(monkeypatch, pipe) -> None:
     import src.audiobook_studio.tts.pronunciation_dict as _pdict
 
     monkeypatch.setattr(_pdict, "load_pronunciation_dict", lambda *a, **k: {})
-    monkeypatch.setattr(_pdict, "apply_pronunciation_dict", lambda text, reg: text)
+    monkeypatch.setattr(_pdict, "apply_pronunciation_dict", lambda text, reg, voice_id=None: text)
     import src.audiobook_studio.pipeline.voice_anchor as _va_mod
 
     _fake_va = MagicMock()

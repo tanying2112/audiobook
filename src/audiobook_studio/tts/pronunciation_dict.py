@@ -42,6 +42,12 @@ class DictEntry:
 
     phoneme: str  # 发音替换正文 (拼音/同音字提示/SSML 注释等, 引擎按其读)
     source: str = "rule_ns"  # rule_ns | manual | heuristic
+    # Gap #7 (2026-10-13) 词条音色敏感: 同一注音换音色后回听不再整词命中 —
+    # Lenda→"Len da" 10 音色矩阵实证仅 6 音色过, am_liam/am_michael/am_puck
+    # 需 "Lenn-dah", am_onyx 7 种拼写全败 (池内不可修)。
+    # voice_variants: {voice_id: 该音色专用注音}; 恒等变体 (值=原词拼写)
+    # 表示该音色按原词读 (不伤害红线)。未列出的音色一律用默认 phoneme。
+    voice_variants: Optional[Dict[str, str]] = None
 
 
 def _parse_raw(raw: Dict) -> Dict[str, DictEntry]:
@@ -65,7 +71,18 @@ def _parse_raw(raw: Dict) -> Dict[str, DictEntry]:
             # 防止 apply 把目标词替换成空串。
             continue
         source = str(meta.get("source") or "rule_ns")
-        entries[word] = DictEntry(phoneme=str(phoneme), source=source)
+        voice_variants: Optional[Dict[str, str]] = None
+        voices_raw = meta.get("voices")
+        if isinstance(voices_raw, dict):
+            # Gap #7: 分音色注音块 {voice_id: 注音}; 空值/非字符串滤除。
+            voice_variants = {
+                str(v): str(p)
+                for v, p in voices_raw.items()
+                if isinstance(v, str) and v and isinstance(p, str) and p.strip()
+            } or None
+        entries[word] = DictEntry(
+            phoneme=str(phoneme), source=source, voice_variants=voice_variants
+        )
     return entries
 
 
@@ -105,8 +122,19 @@ def load_pronunciation_dict(
     return registry
 
 
-def apply_pronunciation_dict(text: str, pronunciation_dict: Dict[str, DictEntry]) -> str:
-    """对文本应用发音字典替换 (长词优先, 整词边界)。"""
+def apply_pronunciation_dict(
+    text: str,
+    pronunciation_dict: Dict[str, DictEntry],
+    voice_id: Optional[str] = None,
+) -> str:
+    """对文本应用发音字典替换 (长词优先, 整词边界)。
+
+    voice_id (可选): 条目带 voice_variants 时优先取该音色专用注音, 未命中
+    (含 "default"/blend 合成式) 回落默认 phoneme; 不传 → 一律默认 phoneme
+    (旧调用方语义不变)。
+    限制: voice_id 是段落级路由音色 — 句级 voice override 在此之后才解析,
+    句级换音色的句子仍按段落音色选注音 (gap_report 行动项记后续)。
+    """
     if not pronunciation_dict:
         return text
 
@@ -116,6 +144,9 @@ def apply_pronunciation_dict(text: str, pronunciation_dict: Dict[str, DictEntry]
     for word in sorted_words:
         entry = pronunciation_dict[word]
         phoneme = entry.phoneme
+        if voice_id and entry.voice_variants:
+            # Gap #7: 该音色专用注音优先; 未列出回落默认 phoneme。
+            phoneme = entry.voice_variants.get(voice_id, phoneme)
 
         # 中英文混合边界处理
         if re.search(r"[\u4e00-\u9fff]", word):
