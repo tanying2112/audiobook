@@ -134,10 +134,12 @@ ZH_SEMICOLON_PAUSE_MS = 300      # ； 半句停顿
 
 # Batch 3.2: LLM 音频导演的停顿类别 → 默认毫秒 (audio_director sentence_overrides
 # 的 pause_category 语义档; 显式 pause_after_ms 仍优先于类别)
+# 2026-10-14: dramatic 900→600ms (实证: 900ms 中位 1.06s vs 原声 0.70s 偏戏剧化;
+# 600ms 中位 0.87s 更接近原声, WER 19.57% vs 23.12%, UTMOS 持平)
 PAUSE_CATEGORY_DEFAULTS_MS = {
     "clause": 300,      # 从句边界 — 换气
     "comma": 150,       # 逗号级微顿 — 语流不断
-    "dramatic": 900,    # 戏剧性停顿 — 悬念/情绪爆发前
+    "dramatic": 600,    # 戏剧性停顿 — 悬念/情绪爆发前
     "paragraph": 1200,  # 段落收束 — 场景切换
 }
 
@@ -605,6 +607,19 @@ class SynthesizePipeline:
     def _text_hash(self, text: str) -> str:
         # Use SHA256 with usedforsecurity=False for cache key generation (non-cryptographic)
         return hashlib.sha256(text.encode(), usedforsecurity=False).hexdigest()[:12]
+
+    def _registry_fingerprint(self, registry: Dict[str, "DictEntry"]) -> str:
+        """Stable fingerprint of pronunciation registry (voice_variants only).
+
+        Only voice_variants entries affect sentence-level pronunciation, so
+        fingerprint includes only those to keep cache stable for irrelevant changes.
+        """
+        items = []
+        for word, entry in sorted(registry.items()):
+            if entry.voice_variants:
+                variants = tuple(sorted(entry.voice_variants.items()))
+                items.append((word, entry.phoneme, variants))
+        return hashlib.sha256(str(items).encode(), usedforsecurity=False).hexdigest()[:16]
 
     def _metadata_path(self, segment_id: str) -> Path:
         """Return the sidecar metadata path for a synthesized segment."""
@@ -1104,6 +1119,7 @@ class SynthesizePipeline:
         segment_id: str,
         engine_choice: str = "kokoro",
         language: Optional[str] = None,
+        pronunciation_registry: Optional[Dict[str, Any]] = None,
     ) -> tuple[int, str]:
         """Synthesize a paragraph sentence-by-sentence per the v6 director table.
 
@@ -1120,12 +1136,27 @@ class SynthesizePipeline:
         Sentence-level voice overrides use strict normalization (the caller
         named a voice; the engine owns the honest accept/reject), and each
         newly seen voice gets its own per-voice calibration probe (P2a).
+
+        #10 (2026-10-14): 句级 voice-aware 字典应用 — `text` 须为字典应用前
+        原文 (调用侧 run() 传 original_text); 每句在 voice 归一化后按该句
+        实际音色 apply_pronunciation_dict (voice_variants 分音色选注音)。
+        pronunciation_registry=None → 句子原样透传 (旧调用兼容)。
         """
+        # #10: 句级字典应用需模块级 apply 函数 (registry 为 None 时透传)。
+        if pronunciation_registry:
+            from ..tts.pronunciation_dict import apply_pronunciation_dict
+
         sentences = _split_sentences(text)
         if not sentences:
             # Degenerate (no speakable sentence) → whole-paragraph fallback.
+            # #10: 回落分支也须做字典应用 (按段落音色), 否则纯图片/极短段丢注音。
+            fallback_text = text
+            if pronunciation_registry:
+                fallback_text = apply_pronunciation_dict(
+                    text, pronunciation_registry, voice_id=paragraph_voice_id
+                )
             return await self._synthesize_via_port(
-                text, paragraph_voice_id, paragraph_prosody, output_path, segment_id
+                fallback_text, paragraph_voice_id, paragraph_prosody, output_path, segment_id
             )
 
         ovr_by_idx: Dict[int, dict[str, Any]] = {}
@@ -1168,6 +1199,12 @@ class SynthesizePipeline:
                 if ovr.get("voice_id") is not None:
                     voice_id = _normalize_voice_id(
                         voice_id, engine_choice, strict=False, lang=language
+                    )
+                # #10: 句级 voice-aware 字典应用 — voice 归一化后按该句实际
+                # 音色选注音 (voice_variants); blend 音色未命中 variants 回落默认。
+                if pronunciation_registry:
+                    sent = apply_pronunciation_dict(
+                        sent, pronunciation_registry, voice_id=voice_id
                     )
                 # P2a: per-voice calibration on the effective sentence voice
                 prosody = self._apply_voice_calibration(voice_id, prosody)
@@ -1242,14 +1279,35 @@ class SynthesizePipeline:
         # P2.12: 发音字典一次性加载 (项目级覆盖全局); 注音替换无条目时原样透传 (向后兼容)。
         # 字典加载失败 → 降级 warn 且 registry 为空 → apply 等价原样透传, 主路径不崩。
         from ..tts.pronunciation_dict import apply_pronunciation_dict, load_pronunciation_dict
+        from ..storage import project_dir as storage_project_dir
 
-        pronunciation_registry = load_pronunciation_dict()
+        # Gap #11 (2026-10-13): 推导 project_dir 以加载项目级字典。
+        # book_id 在 s3b/s3c 为 "football_forever" (非数字) → 回退 None 仅加载全局;
+        # 真实项目 (数字 project_id) 自动加载 storage/books/<id>/pronunciation_dict.yaml。
+        project_dir_path = None
+        if inputs:
+            bid = inputs[0].book_id
+            try:
+                pid = int(bid)
+                project_dir_path = storage_project_dir(pid, ensure=False)
+            except (ValueError, TypeError):
+                project_dir_path = None  # 非数字 book_id 回退 None
+
+        pronunciation_registry = load_pronunciation_dict(project_dir=project_dir_path)
 
         logger.info(f"Synthesizing {len(inputs)} paragraphs via Port")
 
         segments: list[AudioSegment] = []
         segment_files: list[Path] = []
         segment_ids: list[str] = []
+
+        # #10: 保存字典应用前的 original_text 供句级路径用 (按段落级 voice_id 做 apply);
+        # 句级路径在 _synthesize_paragraph_with_overrides 内按句级 voice 再 apply,
+        # 需原文 + registry。用 segment_id 做键避免 pydantic extra="forbid" 报错。
+        original_text_by_seg: Dict[str, str] = {}
+
+        # #10: 计算 registry 指纹掺入缓存键 —— voice_variants 变更即失效缓存。
+        registry_fp = self._registry_fingerprint(pronunciation_registry)
 
         for i, inp in enumerate(inputs):
             decision = self._make_routing_decision(inp)
@@ -1275,9 +1333,11 @@ class SynthesizePipeline:
             # 音色 — 句级 voice override 在 _synthesize_paragraph_with_overrides
             # 内晚于此解析, 句级换音色的句子按段落音色选注音 (范围外, gap_report
             # 记后续项)。voice_id 未命中 variants 时 apply 内部回落默认, 主路径不崩。
+            original_text = inp.text  # 保存字典前原文供 #10 句级路径用
             inp.text = apply_pronunciation_dict(
                 inp.text, pronunciation_registry, voice_id=decision.voice_id
             )
+            original_text_by_seg[decision.segment_id] = original_text
 
             # v6 逐句三轴导演：非空 sentence_overrides → 走逐句合成路径。
             # 过滤非 dict 项；idx 越界在句路径内 warn 忽略。
@@ -1288,11 +1348,12 @@ class SynthesizePipeline:
             # Check if regeneration needed (text changed).
             # 逐句路径把 overrides 序列化掺入缓存键 —— override 改了 → hash 变 →
             # 重合成；文本与 overrides 均未变 → 照常跳过（增量缓存语义不变）。
+            # #10: 掺入 registry 指纹 → voice_variants 变更即失效缓存。
             if sentence_overrides:
                 overrides_blob = json.dumps(sentence_overrides, ensure_ascii=False, sort_keys=True)
-                text_hash = self._text_hash(inp.text + "\x00sov\x00" + overrides_blob)
+                text_hash = self._text_hash(inp.text + "\x00sov\x00" + overrides_blob + "\x00reg\x00" + registry_fp)
             else:
-                text_hash = self._text_hash(inp.text)
+                text_hash = self._text_hash(inp.text + "\x00reg\x00" + registry_fp)
             segment_id = decision.segment_id
 
             # Emit stage progress for each paragraph
@@ -1393,8 +1454,11 @@ class SynthesizePipeline:
                 if sentence_overrides:
                     # v6 逐句三轴导演路径：逐句合成 → 句间静音 → 单一段落文件。
                     # 逐句需要逐件韵律/音色，流式引擎不支持 → 覆盖流式优先。
+                    # #10: 传 original_text (字典前) + registry → 句级 voice-aware
+                    # 字典应用在句路径内按每句实际音色选注音 (inp.text 已被段落级
+                    # apply 消费过一次, 不能再喂句路径 → 双重替换)。
                     duration, engine = await self._synthesize_paragraph_with_overrides(
-                        inp.text,
+                        original_text_by_seg.get(segment_id, inp.text),
                         decision.voice_id,
                         effective_prosody,
                         sentence_overrides,
@@ -1402,6 +1466,7 @@ class SynthesizePipeline:
                         segment_id,
                         engine_choice=decision.engine_choice,
                         language=inp.language,
+                        pronunciation_registry=pronunciation_registry,
                     )
                 elif enable_streaming:
                     # Run streaming synthesis with WebSocket progress
@@ -1584,9 +1649,11 @@ class SynthesizePipeline:
                         o for o in (getattr(seg_input, "sentence_overrides", None) or [])
                         if isinstance(o, dict)
                     ]
+                    # #10: 重试也需 original_text + registry → 句级 voice-aware 字典应用
+                    retry_original_text = original_text_by_seg.get(seg_id, seg_input.text)
                     if retry_overrides:
                         retry_duration, retry_engine = await self._synthesize_paragraph_with_overrides(
-                            seg_input.text,
+                            retry_original_text,
                             decision.voice_id,
                             retry_prosody,
                             retry_overrides,
@@ -1594,10 +1661,11 @@ class SynthesizePipeline:
                             f"{seg_id}_retry{attempt}",
                             engine_choice=decision.engine_choice,
                             language=seg_input.language,
+                            pronunciation_registry=pronunciation_registry,
                         )
                     else:
                         retry_duration, retry_engine = await self._synthesize_via_port(
-                            seg_input.text,
+                            retry_original_text,
                             decision.voice_id,
                             retry_prosody,
                             retry_output,
