@@ -9,6 +9,7 @@ D6 — MP3 ID3v2.4 标签写入模块
 """
 
 import logging
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -349,8 +350,34 @@ def export_mp3_chapters(
     for i, (audio_file, chapter) in enumerate(zip(audio_files, chapter_infos, strict=False)):
         output_file = output_dir / f"chapter_{i+1:03d}_{chapter.title}.mp3"
 
-        # Copy original file
-        shutil.copy2(audio_file, output_file)
+        if Path(audio_file).suffix.lower() == ".mp3":
+            # 原生 MP3 (云端引擎如 edge)：直接拷贝，避免二次有损转码
+            shutil.copy2(audio_file, output_file)
+        else:
+            # 本地引擎 (kokoro/piper) 的段音频是 WAV——母带链输出扩展名跟随输入
+            # (master_audio 按 _codec_for_path 选编码)，到这里仍是 PCM。此前直接
+            # shutil.copy2 改名成 .mp3，产物是伪 MP3：concat -c copy 直接报
+            # "Invalid audio stream" (实测 ffmpeg exit 234)，全书合并必然失败。
+            # 统一真转码为 MP3 并对齐 44.1kHz (与 M4B 档的 MasteringConfig.sample_rate
+            # 同源)，保证 concat -c copy 的流参数一致。
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-nostdin",
+                    "-i",
+                    str(audio_file),
+                    "-c:a",
+                    "libmp3lame",
+                    "-q:a",
+                    "2",
+                    "-ar",
+                    "44100",
+                    str(output_file),
+                ],
+                check=True,
+                capture_output=True,
+            )
 
         # Create metadata for this chapter
         chapter_metadata = Mp3Metadata(

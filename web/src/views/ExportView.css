@@ -1,0 +1,199 @@
+/* ── ExportView scoped styles ────────────────────────────── */
+
+.export-view {
+  max-width: 720px;
+}
+
+/* ── Project info ───────────────────────────────────────── */
+.project-info-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.project-info-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.project-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+/* ── Format grid ────────────────────────────────────────── */
+.format-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.format-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all var(--transition);
+  background: var(--color-surface);
+}
+
+.format-card:hover {
+  background: var(--color-bg-tertiary);
+}
+
+.format-card-selected {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+.format-card-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.format-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.format-desc {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  line-height: 1.4;
+}
+
+.format-checkbox {
+  accent-color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+/* ── Option checks ──────────────────────────────────────── */
+.option-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.option-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+/* ── Max-width input ────────────────────────────────────── */
+.max-w-input {
+  max-width: 120px;
+}
+
+/* ── Export actions ──────────────────────────────────────── */
+.export-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ── Export status / result ──────────────────────────────── */
+.export-status {
+  margin-top: 16px;
+}
+
+.export-result-card {
+  border-radius: var(--radius);
+  padding: 16px;
+  border: 1px solid var(--color-border);
+}
+
+.result-completed {
+  background: var(--color-success-soft);
+  border-color: var(--color-success);
+}
+
+.result-failed {
+  background: var(--color-danger-soft);
+  border-color: var(--color-danger);
+}
+
+.result-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.result-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.result-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.result-detail {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin-top: 4px;
+}
+
+.output-paths {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.path-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.path-text {
+  color: var(--color-text-secondary);
+  font-family: monospace;
+  font-size: 12px;
+}
+
+/* ── Utility ────────────────────────────────────────────── */
+.hidden-mobile {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .hidden-mobile {
+    display: inline;
+  }
+}
+
+/* ── Responsive ─────────────────────────────────────────── */
+@media (max-width: 767px) {
+  .format-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Header text (shared layout helper) ─────────────────── */
+.header-text {
+  flex: 1;
+  min-width: 0;
+}

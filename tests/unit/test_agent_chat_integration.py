@@ -173,10 +173,10 @@ class TestAgentChatHTTPEndpoint:
     def test_pipeline_confirm_request(self):
         from src.audiobook_studio.api.agent_chat import PipelineConfirmRequest
 
-        req = PipelineConfirmRequest(project_id=1, confirmed=True)
-        assert req.confirmed is True
-        req = PipelineConfirmRequest(project_id=1, confirmed=False)
-        assert req.confirmed is False
+        req = PipelineConfirmRequest(project_id=1, action="approve")
+        assert req.action == "approve"
+        req = PipelineConfirmRequest(project_id=1, action="reject")
+        assert req.action == "reject"
 
     def test_pipeline_status_response_schema(self):
         from src.audiobook_studio.api.agent_chat import PipelineStatusResponse
@@ -220,7 +220,7 @@ class TestFrontendChatComponent:
     def test_agent_chat_view_imports_iconify(self):
         """Verify the component imports Icon from @iconify/vue."""
         content = Path("web/src/views/AgentChatView.vue").read_text()
-        assert "mdi:robot" in content or "Iconify" in content
+        assert "mdi:" in content or "@iconify/vue" in content
 
     def test_agent_chat_view_has_websocket_support(self):
         """Verify the component has WebSocket support code."""
@@ -229,9 +229,12 @@ class TestFrontendChatComponent:
 
     def test_agent_chat_view_has_http_fallback(self):
         """Verify the component has HTTP fallback."""
+        # Transport (WebSocket + HTTP fetch) moved to the useAgentChat composable;
+        # the view delegates chat transport to it.
         content = Path("web/src/views/AgentChatView.vue").read_text()
-        assert "POST" in content or "fetch" in content
-        assert "/api/agent/chat" in content
+        assert "fetch" in content or "useAgentChat" in content
+        composable = Path("web/src/composables/useAgentChat.ts").read_text()
+        assert "/api/agent/chat" in composable
 
     def test_agent_chat_route_in_router(self):
         """Verify router has the agent-chat route."""

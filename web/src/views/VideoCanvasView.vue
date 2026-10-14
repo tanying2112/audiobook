@@ -80,7 +80,7 @@
       <div class="auto-indicator" v-if="isAutoMode">
         <span class="auto-badge">{{ t('video_canvas.auto_mode') }}</span>
         <div class="auto-controls" v-if="showAutoControls">
-          <button @click="togglePlayPause" class="auto-btn" :aria-label="isPlaying ? 'Pause' : 'Play'">
+          <button @click="togglePlayPause" class="auto-btn" :aria-label="isPlaying ? t('common.pause') : t('common.play')">
             <Icon :icon="isPlaying ? 'mdi:pause' : 'mdi:play'" size="24" />
           </button>
           <button @click="exitAutoMode" class="auto-btn" :aria-label="t('video_canvas.exit_auto')">
@@ -110,7 +110,7 @@
           <button @click="skipBackward" class="control-btn" :disabled="!duration" :aria-label="t('video_canvas.skip_back')">
             <Icon icon="mdi:skip-previous" size="24" />
           </button>
-          <button @click="togglePlayPause" class="control-btn play-btn" :disabled="!duration" :aria-label="isPlaying ? 'Pause' : 'Play'">
+          <button @click="togglePlayPause" class="control-btn play-btn" :disabled="!duration" :aria-label="isPlaying ? t('common.pause') : t('common.play')">
             <Icon :icon="isPlaying ? 'mdi:pause' : 'mdi:play'" size="32" />
           </button>
           <button @click="skipForward" class="control-btn" :disabled="!duration" :aria-label="t('video_canvas.skip_forward')">
@@ -131,7 +131,7 @@
         </div>
 
         <div class="volume-control">
-          <button @click="toggleMute" class="control-btn" :aria-label="muted ? 'Unmute' : 'Mute'">
+          <button @click="toggleMute" class="control-btn" :aria-label="muted ? t('video_canvas.unmute') : t('video_canvas.mute')">
             <Icon :icon="muted || volume === 0 ? 'mdi:volume-off' : volume < 0.5 ? 'mdi:volume-low' : 'mdi:volume-high'" size="24" />
           </button>
           <input
@@ -146,7 +146,7 @@
         </div>
 
         <div class="fullscreen-control">
-          <button @click="toggleFullscreen" class="control-btn" :aria-label="isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'">
+          <button @click="toggleFullscreen" class="control-btn" :aria-label="isFullscreen ? t('video_canvas.exit_fullscreen') : t('video_canvas.fullscreen')">
             <Icon :icon="isFullscreen ? 'mdi:fullscreen-exit' : 'mdi:fullscreen'" size="24" />
           </button>
         </div>

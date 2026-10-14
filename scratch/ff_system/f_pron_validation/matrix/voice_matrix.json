@@ -1,0 +1,1968 @@
+{
+  "meta": {
+    "date": "2026-10-13",
+    "asr_model": "iic/SenseVoiceSmall",
+    "engine": "kokoro",
+    "voices": [
+      "af_bella",
+      "af_sarah",
+      "af_nicole",
+      "af_sky",
+      "am_adam",
+      "am_onyx",
+      "am_liam",
+      "am_michael",
+      "am_puck",
+      "am_fenrir"
+    ],
+    "asr_runs": "1 (Lenda respell 失败格追加 confirm 2 次, 不一致标 unstable 按失败计)",
+    "judge_circularity_note": "SenseVoice 亦是差距 E 中连原声叙述者都判不过的同一裁判; 单格 fail != 合成缺陷, 只等于裁判不识别"
+  },
+  "matrix": {
+    "Lenda": {
+      "respell": "Len da",
+      "carrier": "The second is Lenda, the captain of Stars.",
+      "voices": {
+        "af_bella": {
+          "base": {
+            "hit": false,
+            "hyp": "the second is linda the captain of stars"
+          },
+          "respell": {
+            "hit": true,
+            "hyp": "the second is lenda the captain of stars"
+          }
+        },
+        "af_sarah": {
+          "base": {
+            "hit": false,
+            "hyp": "the second is linda the captain of stars"
+          },
+          "respell": {
+            "hit": true,
+            "hyp": "the second is lenda the captain of stars"
+          }
+        },
+        "af_nicole": {
+          "base": {
+            "hit": false,
+            "hyp": "the second is linda the captain of stars"
+          },
+          "respell": {
+            "hit": true,
+            "hyp": "the second is lenda the captain of stars"
+          }
+        },
+        "af_sky": {
+          "base": {
+            "hit": false,
+            "hyp": "the second is linda the captain of stars"
+          },
+          "respell": {
+            "hit": true,
+            "hyp": "the second is lenda the captain of stars"
+          }
+        },
+        "am_adam": {
+          "base": {
+            "hit": false,
+            "hyp": "the second is linda the captain of stars"
+          },
+          "respell": {
+            "hit": true,
+            "hyp": "the second is lenda the captain of stars"
+          }
+        },
+        "am_onyx": {
+          "base": {
+            "hit": false,
+            "hyp": "the second is linda the captain of stars"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "the second is le da the captain of stars",
+            "confirm": {
+              "hit": false,
+              "hyp": "the second is le da the captain of stars",
+              "unstable": false
+            }
+          }
+        },
+        "am_liam": {
+          "base": {
+            "hit": false,
+            "hyp": "the second is linda the captain of stars"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "the second is le da the captain of stars",
+            "confirm": {
+              "hit": false,
+              "hyp": "the second is le da the captain of stars",
+              "unstable": false
+            }
+          }
+        },
+        "am_michael": {
+          "base": {
+            "hit": false,
+            "hyp": "the second is linda the captain of stars"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "the second is ly da the captain of stars",
+            "confirm": {
+              "hit": false,
+              "hyp": "the second is ly da the captain of stars",
+              "unstable": false
+            }
+          }
+        },
+        "am_puck": {
+          "base": {
+            "hit": false,
+            "hyp": "the second is linda the captain of stars"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "the second is le da the captain of stars",
+            "confirm": {
+              "hit": false,
+              "hyp": "the second is le da the captain of stars",
+              "unstable": false
+            }
+          }
+        },
+        "am_fenrir": {
+          "base": {
+            "hit": false,
+            "hyp": "the second is linda the captain of stars"
+          },
+          "respell": {
+            "hit": true,
+            "hyp": "the second is lenda the captain of stars"
+          }
+        }
+      }
+    },
+    "Tino": {
+      "respell": "Tee-no",
+      "carrier": "My friends call me Tino, and I play football.",
+      "voices": {
+        "af_bella": {
+          "base": {
+            "hit": false,
+            "hyp": "my friends call me tinino and i play football"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "my friends call me tinino and i play football"
+          }
+        },
+        "af_sarah": {
+          "base": {
+            "hit": false,
+            "hyp": "my friends call me tinino and i play football"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "my friends call me tinino and i play football"
+          }
+        },
+        "af_nicole": {
+          "base": {
+            "hit": false,
+            "hyp": "my friends call me tinino and i play football"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "my friends call me tinino and i play football"
+          }
+        },
+        "af_sky": {
+          "base": {
+            "hit": false,
+            "hyp": "my friends call me tinino and i play football"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "my friends call me tinino and i play football"
+          }
+        },
+        "am_adam": {
+          "base": {
+            "hit": false,
+            "hyp": "my friends call me tinino and i play football"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "my friends call me tinno and i play football"
+          }
+        },
+        "am_onyx": {
+          "base": {
+            "hit": false,
+            "hyp": "my friends call me tinino and i play football"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "my friends call me tinino and i play football"
+          }
+        },
+        "am_liam": {
+          "base": {
+            "hit": false,
+            "hyp": "my friends call me tinino and i play football"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "my friends call me tinino and i play football"
+          }
+        },
+        "am_michael": {
+          "base": {
+            "hit": false,
+            "hyp": "my friends call me tinino and i play football"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "my friends call me teenno and i play football"
+          }
+        },
+        "am_puck": {
+          "base": {
+            "hit": false,
+            "hyp": "my friends call me tinino and i play football"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "my friends call me tinino and i play football"
+          }
+        },
+        "am_fenrir": {
+          "base": {
+            "hit": false,
+            "hyp": "my friends call me tinino and i play football"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "my friends call me tinino and i play football"
+          }
+        }
+      }
+    },
+    "Zangado": {
+      "respell": "Zan-gah-doh",
+      "carrier": "They call him Zangado, angry in Portuguese.",
+      "voices": {
+        "af_bella": {
+          "base": {
+            "hit": false,
+            "hyp": "they call him zanggato angry in portuguese"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "they call him zanggato angry in portuguese"
+          }
+        },
+        "af_sarah": {
+          "base": {
+            "hit": false,
+            "hyp": "they call him zangato angry in portuguese"
+          },
+          "respell": {
+            "hit": true,
+            "hyp": "they call him zangado angry in portuguese"
+          }
+        },
+        "af_nicole": {
+          "base": {
+            "hit": false,
+            "hyp": "they call him sanggato angry in portuguese"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "they call him sanggado angry in portuguese"
+          }
+        },
+        "af_sky": {
+          "base": {
+            "hit": false,
+            "hyp": "they call him zengado angry in portuguese"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "they call him zanggado angry in portuguese"
+          }
+        },
+        "am_adam": {
+          "base": {
+            "hit": false,
+            "hyp": "they call him zanggado angry in portuguese"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "they call him zanarddo angry in portuguese"
+          }
+        },
+        "am_onyx": {
+          "base": {
+            "hit": false,
+            "hyp": "they call him zanggado angry in portuguese"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "they call him zangarddo angry in portuguese"
+          }
+        },
+        "am_liam": {
+          "base": {
+            "hit": false,
+            "hyp": "they call him zanggado angry in portuguese"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "they call him zanggado angry in portuguese"
+          }
+        },
+        "am_michael": {
+          "base": {
+            "hit": false,
+            "hyp": "they call him zanggado angry in portuguese"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "they call him zangarddo angry in portuguese"
+          }
+        },
+        "am_puck": {
+          "base": {
+            "hit": false,
+            "hyp": "they call him zanggado angry in portuguese"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "they call him zanggado angry in portuguese"
+          }
+        },
+        "am_fenrir": {
+          "base": {
+            "hit": false,
+            "hyp": "they call him zenggado angry in portuguese"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "they call him zangarddo angry in portuguese"
+          }
+        }
+      }
+    },
+    "Nakano": {
+      "respell": "Nah-kah-noh",
+      "carrier": "Nakano, are you ready, asks the coach.",
+      "voices": {
+        "af_bella": {
+          "base": {
+            "hit": false,
+            "hyp": "naano are you ready asks the coach"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "nakao are you ready asks the coach"
+          }
+        },
+        "af_sarah": {
+          "base": {
+            "hit": false,
+            "hyp": "neano are you ready asks the coach"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "nakao are you ready ask the coach"
+          }
+        },
+        "af_nicole": {
+          "base": {
+            "hit": false,
+            "hyp": "naano are you ready asks the coach"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "nakao are you ready asks the coach"
+          }
+        },
+        "af_sky": {
+          "base": {
+            "hit": false,
+            "hyp": "naano are you ready asks the coach"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "nakao are you ready asks the coach"
+          }
+        },
+        "am_adam": {
+          "base": {
+            "hit": false,
+            "hyp": "naano are you ready asks the coach"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "nakao are you ready asks the coach"
+          }
+        },
+        "am_onyx": {
+          "base": {
+            "hit": false,
+            "hyp": "nakao are you ready asks the coach"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "nakao are you ready asks the coach"
+          }
+        },
+        "am_liam": {
+          "base": {
+            "hit": false,
+            "hyp": "naano are you ready asks the coach"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "nakao are you ready asks the coach"
+          }
+        },
+        "am_michael": {
+          "base": {
+            "hit": false,
+            "hyp": "naano are you ready asks the coach"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "nakao are you ready asks the coach"
+          }
+        },
+        "am_puck": {
+          "base": {
+            "hit": false,
+            "hyp": "naano are you ready asks the coach"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "nakao are you ready asks the coach"
+          }
+        },
+        "am_fenrir": {
+          "base": {
+            "hit": false,
+            "hyp": "naano are you ready asks the coach"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "nakao are you ready asks the coach"
+          }
+        }
+      }
+    },
+    "futsal": {
+      "respell": "foot-sal",
+      "carrier": "We played futsal when we were children.",
+      "voices": {
+        "af_bella": {
+          "base": {
+            "hit": false,
+            "hyp": "we played futzsel when we were children"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "we played foots when we were children"
+          }
+        },
+        "af_sarah": {
+          "base": {
+            "hit": false,
+            "hyp": "we played futzsel when we were children"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "we played foot cell when we were children"
+          }
+        },
+        "af_nicole": {
+          "base": {
+            "hit": false,
+            "hyp": "we played futzsel when we were children"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "we played footal when we were children"
+          }
+        },
+        "af_sky": {
+          "base": {
+            "hit": false,
+            "hyp": "we played futzel when we were children"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "we played footsal when we were children"
+          }
+        },
+        "am_adam": {
+          "base": {
+            "hit": false,
+            "hyp": "we played futzsel when we were children"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "we played foot sal when we were children"
+          }
+        },
+        "am_onyx": {
+          "base": {
+            "hit": false,
+            "hyp": "we played futzsel when we were children"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "we played foot so when we were children"
+          }
+        },
+        "am_liam": {
+          "base": {
+            "hit": false,
+            "hyp": "we played futzsel when we were children"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "we played footal when we were children"
+          }
+        },
+        "am_michael": {
+          "base": {
+            "hit": false,
+            "hyp": "we played futzsel when we were children"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "we played footal when we were children"
+          }
+        },
+        "am_puck": {
+          "base": {
+            "hit": false,
+            "hyp": "we played futzsel when we were children"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "we played footal when we were children"
+          }
+        },
+        "am_fenrir": {
+          "base": {
+            "hit": false,
+            "hyp": "we played futzsel when we were children"
+          },
+          "respell": {
+            "hit": false,
+            "hyp": "we played footal when we were children"
+          }
+        }
+      }
+    }
+  },
+  "variant_search": {
+    "Lenda": {
+      "am_onyx": [
+        {
+          "variant": "Lenn da",
+          "hit": false,
+          "hyp": "the second is le da the captain of stars"
+        },
+        {
+          "variant": "Lendah",
+          "hit": false,
+          "hyp": "the second is linda the captain of stars"
+        },
+        {
+          "variant": "Lehnda",
+          "hit": false,
+          "hyp": "the second is laneda the captain of stars"
+        },
+        {
+          "variant": "Lenn-dah",
+          "hit": false,
+          "hyp": "the second is le da the captain of stars"
+        },
+        {
+          "variant": "Lehn-dah",
+          "hit": false,
+          "hyp": "the second is lane daw the captain of stars"
+        },
+        {
+          "variant": "Landah",
+          "hit": false,
+          "hyp": "the second is landa the captain of stars"
+        }
+      ],
+      "am_liam": [
+        {
+          "variant": "Lenn da",
+          "hit": false,
+          "hyp": "the second is le da the captain of stars"
+        },
+        {
+          "variant": "Lendah",
+          "hit": false,
+          "hyp": "the second is linda the captain of stars"
+        },
+        {
+          "variant": "Lehnda",
+          "hit": false,
+          "hyp": "the second is laneda the captain of stars"
+        },
+        {
+          "variant": "Lenn-dah",
+          "hit": true,
+          "hyp": "the second is lenda the captain of stars"
+        }
+      ],
+      "am_michael": [
+        {
+          "variant": "Lenn da",
+          "hit": false,
+          "hyp": "the second is ly da the captain of stars"
+        },
+        {
+          "variant": "Lendah",
+          "hit": false,
+          "hyp": "the second is linda the captain of stars"
+        },
+        {
+          "variant": "Lehnda",
+          "hit": false,
+          "hyp": "the second is laneda the captain of stars"
+        },
+        {
+          "variant": "Lenn-dah",
+          "hit": true,
+          "hyp": "the second is lenda the captain of stars"
+        }
+      ],
+      "am_puck": [
+        {
+          "variant": "Lenn da",
+          "hit": false,
+          "hyp": "the second is le da the captain of stars"
+        },
+        {
+          "variant": "Lendah",
+          "hit": false,
+          "hyp": "the second is linda the captain of stars"
+        },
+        {
+          "variant": "Lehnda",
+          "hit": false,
+          "hyp": "the second is laneda the captain of stars"
+        },
+        {
+          "variant": "Lenn-dah",
+          "hit": true,
+          "hyp": "the second is lenda the captain of stars"
+        }
+      ]
+    },
+    "Tino": {
+      "af_bella": [
+        {
+          "variant": "Tee no",
+          "hit": false,
+          "hyp": "my friends call me tinno and i play football"
+        },
+        {
+          "variant": "Tee noh",
+          "hit": false,
+          "hyp": "my friends call me tinno and i play football"
+        },
+        {
+          "variant": "Teeno",
+          "hit": false,
+          "hyp": "my friends call me tinino and i play football"
+        },
+        {
+          "variant": "Tea no",
+          "hit": false,
+          "hyp": "my friends call me tinno and i play football"
+        },
+        {
+          "variant": "Tinnoh",
+          "hit": false,
+          "hyp": "my friends call me tinno and i play football"
+        },
+        {
+          "variant": "Tin oh",
+          "hit": false,
+          "hyp": "my friends call me tin o and i play football"
+        }
+      ],
+      "af_sarah": [
+        {
+          "variant": "Tee no",
+          "hit": false,
+          "hyp": "my friends call me tinno and i play football"
+        },
+        {
+          "variant": "Tee noh",
+          "hit": false,
+          "hyp": "my friends call me tinno and i play football"
+        },
+        {
+          "variant": "Teeno",
+          "hit": false,
+          "hyp": "my friends call me tinino and i play football"
+        },
+        {
+          "variant": "Tea no",
+          "hit": false,
+          "hyp": "my friends call me tinno and i play football"
+        },
+        {
+          "variant": "Tinnoh",
+          "hit": false,
+          "hyp": "my friends call me tinno and i play football"
+        },
+        {
+          "variant": "Tin oh",
+          "hit": false,
+          "hyp": "my friends call me tin o and i play football"
+        }
+      ],
+      "af_nicole": [
+        {
+          "variant": "Tee no",
+          "hit": false,
+          "hyp": "my friends call me tinino and i play football"
+        },
+        {
+          "variant": "Tee noh",
+          "hit": false,
+          "hyp": "my friends call me tinino and i play football"
+        },
+        {
+          "variant": "Teeno",
+          "hit": false,
+          "hyp": "my friends call me tinino and i play football"
+        },
+        {
+          "variant": "Tea no",
+          "hit": false,
+          "hyp": "my friends call me tinino and i play football"
+        },
+        {
+          "variant": "Tinnoh",
+          "hit": false,
+          "hyp": "my friends call me tin know and i play football"
+        },
+        {
+          "variant": "Tin oh",
+          "hit": false,
+          "hyp": "my friends call me tinno and i play football"
+        }
+      ],
+      "af_sky": [
+        {
+          "variant": "Tee no",
+          "hit": false,
+          "hyp": "my friends call me tinno and i play football"
+        },
+        {
+          "variant": "Tee noh",
+          "hit": false,
+          "hyp": "my friends call me tinno and i play football"
+        },
+        {
+          "variant": "Teeno",
+          "hit": false,
+          "hyp": "my friends call me tinino and i play football"
+        },
+        {
+          "variant": "Tea no",
+          "hit": false,
+          "hyp": "my friends call me tinno and i play football"
+        },
+        {
+          "variant": "Tinnoh",
+          "hit": false,
+          "hyp": "my friends call me tinno and i play football"
+        },
+        {
+          "variant": "Tin oh",
+          "hit": false,
+          "hyp": "my friends call me tin o and i play football"
+        }
+      ],
+      "am_adam": [
+        {
+          "variant": "Tee no",
+          "hit": false,
+          "hyp": "my friends call me tno and i play football"
+        },
+        {
+          "variant": "Tee noh",
+          "hit": false,
+          "hyp": "my friends call me tno and i play football"
+        },
+        {
+          "variant": "Teeno",
+          "hit": false,
+          "hyp": "my friends call me tinino and i play football"
+        },
+        {
+          "variant": "Tea no",
+          "hit": false,
+          "hyp": "my friends call me tno and i play football"
+        },
+        {
+          "variant": "Tinnoh",
+          "hit": false,
+          "hyp": "my friends call me tinno and i play football"
+        },
+        {
+          "variant": "Tin oh",
+          "hit": false,
+          "hyp": "my friends call me  tin0 and i play football"
+        }
+      ],
+      "am_onyx": [
+        {
+          "variant": "Tee no",
+          "hit": false,
+          "hyp": "my friends call me tinno and i play football"
+        },
+        {
+          "variant": "Tee noh",
+          "hit": false,
+          "hyp": "my friends call me tinno and i play football"
+        },
+        {
+          "variant": "Teeno",
+          "hit": false,
+          "hyp": "my friends call me tinino and i play football"
+        },
+        {
+          "variant": "Tea no",
+          "hit": false,
+          "hyp": "my friends call me tinno and i play football"
+        },
+        {
+          "variant": "Tinnoh",
+          "hit": true,
+          "hyp": "my friends call me tino and i play football"
+        },
+        {
+          "variant": "Tin oh",
+          "hit": false,
+          "hyp": "my friends call me tin o and i play football"
+        }
+      ],
+      "am_liam": [
+        {
+          "variant": "Tee no",
+          "hit": false,
+          "hyp": "my friends call me tno and i play football"
+        },
+        {
+          "variant": "Tee noh",
+          "hit": false,
+          "hyp": "my friends call me tno and i play football"
+        },
+        {
+          "variant": "Teeno",
+          "hit": false,
+          "hyp": "my friends call me tinino and i play football"
+        },
+        {
+          "variant": "Tea no",
+          "hit": false,
+          "hyp": "my friends call me tno and i play football"
+        },
+        {
+          "variant": "Tinnoh",
+          "hit": true,
+          "hyp": "my friends call me tino and i play football"
+        },
+        {
+          "variant": "Tin oh",
+          "hit": false,
+          "hyp": "my friends call me tin o and i play football"
+        }
+      ],
+      "am_michael": [
+        {
+          "variant": "Tee no",
+          "hit": false,
+          "hyp": "my friends call me tno and i play football"
+        },
+        {
+          "variant": "Tee noh",
+          "hit": false,
+          "hyp": "my friends call me tno and i play football"
+        },
+        {
+          "variant": "Teeno",
+          "hit": false,
+          "hyp": "my friends call me tinino and i play football"
+        },
+        {
+          "variant": "Tea no",
+          "hit": false,
+          "hyp": "my friends call me tno and i play football"
+        },
+        {
+          "variant": "Tinnoh",
+          "hit": true,
+          "hyp": "my friends call me tino and i play football"
+        },
+        {
+          "variant": "Tin oh",
+          "hit": false,
+          "hyp": "my friends call me 10 and i play football"
+        }
+      ],
+      "am_puck": [
+        {
+          "variant": "Tee no",
+          "hit": false,
+          "hyp": "my friends call me tinno and i play football"
+        },
+        {
+          "variant": "Tee noh",
+          "hit": false,
+          "hyp": "my friends call me tinno and i play football"
+        },
+        {
+          "variant": "Teeno",
+          "hit": false,
+          "hyp": "my friends call me tinino and i play football"
+        },
+        {
+          "variant": "Tea no",
+          "hit": false,
+          "hyp": "my friends call me tinno and i play football"
+        },
+        {
+          "variant": "Tinnoh",
+          "hit": true,
+          "hyp": "my friends call me tino and i play football"
+        },
+        {
+          "variant": "Tin oh",
+          "hit": false,
+          "hyp": "my friends call me tin o and i play football"
+        }
+      ],
+      "am_fenrir": [
+        {
+          "variant": "Tee no",
+          "hit": false,
+          "hyp": "my friends call me tinno and i play football"
+        },
+        {
+          "variant": "Tee noh",
+          "hit": false,
+          "hyp": "my friends call me tinno and i play football"
+        },
+        {
+          "variant": "Teeno",
+          "hit": false,
+          "hyp": "my friends call me tinino and i play football"
+        },
+        {
+          "variant": "Tea no",
+          "hit": false,
+          "hyp": "my friends call me tinno and i play football"
+        },
+        {
+          "variant": "Tinnoh",
+          "hit": true,
+          "hyp": "my friends call me tino and i play football"
+        },
+        {
+          "variant": "Tin oh",
+          "hit": false,
+          "hyp": "my friends call me tin o and i play football"
+        }
+      ]
+    },
+    "Zangado": {
+      "af_bella": [
+        {
+          "variant": "Zan-gah-doo",
+          "hit": false,
+          "hyp": "they call him zanggau angry in portuguese"
+        },
+        {
+          "variant": "Zangadoh",
+          "hit": false,
+          "hyp": "they call him zanggao angry in portuguese"
+        },
+        {
+          "variant": "Zan Gado",
+          "hit": false,
+          "hyp": "they call him zan gato angry in portuguese"
+        },
+        {
+          "variant": "Zangahdoh",
+          "hit": false,
+          "hyp": "they call him zanggato angry in portuguese"
+        },
+        {
+          "variant": "Zan-gar-doh",
+          "hit": false,
+          "hyp": "they call him zanarddo angry in portuguese"
+        }
+      ],
+      "af_nicole": [
+        {
+          "variant": "Zan-gah-doo",
+          "hit": false,
+          "hyp": "they call him zanggau angry in portuguese"
+        },
+        {
+          "variant": "Zangadoh",
+          "hit": false,
+          "hyp": "they call him sanggado angry in portuguese"
+        },
+        {
+          "variant": "Zan Gado",
+          "hit": false,
+          "hyp": "they call him zan gato angry in portuguese"
+        },
+        {
+          "variant": "Zangahdoh",
+          "hit": false,
+          "hyp": "they call him sanggato angry in portuguese"
+        },
+        {
+          "variant": "Zan-gar-doh",
+          "hit": false,
+          "hyp": "they call him zangarddo angry in portuguese"
+        }
+      ],
+      "af_sky": [
+        {
+          "variant": "Zan-gah-doo",
+          "hit": false,
+          "hyp": "they call him zanggau angry in portuguese"
+        },
+        {
+          "variant": "Zangadoh",
+          "hit": false,
+          "hyp": "they call him zanggado angry in portuguese"
+        },
+        {
+          "variant": "Zan Gado",
+          "hit": false,
+          "hyp": "they call him zan gado angry in portuguese"
+        },
+        {
+          "variant": "Zangahdoh",
+          "hit": false,
+          "hyp": "they call him zanggado angry in portuguese"
+        },
+        {
+          "variant": "Zan-gar-doh",
+          "hit": false,
+          "hyp": "they call him zang gardo angry in portuguese"
+        }
+      ],
+      "am_adam": [
+        {
+          "variant": "Zan-gah-doo",
+          "hit": false,
+          "hyp": "they call him zangardu angry in portuguese"
+        },
+        {
+          "variant": "Zangadoh",
+          "hit": false,
+          "hyp": "they call him zanggado angry in portuguese"
+        },
+        {
+          "variant": "Zan Gado",
+          "hit": false,
+          "hyp": "they call him zan gado angry in portuguese"
+        },
+        {
+          "variant": "Zangahdoh",
+          "hit": false,
+          "hyp": "they call him zanggato angry in portuguese"
+        },
+        {
+          "variant": "Zan-gar-doh",
+          "hit": false,
+          "hyp": "they call him zangguarddo angry in portuguese"
+        }
+      ],
+      "am_onyx": [
+        {
+          "variant": "Zan-gah-doo",
+          "hit": false,
+          "hyp": "they call him zangardu angry in portuguese"
+        },
+        {
+          "variant": "Zangadoh",
+          "hit": false,
+          "hyp": "they call him zanggodo angry in portuguese"
+        },
+        {
+          "variant": "Zan Gado",
+          "hit": false,
+          "hyp": "they call him zan gado angry in portuguese"
+        },
+        {
+          "variant": "Zangahdoh",
+          "hit": false,
+          "hyp": "they call him zanggado angry in portuguese"
+        },
+        {
+          "variant": "Zan-gar-doh",
+          "hit": false,
+          "hyp": "they call him zanguarddo angry in portuguese"
+        }
+      ],
+      "am_liam": [
+        {
+          "variant": "Zan-gah-doo",
+          "hit": false,
+          "hyp": "they call him zangardu angry in portuguese"
+        },
+        {
+          "variant": "Zangadoh",
+          "hit": false,
+          "hyp": "they call him zanggoo angry in portuguese"
+        },
+        {
+          "variant": "Zan Gado",
+          "hit": false,
+          "hyp": "they call him zan gado angry in portuguese"
+        },
+        {
+          "variant": "Zangahdoh",
+          "hit": false,
+          "hyp": "they call him zanggado angry in portuguese"
+        },
+        {
+          "variant": "Zan-gar-doh",
+          "hit": false,
+          "hyp": "they call him zanguarddo angry in portuguese"
+        }
+      ],
+      "am_michael": [
+        {
+          "variant": "Zan-gah-doo",
+          "hit": false,
+          "hyp": "they call him zangarddu angry in portuguese"
+        },
+        {
+          "variant": "Zangadoh",
+          "hit": false,
+          "hyp": "they call him zanggodo angry in portuguese"
+        },
+        {
+          "variant": "Zan Gado",
+          "hit": false,
+          "hyp": "they call him zan goddo angry in portuguese"
+        },
+        {
+          "variant": "Zangahdoh",
+          "hit": false,
+          "hyp": "they call him zanggado angry in portuguese"
+        },
+        {
+          "variant": "Zan-gar-doh",
+          "hit": false,
+          "hyp": "they call him zangguarddo angry in portuguese"
+        }
+      ],
+      "am_puck": [
+        {
+          "variant": "Zan-gah-doo",
+          "hit": false,
+          "hyp": "they call him zanggau angry in portuguese"
+        },
+        {
+          "variant": "Zangadoh",
+          "hit": false,
+          "hyp": "they call him zanggado angry in portuguese"
+        },
+        {
+          "variant": "Zan Gado",
+          "hit": false,
+          "hyp": "they call him zan gado angry in portuguese"
+        },
+        {
+          "variant": "Zangahdoh",
+          "hit": false,
+          "hyp": "they call him zanggato angry in portuguese"
+        },
+        {
+          "variant": "Zan-gar-doh",
+          "hit": false,
+          "hyp": "they call him zan gardo angry in portuguese"
+        }
+      ],
+      "am_fenrir": [
+        {
+          "variant": "Zan-gah-doo",
+          "hit": false,
+          "hyp": "they call him zanggau angry in portuguese"
+        },
+        {
+          "variant": "Zangadoh",
+          "hit": false,
+          "hyp": "they call him zanggado angry in portuguese"
+        },
+        {
+          "variant": "Zan Gado",
+          "hit": false,
+          "hyp": "they call him zan gado angry in portuguese"
+        },
+        {
+          "variant": "Zangahdoh",
+          "hit": false,
+          "hyp": "they call him zanggato angry in portuguese"
+        },
+        {
+          "variant": "Zan-gar-doh",
+          "hit": false,
+          "hyp": "they call him zanguarddo angry in portuguese"
+        }
+      ]
+    },
+    "Nakano": {
+      "af_bella": [
+        {
+          "variant": "Nah-kah-no",
+          "hit": false,
+          "hyp": "nakao are you ready asks the coach"
+        },
+        {
+          "variant": "Nakanoh",
+          "hit": false,
+          "hyp": "nakino are you ready asks the coach"
+        },
+        {
+          "variant": "Naka no",
+          "hit": false,
+          "hyp": "nock a no are you ready asks the coach"
+        },
+        {
+          "variant": "Nakahnno",
+          "hit": false,
+          "hyp": "naano are you ready asks the coach"
+        }
+      ],
+      "af_sarah": [
+        {
+          "variant": "Nah-kah-no",
+          "hit": false,
+          "hyp": "nakao are you ready ask the coach"
+        },
+        {
+          "variant": "Nakanoh",
+          "hit": false,
+          "hyp": "nakino are you ready asks the coach"
+        },
+        {
+          "variant": "Naka no",
+          "hit": false,
+          "hyp": "knock and no are you ready asks the coach"
+        },
+        {
+          "variant": "Nakahnno",
+          "hit": false,
+          "hyp": "neano are you ready asks the coach"
+        }
+      ],
+      "af_nicole": [
+        {
+          "variant": "Nah-kah-no",
+          "hit": false,
+          "hyp": "nakao are you ready asks the coach"
+        },
+        {
+          "variant": "Nakanoh",
+          "hit": false,
+          "hyp": "nakino are you ready asks the coach"
+        },
+        {
+          "variant": "Naka no",
+          "hit": false,
+          "hyp": "nkaau are you ready asks the coach"
+        },
+        {
+          "variant": "Nakahnno",
+          "hit": false,
+          "hyp": "naano are you ready asks the coach"
+        }
+      ],
+      "af_sky": [
+        {
+          "variant": "Nah-kah-no",
+          "hit": false,
+          "hyp": "nakao are you ready asks the coach"
+        },
+        {
+          "variant": "Nakanoh",
+          "hit": false,
+          "hyp": "nakino are you ready asks the coach"
+        },
+        {
+          "variant": "Naka no",
+          "hit": false,
+          "hyp": "naka no are you ready asks the coach"
+        },
+        {
+          "variant": "Nakahnno",
+          "hit": false,
+          "hyp": "naano are you ready asks the coach"
+        }
+      ],
+      "am_adam": [
+        {
+          "variant": "Nah-kah-no",
+          "hit": false,
+          "hyp": "nakao are you ready asks the coach"
+        },
+        {
+          "variant": "Nakanoh",
+          "hit": false,
+          "hyp": "nakao are you ready asks the coach"
+        },
+        {
+          "variant": "Naka no",
+          "hit": false,
+          "hyp": "nka no are you ready asks the coach"
+        },
+        {
+          "variant": "Nakahnno",
+          "hit": false,
+          "hyp": "naano are you ready asks the coach"
+        }
+      ],
+      "am_onyx": [
+        {
+          "variant": "Nah-kah-no",
+          "hit": false,
+          "hyp": "nakao are you ready asks the coach"
+        },
+        {
+          "variant": "Nakanoh",
+          "hit": false,
+          "hyp": "nakino are you ready asks the coach"
+        },
+        {
+          "variant": "Naka no",
+          "hit": false,
+          "hyp": "naka no are you ready asks the coach"
+        },
+        {
+          "variant": "Nakahnno",
+          "hit": false,
+          "hyp": "nakao are you ready asks the coach"
+        }
+      ],
+      "am_liam": [
+        {
+          "variant": "Nah-kah-no",
+          "hit": false,
+          "hyp": "nakao are you ready asks the coach"
+        },
+        {
+          "variant": "Nakanoh",
+          "hit": false,
+          "hyp": "nakao are you ready asks the coach"
+        },
+        {
+          "variant": "Naka no",
+          "hit": false,
+          "hyp": "naka no are you ready asks the coach"
+        },
+        {
+          "variant": "Nakahnno",
+          "hit": false,
+          "hyp": "naano are you ready asks the coach"
+        }
+      ],
+      "am_michael": [
+        {
+          "variant": "Nah-kah-no",
+          "hit": false,
+          "hyp": "nakao are you ready asks the coach"
+        },
+        {
+          "variant": "Nakanoh",
+          "hit": false,
+          "hyp": "nakino are you ready asks the coach"
+        },
+        {
+          "variant": "Naka no",
+          "hit": false,
+          "hyp": "nka no are you ready asks the coach"
+        },
+        {
+          "variant": "Nakahnno",
+          "hit": false,
+          "hyp": "naano are you ready asks the coach"
+        }
+      ],
+      "am_puck": [
+        {
+          "variant": "Nah-kah-no",
+          "hit": false,
+          "hyp": "nakao are you ready asks the coach"
+        },
+        {
+          "variant": "Nakanoh",
+          "hit": false,
+          "hyp": "nakinno are you ready asks the coach"
+        },
+        {
+          "variant": "Naka no",
+          "hit": false,
+          "hyp": "knock and no are you ready asks the coach"
+        },
+        {
+          "variant": "Nakahnno",
+          "hit": false,
+          "hyp": "naano are you ready asks the coach"
+        }
+      ],
+      "am_fenrir": [
+        {
+          "variant": "Nah-kah-no",
+          "hit": false,
+          "hyp": "nakao are you ready asks the coach"
+        },
+        {
+          "variant": "Nakanoh",
+          "hit": false,
+          "hyp": "nakino are you ready asks the coach"
+        },
+        {
+          "variant": "Naka no",
+          "hit": false,
+          "hyp": "knockkin know are you ready asks the coach"
+        },
+        {
+          "variant": "Nakahnno",
+          "hit": false,
+          "hyp": "naano are you ready asks the coach"
+        }
+      ]
+    },
+    "futsal": {
+      "af_bella": [
+        {
+          "variant": "footsal",
+          "hit": false,
+          "hyp": "we played footsl when we were children"
+        },
+        {
+          "variant": "footsall",
+          "hit": false,
+          "hyp": "we played footsol when we were children"
+        },
+        {
+          "variant": "futsall",
+          "hit": false,
+          "hyp": "we played fusall when we were children"
+        },
+        {
+          "variant": "fut sal",
+          "hit": false,
+          "hyp": "we played fusal when we were children"
+        },
+        {
+          "variant": "fut SAW",
+          "hit": false,
+          "hyp": "we played fu s when we were children"
+        },
+        {
+          "variant": "footzall",
+          "hit": false,
+          "hyp": "we played footsol when we were children"
+        }
+      ],
+      "af_sarah": [
+        {
+          "variant": "footsal",
+          "hit": false,
+          "hyp": "we played footsl when we were children"
+        },
+        {
+          "variant": "footsall",
+          "hit": false,
+          "hyp": "we played footol when we were children"
+        },
+        {
+          "variant": "futsall",
+          "hit": false,
+          "hyp": "we played fusol when we were children"
+        },
+        {
+          "variant": "fut sal",
+          "hit": false,
+          "hyp": "we played fusal when we were children"
+        },
+        {
+          "variant": "fut SAW",
+          "hit": false,
+          "hyp": "we played fu s when we were children"
+        },
+        {
+          "variant": "footzall",
+          "hit": false,
+          "hyp": "we played footol when we were children"
+        }
+      ],
+      "af_nicole": [
+        {
+          "variant": "footsal",
+          "hit": false,
+          "hyp": "we played foottzsl when we were children"
+        },
+        {
+          "variant": "footsall",
+          "hit": false,
+          "hyp": "we played footol when we were children"
+        },
+        {
+          "variant": "futsall",
+          "hit": false,
+          "hyp": "we played fusall when we were children"
+        },
+        {
+          "variant": "fut sal",
+          "hit": false,
+          "hyp": "we played fu s when we were children"
+        },
+        {
+          "variant": "fut SAW",
+          "hit": false,
+          "hyp": "we played fu sa when we were children"
+        },
+        {
+          "variant": "footzall",
+          "hit": false,
+          "hyp": "we played footol when we were children"
+        }
+      ],
+      "af_sky": [
+        {
+          "variant": "footsal",
+          "hit": false,
+          "hyp": "we played footsl when we were children"
+        },
+        {
+          "variant": "footsall",
+          "hit": false,
+          "hyp": "we played footsol when we were children"
+        },
+        {
+          "variant": "futsall",
+          "hit": false,
+          "hyp": "we played fusall when we were children"
+        },
+        {
+          "variant": "fut sal",
+          "hit": false,
+          "hyp": "we played fus when we were children"
+        },
+        {
+          "variant": "fut SAW",
+          "hit": false,
+          "hyp": "we played fu s when we were children"
+        },
+        {
+          "variant": "footzall",
+          "hit": false,
+          "hyp": "we played footsol when we were children"
+        }
+      ],
+      "am_adam": [
+        {
+          "variant": "footsal",
+          "hit": false,
+          "hyp": "we played footsol when we were children"
+        },
+        {
+          "variant": "footsall",
+          "hit": false,
+          "hyp": "we played footsol when we were children"
+        },
+        {
+          "variant": "futsall",
+          "hit": false,
+          "hyp": "we played fusall when we were children"
+        },
+        {
+          "variant": "fut sal",
+          "hit": false,
+          "hyp": "we played fusal when we were children"
+        },
+        {
+          "variant": "fut SAW",
+          "hit": false,
+          "hyp": "we played fu s aw when we were children"
+        },
+        {
+          "variant": "footzall",
+          "hit": false,
+          "hyp": "we played footsol when we were children"
+        }
+      ],
+      "am_onyx": [
+        {
+          "variant": "footsal",
+          "hit": false,
+          "hyp": "we played footsl when we were children"
+        },
+        {
+          "variant": "footsall",
+          "hit": false,
+          "hyp": "we played footsall when we were children"
+        },
+        {
+          "variant": "futsall",
+          "hit": false,
+          "hyp": "we played fusall when we were children"
+        },
+        {
+          "variant": "fut sal",
+          "hit": false,
+          "hyp": "we played fusal when we were children"
+        },
+        {
+          "variant": "fut SAW",
+          "hit": false,
+          "hyp": "we played fu s when we were children"
+        },
+        {
+          "variant": "footzall",
+          "hit": false,
+          "hyp": "we played footsall when we were children"
+        }
+      ],
+      "am_liam": [
+        {
+          "variant": "footsal",
+          "hit": false,
+          "hyp": "we played footsol when we were children"
+        },
+        {
+          "variant": "footsall",
+          "hit": false,
+          "hyp": "we played footsall when we were children"
+        },
+        {
+          "variant": "futsall",
+          "hit": false,
+          "hyp": "we played fusall when we were children"
+        },
+        {
+          "variant": "fut sal",
+          "hit": false,
+          "hyp": "we played fusalal when we were children"
+        },
+        {
+          "variant": "fut SAW",
+          "hit": false,
+          "hyp": "we played fu s when we were children"
+        },
+        {
+          "variant": "footzall",
+          "hit": false,
+          "hyp": "we played footsall when we were children"
+        }
+      ],
+      "am_michael": [
+        {
+          "variant": "footsal",
+          "hit": false,
+          "hyp": "we played foottzsl when we were children"
+        },
+        {
+          "variant": "footsall",
+          "hit": false,
+          "hyp": "we played footsall when we were children"
+        },
+        {
+          "variant": "futsall",
+          "hit": false,
+          "hyp": "we played fusall when we were children"
+        },
+        {
+          "variant": "fut sal",
+          "hit": false,
+          "hyp": "we played fusal when we were children"
+        },
+        {
+          "variant": "fut SAW",
+          "hit": false,
+          "hyp": "we played fu s when we were children"
+        },
+        {
+          "variant": "footzall",
+          "hit": false,
+          "hyp": "we played footsall when we were children"
+        }
+      ],
+      "am_puck": [
+        {
+          "variant": "footsal",
+          "hit": false,
+          "hyp": "we played foots so when we were children"
+        },
+        {
+          "variant": "footsall",
+          "hit": false,
+          "hyp": "we played foot all when we were children"
+        },
+        {
+          "variant": "futsall",
+          "hit": false,
+          "hyp": "we played fusall when we were children"
+        },
+        {
+          "variant": "fut sal",
+          "hit": false,
+          "hyp": "we played fusal when we were children"
+        },
+        {
+          "variant": "fut SAW",
+          "hit": false,
+          "hyp": "we played fat s when we were children"
+        },
+        {
+          "variant": "footzall",
+          "hit": false,
+          "hyp": "we played foot all when we were children"
+        }
+      ],
+      "am_fenrir": [
+        {
+          "variant": "footsal",
+          "hit": false,
+          "hyp": "we played foots sool when we were children"
+        },
+        {
+          "variant": "footsall",
+          "hit": false,
+          "hyp": "we played footsall when we were children"
+        },
+        {
+          "variant": "futsall",
+          "hit": false,
+          "hyp": "we played fusall when we were children"
+        },
+        {
+          "variant": "fut sal",
+          "hit": false,
+          "hyp": "we played fus when we were children"
+        },
+        {
+          "variant": "fut SAW",
+          "hit": false,
+          "hyp": "we played fu s when we were children"
+        },
+        {
+          "variant": "footzall",
+          "hit": false,
+          "hyp": "we played footsall when we were children"
+        }
+      ]
+    }
+  },
+  "completion": {
+    "Lenda": {
+      "Lenn-dah": {
+        "af_bella": {
+          "hit": false,
+          "hyp": "the second is linda the captain of stars"
+        },
+        "af_sarah": {
+          "hit": true,
+          "hyp": "the second is lenda the captain of stars"
+        },
+        "af_nicole": {
+          "hit": true,
+          "hyp": "the second is lenda the captain of stars"
+        },
+        "af_sky": {
+          "hit": false,
+          "hyp": "the second is linda the captain of stars"
+        },
+        "am_adam": {
+          "hit": false,
+          "hyp": "the second is linda the captain of stars"
+        },
+        "am_onyx": {
+          "hit": false,
+          "hyp": "the second is le da the captain of stars"
+        },
+        "am_fenrir": {
+          "hit": false,
+          "hyp": "the second is linda the captain of stars"
+        }
+      }
+    },
+    "Tino": {
+      "Tinnoh": {
+        "af_bella": {
+          "hit": false,
+          "hyp": "my friends call me tinno and i play football"
+        },
+        "af_sarah": {
+          "hit": false,
+          "hyp": "my friends call me tinno and i play football"
+        },
+        "af_nicole": {
+          "hit": false,
+          "hyp": "my friends call me tin know and i play football"
+        },
+        "af_sky": {
+          "hit": false,
+          "hyp": "my friends call me tinno and i play football"
+        },
+        "am_adam": {
+          "hit": false,
+          "hyp": "my friends call me tinno and i play football"
+        }
+      }
+    }
+  },
+  "summary": {
+    "Lenda": {
+      "respell": "Len da",
+      "respell_pass": [
+        "af_bella",
+        "af_sarah",
+        "af_nicole",
+        "af_sky",
+        "am_adam",
+        "am_fenrir"
+      ],
+      "respell_fail": [
+        "am_onyx",
+        "am_liam",
+        "am_michael",
+        "am_puck"
+      ],
+      "unstable": [],
+      "no_harm_violations": [],
+      "per_voice_winners": {
+        "am_liam": "Lenn-dah",
+        "am_michael": "Lenn-dah",
+        "am_puck": "Lenn-dah"
+      },
+      "universal_variant": null,
+      "branch": "C"
+    },
+    "Tino": {
+      "respell": "Tee-no",
+      "respell_pass": [],
+      "respell_fail": [
+        "af_bella",
+        "af_sarah",
+        "af_nicole",
+        "af_sky",
+        "am_adam",
+        "am_onyx",
+        "am_liam",
+        "am_michael",
+        "am_puck",
+        "am_fenrir"
+      ],
+      "unstable": [],
+      "no_harm_violations": [],
+      "per_voice_winners": {
+        "am_onyx": "Tinnoh",
+        "am_liam": "Tinnoh",
+        "am_michael": "Tinnoh",
+        "am_puck": "Tinnoh",
+        "am_fenrir": "Tinnoh"
+      },
+      "universal_variant": null,
+      "branch": "C"
+    },
+    "Zangado": {
+      "respell": "Zan-gah-doh",
+      "respell_pass": [
+        "af_sarah"
+      ],
+      "respell_fail": [
+        "af_bella",
+        "af_nicole",
+        "af_sky",
+        "am_adam",
+        "am_onyx",
+        "am_liam",
+        "am_michael",
+        "am_puck",
+        "am_fenrir"
+      ],
+      "unstable": [],
+      "no_harm_violations": [],
+      "per_voice_winners": {},
+      "universal_variant": null,
+      "branch": "C"
+    },
+    "Nakano": {
+      "respell": "Nah-kah-noh",
+      "respell_pass": [],
+      "respell_fail": [
+        "af_bella",
+        "af_sarah",
+        "af_nicole",
+        "af_sky",
+        "am_adam",
+        "am_onyx",
+        "am_liam",
+        "am_michael",
+        "am_puck",
+        "am_fenrir"
+      ],
+      "unstable": [],
+      "no_harm_violations": [],
+      "per_voice_winners": {},
+      "universal_variant": null,
+      "branch": "C"
+    },
+    "futsal": {
+      "respell": "foot-sal",
+      "respell_pass": [],
+      "respell_fail": [
+        "af_bella",
+        "af_sarah",
+        "af_nicole",
+        "af_sky",
+        "am_adam",
+        "am_onyx",
+        "am_liam",
+        "am_michael",
+        "am_puck",
+        "am_fenrir"
+      ],
+      "unstable": [],
+      "no_harm_violations": [],
+      "per_voice_winners": {},
+      "universal_variant": null,
+      "branch": "C"
+    }
+  },
+  "budget": {
+    "stage2_used": 223,
+    "stage3_used": 12,
+    "stage2_exhausted": true
+  }
+}

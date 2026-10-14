@@ -39,7 +39,7 @@ export interface UseInlineChatOptions {
   chapterIndex?: () => number | null
   /** 目标阶段 */
   targetStage?: ChatEditTargetStage
-  /** 是否使用 mock 端点（默认 true，基建阶段验证用） */
+  /** 是否使用 mock 端点（默认 false，走真实 /api/llm/chat-edit） */
   useMock?: boolean
   /** 采纳 suggestion 时的业务回调（由调用方实现落盘逻辑） */
   onAccept?: (suggestion: ChatSuggestion) => void | Promise<void>
@@ -50,7 +50,7 @@ export interface UseInlineChatOptions {
 export function useInlineChat(options: UseInlineChatOptions = {}) {
   const ctx = useContextStore()
   const targetStage = options.targetStage ?? 'edit'
-  const useMock = options.useMock ?? true
+  const useMock = options.useMock ?? false
 
   // ── 响应式状态 ───────────────────────────────────────────────────────
   const messages = ref<ChatMessage[]>([])

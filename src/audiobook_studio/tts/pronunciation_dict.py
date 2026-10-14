@@ -42,6 +42,12 @@ class DictEntry:
 
     phoneme: str  # 发音替换正文 (拼音/同音字提示/SSML 注释等, 引擎按其读)
     source: str = "rule_ns"  # rule_ns | manual | heuristic
+    # Gap #7 (2026-10-13) 词条音色敏感: 同一注音换音色后回听不再整词命中 —
+    # Lenda→"Len da" 10 音色矩阵实证仅 6 音色过, am_liam/am_michael/am_puck
+    # 需 "Lenn-dah", am_onyx 7 种拼写全败 (池内不可修)。
+    # voice_variants: {voice_id: 该音色专用注音}; 恒等变体 (值=原词拼写)
+    # 表示该音色按原词读 (不伤害红线)。未列出的音色一律用默认 phoneme。
+    voice_variants: Optional[Dict[str, str]] = None
 
 
 def _parse_raw(raw: Dict) -> Dict[str, DictEntry]:
@@ -60,10 +66,23 @@ def _parse_raw(raw: Dict) -> Dict[str, DictEntry]:
             entries[word] = DictEntry(phoneme=str(meta))
             continue
         phoneme = meta.get("phoneme")
-        if phoneme is None:
+        if phoneme is None or not str(phoneme).strip():
+            # Gap F: proposed (空 phoneme) 条目惰性跳过 — 只占位不替换,
+            # 防止 apply 把目标词替换成空串。
             continue
         source = str(meta.get("source") or "rule_ns")
-        entries[word] = DictEntry(phoneme=str(phoneme), source=source)
+        voice_variants: Optional[Dict[str, str]] = None
+        voices_raw = meta.get("voices")
+        if isinstance(voices_raw, dict):
+            # Gap #7: 分音色注音块 {voice_id: 注音}; 空值/非字符串滤除。
+            voice_variants = {
+                str(v): str(p)
+                for v, p in voices_raw.items()
+                if isinstance(v, str) and v and isinstance(p, str) and p.strip()
+            } or None
+        entries[word] = DictEntry(
+            phoneme=str(phoneme), source=source, voice_variants=voice_variants
+        )
     return entries
 
 
@@ -103,8 +122,19 @@ def load_pronunciation_dict(
     return registry
 
 
-def apply_pronunciation_dict(text: str, pronunciation_dict: Dict[str, DictEntry]) -> str:
-    """对文本应用发音字典替换 (长词优先, 整词边界)。"""
+def apply_pronunciation_dict(
+    text: str,
+    pronunciation_dict: Dict[str, DictEntry],
+    voice_id: Optional[str] = None,
+) -> str:
+    """对文本应用发音字典替换 (长词优先, 整词边界)。
+
+    voice_id (可选): 条目带 voice_variants 时优先取该音色专用注音, 未命中
+    (含 "default"/blend 合成式) 回落默认 phoneme; 不传 → 一律默认 phoneme
+    (旧调用方语义不变)。
+    限制: voice_id 是段落级路由音色 — 句级 voice override 在此之后才解析,
+    句级换音色的句子仍按段落音色选注音 (gap_report 行动项记后续)。
+    """
     if not pronunciation_dict:
         return text
 
@@ -114,6 +144,9 @@ def apply_pronunciation_dict(text: str, pronunciation_dict: Dict[str, DictEntry]
     for word in sorted_words:
         entry = pronunciation_dict[word]
         phoneme = entry.phoneme
+        if voice_id and entry.voice_variants:
+            # Gap #7: 该音色专用注音优先; 未列出回落默认 phoneme。
+            phoneme = entry.voice_variants.get(voice_id, phoneme)
 
         # 中英文混合边界处理
         if re.search(r"[\u4e00-\u9fff]", word):
@@ -125,6 +158,66 @@ def apply_pronunciation_dict(text: str, pronunciation_dict: Dict[str, DictEntry]
             text = re.sub(pattern, phoneme, text)
 
     return text
+
+
+# Gap F (2026-10-13): 启发式专名抽取的排除词表 — 句首大写词多为普通词,
+# 书名/章节标题词不作专名提议。英文小写化后命中即排除。
+_PROPER_NOUN_STOPWORDS = frozenset({
+    "i", "the", "a", "an", "it's", "he's", "she's", "they're", "we're",
+    "chapter", "one", "two", "three", "okay", "ok", "yes", "no", "not",
+    "stars", "stripes", "cup",  # 本域队名等普通名词 (语料观察)
+})
+
+
+def propose_pronunciation_entries(
+    text: str,
+    language: Optional[str] = None,
+    top_k: int = 40,
+) -> Dict[str, Dict[str, str]]:
+    """从书文本启发式抽取候选专名 → 词典模板条目 (Gap F: 分析→词典链).
+
+    只提议、不发明发音 (红线#1): 每条 phoneme 留空, 由 LLM 注音或人工
+    核对一次后填入 (随后合成回听 SenseVoice 验证 — 见
+    scratch/ff_system/f_pron_dict_validate.py 的实证流程), 全书复用。
+
+    启发式 (en): 句中大写词 (排除句首/对白引号内首词与停用词) 按频次排序,
+    停用词先滤再切 top_k (防低频噪声按字母序挤掉高频人名); 连续大写词合并
+    为短语 (如 "Sao Paulo")。zh 文本无大小写信号 → 返回空 (诚实: 无证据
+    不提议, zh 专名仍走人工/LLM 渠道)。
+
+    Returns:
+        {词: {"phoneme": "", "source": "proposed"}} — 供生成项目级
+        pronunciation_dict.yaml 模板; 空 phoneme 条目在 _parse_raw
+        惰性跳过 (只占位不替换), 填入注音并回听验证后才生效。
+    """
+    if language and language.startswith("zh"):
+        return {}
+    # 句中大写词: 句首/对白引号内首词多为普通起始词, 用位置+停用词双滤。
+    proposals: Dict[str, int] = {}
+    tokens = re.split(r"(\s+)", text)  # 保留空白以判断句首
+    at_sentence_start = True
+    for tok in tokens:
+        if not tok:
+            continue
+        if tok.isspace():
+            continue
+        # 对白引号内首词 ('We' is Stars / “I'm ready”): 开引号起句 → 句首。
+        quote_open = tok[0] in "'\"“‘"
+        word = tok.strip(".,!?;:'\"“”‘’()[]—-")
+        if word and word[0].isupper() and not (at_sentence_start or quote_open):
+            proposals[word] = proposals.get(word, 0) + 1
+        at_sentence_start = (
+            tok.endswith(("\n", "\r", ".", "!", "?", ":", '"', "”", "'")) or None
+        )
+    # 停用词/非 ASCII 先滤, 再按频次切 top_k (防 1 次噪声词挤掉高频人名)。
+    ranked = sorted(
+        (
+            (w, c) for w, c in proposals.items()
+            if w.lower() not in _PROPER_NOUN_STOPWORDS and w.isascii()
+        ),
+        key=lambda kv: (-kv[1], kv[0]),
+    )[:top_k]
+    return {w: {"phoneme": "", "source": "proposed"} for w, _c in ranked}
 
 
 def get_pronunciation_dict(

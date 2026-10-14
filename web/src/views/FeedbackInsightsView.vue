@@ -1,58 +1,66 @@
 <template>
-  <div class="feedback-insights">
-    <div class="header">
+  <div class="page-container feedback-insights">
+    <div class="page-header">
       <h1>{{ t('feedbackInsights.title') }}</h1>
-      <el-button :loading="loading" @click="load">{{ t('common.refresh') }}</el-button>
+      <button :class="['btn btn-outline touch-target', loading ? 'btn-loading' : '']" @click="load" :aria-label="t('common.refresh')">
+        {{ t('common.refresh') }}
+      </button>
     </div>
 
-    <el-row :gutter="16">
-      <el-col :span="12">
-        <el-card class="section" v-loading="loading">
-          <template #header>{{ t('feedbackInsights.funnel') }}</template>
-          <div v-if="funnel" class="funnel">
-            <div
-              v-for="step in funnelSteps"
-              :key="step.key"
-              class="funnel-step"
-            >
-              <span class="funnel-label">{{ t(step.label) }}</span>
-              <div class="funnel-bar-wrapper">
-                <div
-                  class="funnel-bar"
-                  :style="{ width: funnelPct(step.value) }"
-                />
-              </div>
-              <span class="funnel-value">{{ step.value }}</span>
-            </div>
-          </div>
-          <el-empty v-else-if="!loading" :description="t('common.noData')" />
-        </el-card>
-      </el-col>
-
-      <el-col :span="12">
-        <el-card class="section" v-loading="loading">
-          <template #header>{{ t('feedbackInsights.patterns') }}</template>
-          <div v-if="heatmap?.top_patterns?.length" class="top-patterns">
-            <el-tag v-for="p in heatmap.top_patterns" :key="p" class="pattern-tag" size="small">{{ p }}</el-tag>
-          </div>
-          <el-table
-            v-if="heatmap?.patterns?.length"
-            :data="heatmap.patterns.slice(0, 20)"
-            size="small"
+    <div class="grid grid-2">
+      <!-- Funnel -->
+      <section class="card">
+        <h2 class="card-title">{{ t('feedbackInsights.funnel') }}</h2>
+        <div v-if="funnel" class="funnel">
+          <div
+            v-for="step in funnelSteps"
+            :key="step.key"
+            class="funnel-step"
           >
-            <el-table-column prop="tag" :label="t('feedbackInsights.pattern')" min-width="160" />
-            <el-table-column prop="stage" :label="t('feedbackInsights.stage')" width="120" />
-            <el-table-column prop="count" :label="t('feedbackInsights.count')" width="90" />
-            <el-table-column :label="t('feedbackInsights.severity')" width="110">
-              <template #default="{ row }">
-                <el-tag :type="severityType(row?.severity)" size="small">{{ row?.severity || '—' }}</el-tag>
-              </template>
-            </el-table-column>
-          </el-table>
-          <el-empty v-else-if="!loading" :description="t('common.noData')" />
-        </el-card>
-      </el-col>
-    </el-row>
+            <span class="funnel-label">{{ t(step.label) }}</span>
+            <div class="funnel-bar-wrapper">
+              <div
+                class="funnel-bar"
+                :style="{ width: funnelPct(step.value) }"
+              />
+            </div>
+            <span class="funnel-value">{{ step.value }}</span>
+          </div>
+        </div>
+        <div v-else-if="!loading" class="empty-state">{{ t('common.noData') }}</div>
+      </section>
+
+      <!-- Patterns -->
+      <section class="card">
+        <h2 class="card-title">{{ t('feedbackInsights.patterns') }}</h2>
+        <div v-if="heatmap?.top_patterns?.length" class="top-patterns">
+          <span v-for="p in heatmap.top_patterns" :key="p" class="badge badge-muted">{{ p }}</span>
+        </div>
+        <div v-if="heatmap?.patterns?.length" class="pattern-table table-responsive">
+          <table class="table">
+            <thead>
+              <tr>
+                <th scope="col">{{ t('feedbackInsights.pattern') }}</th>
+                <th scope="col">{{ t('feedbackInsights.stage') }}</th>
+                <th scope="col">{{ t('feedbackInsights.count') }}</th>
+                <th scope="col">{{ t('feedbackInsights.severity') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in heatmap.patterns.slice(0, 20)" :key="row.tag">
+                <td>{{ row.tag }}</td>
+                <td>{{ row.stage }}</td>
+                <td>{{ row.count }}</td>
+                <td>
+                  <span :class="severityBadgeClass(row?.severity)">{{ row?.severity || '—' }}</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div v-else-if="!loading" class="empty-state">{{ t('common.noData') }}</div>
+      </section>
+    </div>
   </div>
 </template>
 
@@ -84,10 +92,10 @@ function funnelPct(value: number): string {
   return `${Math.round((value / total) * 100)}%`
 }
 
-function severityType(severity?: string | null): 'danger' | 'warning' | 'info' {
-  if (severity === 'high') return 'danger'
-  if (severity === 'medium' || severity === 'warning') return 'warning'
-  return 'info'
+function severityBadgeClass(severity?: string | null): string {
+  if (severity === 'high') return 'badge badge-danger'
+  if (severity === 'medium' || severity === 'warning') return 'badge badge-warning'
+  return 'badge badge-info'
 }
 
 async function load() {
@@ -108,13 +116,51 @@ onMounted(load)
 </script>
 
 <style scoped>
-.feedback-insights { padding: 24px; max-width: 1200px; margin: 0 auto; }
-.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-.section { margin-bottom: 16px; }
-.funnel-step { display: grid; grid-template-columns: 130px 1fr 60px; align-items: center; gap: 10px; margin-bottom: 12px; }
-.funnel-bar-wrapper { background: var(--el-fill-color-light); border-radius: 4px; height: 18px; overflow: hidden; }
-.funnel-bar { height: 100%; background: var(--el-color-primary); border-radius: 4px; min-width: 2px; }
-.funnel-value { text-align: right; font-variant-numeric: tabular-nums; }
-.top-patterns { margin-bottom: 12px; }
-.pattern-tag { margin-right: 6px; margin-bottom: 6px; }
+.feedback-insights {
+  max-width: 1200px;
+}
+
+.funnel-step {
+  display: grid;
+  grid-template-columns: 130px 1fr 60px;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.funnel-bar-wrapper {
+  background: var(--color-bg-tertiary);
+  border-radius: 4px;
+  height: 18px;
+  overflow: hidden;
+}
+.funnel-bar {
+  height: 100%;
+  background: var(--color-primary);
+  border-radius: 4px;
+  min-width: 2px;
+}
+.funnel-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.top-patterns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+/* Responsive */
+@media (max-width: 767px) {
+  .funnel-step {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .funnel-label {
+    text-align: left;
+  }
+}
 </style>

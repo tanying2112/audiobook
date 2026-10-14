@@ -737,6 +737,8 @@ class ZeroShotCloneEngine:
             "xtts_v2": XTTSv2Engine,
             "openvoice_v2": OpenVoiceV2Engine,
             "cosyvoice_clone": CosyVoiceCloneEngine,
+            # Batch 2.2: 本地 CPU 近似克隆 (不受 ENABLE_GPU_BACKENDS 门控)
+            "kokoro_zeroshot": KokoroZeroShotCloneEngine,
         }
 
         engine_class = engine_map.get(config.engine)
@@ -763,3 +765,250 @@ class ZeroShotCloneEngine:
 def create_zero_shot_clone_engine(config: ZeroShotCloneConfig) -> ZeroShotCloneEngine:
     """Factory function to create ZeroShotCloneEngine."""
     return ZeroShotCloneEngine(config)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Batch 2.2 — KokoroZeroShotCloneEngine: 本地 CPU 近似零样本克隆
+# ═════════════════════════════════════════════════════════════════════════════
+# 设计: 参考音频声学分析 (F0/音节速率/频谱质心) → Kokoro blend 音色 +
+# pitch_st (ffmpeg 带式移位, v6 验证) + speed → 本地 CPU 合成。
+# 与云端引擎不同: 不受 ENABLE_GPU_BACKENDS 门控 (纯 CPU, kokoro-onnx)。
+
+import asyncio
+import tempfile
+import threading
+from pathlib import Path as _Path
+
+
+class KokoroZeroShotCloneEngine(BaseZeroShotCloneEngine):
+    """本地近似零样本克隆: 参考音频 → Kokoro 参数映射 → CPU 合成.
+
+    引擎链路:
+      reference_audio bytes → tempfile → analyze_reference() 声学画像
+      → suggest_kokoro_params() → (blend_voice, pitch_st, speed)
+      → KokoroBackend._synthesize_internal() (chunked, blend-aware)
+      → shift_semitones_path() ffmpeg 带式 pitch 移位
+      → PCM int16 bytes + voice_similarity 估计
+    """
+
+    def __init__(self, config: ZeroShotCloneConfig):
+        self._kokoro_backend = None
+        self._backend_lock = threading.Lock()
+        self._model_path = config.extra_params.get("model_path", "models/kokoro-v1.0.onnx")
+        self._voices_path = config.extra_params.get("voices_path", "models/voices-v1.0.bin")
+        super().__init__(config)
+
+    # ── ABC 实现 ────────────────────────────────────────────────────────────
+
+    def _init_client(self):
+        """惰性校验: 只在实例化时确认模型文件路径, 真正加载推迟到首次克隆."""
+        if self.config.mock_mode:
+            return
+        model_p = _Path(self._model_path)
+        voices_p = _Path(self._voices_path)
+        if not model_p.exists():
+            logger.warning(
+                f"[KokoroZeroShot] 模型文件不存在: {model_p} — 首次克隆时将回退 mock"
+            )
+        if not voices_p.exists():
+            logger.warning(f"[KokoroZeroShot] 音色文件不存在: {voices_p}")
+
+    def _ensure_backend(self):
+        """惰性创建并初始化 KokoroBackend (线程安全)."""
+        if self._kokoro_backend is not None:
+            return self._kokoro_backend
+        with self._backend_lock:
+            if self._kokoro_backend is not None:
+                return self._kokoro_backend
+            from .kokoro_backend import KokoroBackend
+
+            backend = KokoroBackend(
+                model_path=self._model_path if _Path(self._model_path).exists() else None,
+                voices_path=self._voices_path if _Path(self._voices_path).exists() else None,
+                sample_rate=24000,
+                mock_mode=False,
+            )
+            # initialize() 是 async — 经 _run_async_safely 兼容三种上下文:
+            # 无 loop (纯同步) / 已有运行中 loop (async 协程内调用, 如
+            # _clone_core → _synthesize_with_backend) / 专用线程。
+            # 直接裸 asyncio.run 在协程内会 RuntimeError (loop 已在跑)。
+            self._run_async_safely(backend.initialize())
+            self._kokoro_backend = backend
+            logger.info("[KokoroZeroShot] KokoroBackend 已初始化 (本地 CPU)")
+        return self._kokoro_backend
+
+    # ── 核心合成 ────────────────────────────────────────────────────────────
+
+    async def _synthesize_with_backend(
+        self,
+        text: str,
+        blend_voice: str,
+        speed: float,
+        output_path: _Path,
+    ) -> None:
+        """经 KokoroBackend 合成 (chunked + blend 解析 + 语言映射)."""
+        backend = self._ensure_backend()
+        await backend._synthesize_internal(
+            text=text,
+            voice_id=blend_voice,
+            output_path=output_path,
+            prosody={"rate": speed},
+        )
+
+    def _estimate_similarity(self, profile, suggestion) -> float:
+        """估计克隆相似度: pitch 邻近度 × 分析置信度.
+
+        |pitch_st| 越小 → 参考音高与合成音色越近 (8st 邻域线性衰减到 0);
+        再乘分析置信度 (短/低 voiced 样本打折)。首次合成后可用
+        quality.audio_metrics speaker cosine 复核 (调用方自行做)。
+        """
+        if profile.f0_median_hz is not None:
+            delta_st = abs(suggestion.pitch_st)
+            return max(0.0, 1.0 - delta_st / 8.0) * suggestion.confidence
+        return suggestion.confidence * 0.5  # F0 缺失 → 保守估计
+
+    def _clone_impl(
+        self, text: str, reference_audio: bytes, language: Optional[str] = None, **kwargs
+    ) -> ZeroShotCloneResult:
+        """同步克隆入口 — 在无事件循环上下文中运行."""
+        return self._run_async_safely(
+            self._clone_core(text, reference_audio, language, **kwargs)
+        )
+
+    async def _clone_async_impl(
+        self, text: str, reference_audio: bytes, language: Optional[str] = None, **kwargs
+    ) -> ZeroShotCloneResult:
+        """异步克隆入口."""
+        return await self._clone_core(text, reference_audio, language, **kwargs)
+
+    def _clone_stream_impl(
+        self, text: str, reference_audio: bytes, language: Optional[str] = None, **kwargs
+    ) -> Generator[ZeroShotCloneResult, None, None]:
+        """流式克隆: 先完整合成, 再分块产出 (近似流式)."""
+        result = self._run_async_safely(
+            self._clone_core(text, reference_audio, language, **kwargs)
+        )
+        chunk_size = 24000 * 2 * 2  # ~2s int16 bytes per chunk
+        audio = result.audio_data
+        n_chunks = max(1, len(audio) // chunk_size)
+        for i in range(n_chunks):
+            start = i * chunk_size
+            end = min(start + chunk_size, len(audio))
+            is_final = i == n_chunks - 1
+            yield ZeroShotCloneResult(
+                audio_data=audio[start:end],
+                sample_rate=result.sample_rate,
+                latency_ms=result.latency_ms if i == 0 else 20,
+                text_processed=result.text_processed if i == 0 else "",
+                language_detected=result.language_detected,
+                voice_similarity=result.voice_similarity,
+                metadata={**result.metadata, "chunk": i, "is_final": is_final},
+            )
+
+    @staticmethod
+    def _run_async_safely(coro):
+        """安全运行协程: 无运行中 loop → asyncio.run; 有 → 专用线程跑."""
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(coro)
+        # 已在事件循环内 (误从 async 上下文调同步接口): 借线程跑
+        box = {}
+
+        def _runner():
+            box["result"] = asyncio.run(coro)
+
+        t = threading.Thread(target=_runner)
+        t.start()
+        t.join()
+        if "result" not in box:
+            raise RuntimeError("KokoroZeroShot 同步克隆线程失败")
+        return box["result"]
+
+    async def _clone_core(
+        self,
+        text: str,
+        reference_audio: bytes,
+        language: Optional[str],
+        **kwargs,
+    ) -> ZeroShotCloneResult:
+        """核心克隆流程: 分析 → 参数映射 → 合成 → pitch 移位 → 结果."""
+        import time
+        from .reference_analysis import analyze_reference, suggest_kokoro_params
+        from ..utils.pitch_shift import shift_semitones_path
+
+        t0 = time.time()
+        lang = language or self.config.language or "zh"
+
+        # 1) 参考音频分析
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            ref_path = _Path(tmp.name)
+            ref_path.write_bytes(reference_audio)
+        try:
+            profile = analyze_reference(ref_path)
+        finally:
+            ref_path.unlink(missing_ok=True)
+
+        if profile.f0_median_hz is None:
+            logger.warning("[KokoroZeroShot] 参考音频 F0 全空, 回退默认参数")
+            profile = ReferenceAudioProfile()  # type: ignore
+
+        # 2) Kokoro 参数映射 (gender_hint 从 config.extra_params 透传)
+        gender_hint = self.config.extra_params.get("gender_hint")
+        suggestion = suggest_kokoro_params(profile, lang, gender_hint=gender_hint)
+
+        # 3) 合成到临时 wav
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            out_wav = _Path(tmp.name)
+        try:
+            await self._synthesize_with_backend(text, suggestion.blend_voice, suggestion.speed, out_wav)
+
+            # 4) pitch 移位 (ffmpeg 带式, v6 验证)
+            final_wav = out_wav
+            if abs(suggestion.pitch_st) >= 0.001:
+                shifted_wav = _Path(str(out_wav).replace(".wav", "_pitch.wav"))
+                ok = shift_semitones_path(out_wav, shifted_wav, suggestion.pitch_st, 24000)
+                if ok:
+                    final_wav = shifted_wav
+                    out_wav.unlink(missing_ok=True)
+                else:
+                    logger.warning("[KokoroZeroShot] pitch 移位失败, 使用原始合成")
+
+            # 5) 读 PCM int16 bytes
+            import soundfile as sf
+            audio_f32, sr = sf.read(str(final_wav), dtype="float32", always_2d=True)
+            if audio_f32.shape[1] > 1:
+                audio_f32 = audio_f32.mean(axis=1, keepdims=True)
+            audio_i16 = np.clip(audio_f32 * 32767, -32768, 32767).astype(np.int16)
+            audio_bytes = audio_i16.tobytes()
+
+            # 6) 相似度估计
+            sim = self._estimate_similarity(profile, suggestion)
+
+            latency_ms = int((time.time() - t0) * 1000)
+            return ZeroShotCloneResult(
+                audio_data=audio_bytes,
+                sample_rate=sr,
+                latency_ms=latency_ms,
+                text_processed=text[:100],
+                language_detected=lang,
+                voice_similarity=round(sim, 3),
+                metadata={
+                    "engine": "kokoro_zeroshot",
+                    "blend_voice": suggestion.blend_voice,
+                    "pitch_st": suggestion.pitch_st,
+                    "speed": suggestion.speed,
+                    "ref_f0_hz": round(profile.f0_median_hz or 0, 1),
+                    "ref_syl_rate": round(profile.syllable_rate or 0, 2),
+                    "analysis_confidence": profile.confidence,
+                    "warnings": profile.warnings,
+                },
+            )
+        finally:
+            out_wav.unlink(missing_ok=True)
+            _Path(str(out_wav).replace(".wav", "_pitch.wav")).unlink(missing_ok=True)
+
+
+# 导入 ReferenceAudioProfile 用于类型注解 (避免循环)
+from .reference_analysis import ReferenceAudioProfile, KokoroCloneSuggestion
+import numpy as np

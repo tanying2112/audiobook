@@ -70,13 +70,16 @@ def _normalize_audio(input_path: Path, output_path: Path, cfg: Optional["Masteri
     """Apply the S2-5 mastering post-processing chain to one segment.
 
     Single ffmpeg pass combining noise reduction (``afftdn`` — the ffmpeg-native
-    equivalent of ``noisereduce``), silence removal and EBU R128 ``loudnorm``
-    (I=-16 / TP=-1.5 / LRA=11). Outputs a mono 44.1 kHz WAV suitable for M4B
-    concatenation. Runs exactly one ``subprocess.run`` call.
+    equivalent of ``noisereduce``), silence removal and EBU R128 ``loudnorm``.
+    有声书分发走 audiobook 档 (I=-23 / TP=-3 / LRA=7, EBU R128 广播级标准,
+    2026-10-09 同稿原声实测 -22.7 LUFS 后定档)。Outputs a mono WAV at
+    ``cfg.sample_rate`` (44.1 kHz 默认) suitable for M4B concatenation.
+    Runs exactly one ``subprocess.run`` call.
     """
     from .mastering import MasteringConfig, build_master_filtergraph
 
-    cfg = cfg or MasteringConfig()
+    # None=沿用调用方配置; 默认走 audiobook 响度档
+    cfg = cfg or MasteringConfig(loudness_preset="audiobook")
     fg = build_master_filtergraph(cfg)
     if not fg:
         # All steps disabled: just copy the bytes through.
@@ -91,8 +94,11 @@ def _normalize_audio(input_path: Path, output_path: Path, cfg: Optional["Masteri
         fg,
         "-c:a",
         "pcm_s16le",
+        # P2 修复 (2026-10-11): 滤镜图尾部已有 soxr 探测的 aresample(cfg.sample_rate)
+        # (见 build_master_filtergraph), 输出 -ar 对齐之 —— 旧硬编码 44100 在
+        # cfg.sample_rate≠44100 时会 soxr 后再被 swr 二次重采样回 44100。
         "-ar",
-        "44100",
+        str(cfg.sample_rate),
         "-ac",
         "1",
         str(output_path),
@@ -149,6 +155,13 @@ def build_m4b(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     meta = metadata or M4bMetadata()
 
+    # P2 修复 (2026-10-11): 全链采样率对齐 MasteringConfig.sample_rate (默认 44100),
+    # 消除 _normalize_audio/concat/最终编码三处硬编码 -ar 44100 与 anullsrc r=44100
+    # —— cfg 采样率非默认时旧链会 "soxr 到 cfg.sample_rate 再 swr 回 44100" 二次重采样。
+    seg_cfg = MasteringConfig(enable_loudnorm=False)
+    book_cfg = MasteringConfig(enable_noisereduce=False, enable_silenceremove=False)
+    target_sr = seg_cfg.sample_rate
+
     # Step 1: Concatenate all segments into a single temp file
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir_path = Path(tmpdir)
@@ -170,7 +183,7 @@ def build_m4b(
                             "-f",
                             "lavfi",
                             "-i",
-                            "anullsrc=r=44100:cl=mono",
+                            f"anullsrc=r={target_sr}:cl=mono",
                             "-t",
                             "1",
                             str(silence_path),
@@ -184,13 +197,11 @@ def build_m4b(
                         # S2-5 母带后处理 (分段)：降噪 (afftdn) + 静音修剪 (silenceremove)。
                         # 注意：响度归一化 (loudnorm) 在整书拼接后统一做，保证导出整书
                         # 通过 loudnorm 校验 (input_i ≈ -16)，而非逐段归一化导致整书偏离。
-                        from .mastering import MasteringConfig
-
                         mastered_path = tmpdir_path / f"mastered_{i}.wav"
                         _normalize_audio(
                             seg_path,
                             mastered_path,
-                            cfg=MasteringConfig(enable_loudnorm=False),
+                            cfg=seg_cfg,
                         )
                         normalized_path = mastered_path
                         if i < len(chapter_markers):
@@ -223,7 +234,7 @@ def build_m4b(
             "-c:a",
             "pcm_s16le",
             "-ar",
-            "44100",
+            str(target_sr),
             "-ac",
             "1",
             str(concat_output),
@@ -236,13 +247,11 @@ def build_m4b(
         # 章节标记仍与拼接音频同步。
         m4b_source = concat_output
         if normalize:
-            from .mastering import MasteringConfig
-
             normalized_output = tmpdir_path / "concat_normalized.wav"
             _normalize_audio(
                 concat_output,
                 normalized_output,
-                cfg=MasteringConfig(enable_noisereduce=False, enable_silenceremove=False),
+                cfg=book_cfg,
             )
             m4b_source = normalized_output
 
@@ -283,7 +292,7 @@ def build_m4b(
             "-b:a",
             "128k",
             "-ar",
-            "44100",
+            str(target_sr),
             "-ac",
             "1",
         ]

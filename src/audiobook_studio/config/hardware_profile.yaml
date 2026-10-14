@@ -1,6 +1,6 @@
 # Audiobook Studio - Hardware Profile Configuration
 # 用户只需修改 active_profile 一行即可切换全链路能力
-# 三档：potato (纯本地CPU) | cloud_hybrid (默认：免费云API+本地TTS) | pro_studio (显卡+重型模型)
+# 四档：potato (纯本地CPU) | offline (完全离线兜底) | cloud_hybrid (默认：免费云API+本地TTS) | pro_studio (显卡+重型模型)
 
 active_profile: "cloud_hybrid"
 

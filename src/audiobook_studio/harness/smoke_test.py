@@ -28,12 +28,28 @@ import tempfile
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-from ..feedback import canary as canary_mod
 from ..feedback.prompt_compiler import stage_to_prompt_dir
 from . import storage as _storage_module
 from .golden import GoldenDatasetManager
 from .harness import IterationReport, run_iteration_cycle
 from .storage import Storage
+
+
+def _canary_module() -> Any:
+    """Resolve the ``feedback.canary`` module the same way the real runner does.
+
+    ``harness._harness_run_fn_for`` reads ``_run_stage_with_prompt_version`` via a
+    *fresh* ``from ..feedback.canary import ...`` at call time. Under pytest's dual
+    ``audiobook_studio`` / ``src.audiobook_studio`` alias a module-level
+    ``from ..feedback import canary`` binding can go stale while the runner reads a
+    different (canonical) module object, so the mock patch would silently miss.
+    Resolving through ``importlib`` with the same package root keeps the patched
+    object identical to the object the runner reads.
+    """
+    import importlib
+
+    root = __package__.rsplit(".", 1)[0]
+    return importlib.import_module(f"{root}.feedback.canary")
 
 
 class _Patch:
@@ -219,7 +235,7 @@ def run_smoke_test(
             prompts_subdir.mkdir(parents=True, exist_ok=True)
             # 每个对照用独立子目录，保证候选=新编译 v1、基线=v0（文件缺失）。
             with (
-                _Patch(canary_mod, "_run_stage_with_prompt_version", _make_run_stage_mock(recorded, bad)),
+                _Patch(_canary_module(), "_run_stage_with_prompt_version", _make_run_stage_mock(recorded, bad)),
                 _Patch(GoldenDatasetManager, "load_samples", _make_load_samples(samples)),
             ):
                 rep = _run_one_cycle(stage, k, use_learned, prompts_subdir)

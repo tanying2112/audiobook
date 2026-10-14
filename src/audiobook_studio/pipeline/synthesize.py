@@ -15,6 +15,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import math
 import os
 import re
 import time
@@ -49,6 +50,27 @@ logger = logging.getLogger(__name__)
 _IMAGE_PLACEHOLDER_RE = re.compile(r"\[插图[:：].*?(?:\]|$)", re.DOTALL)
 
 
+# v6 逐句三轴导演：句子切分（英文按 [.!?]+ 引号边界切，中文按 [。！？；]）
+# 英文边界 = 一个/多个句末标点 + 可选收尾引号/括号 + 其后是空白或文本末；
+# 中文边界 = 中文句末标点后即切（中文句间通常无空格），收尾引号随本句。
+# Batch 2.3: 常见缩写 (Mr./Dr./etc.) 不再误切为句末 — Python re 不支持
+# 变宽负向后行，故用链式定宽后行逐个排除（每个后行各自定宽，链式合法）。
+# 残留误差：真以缩写收尾的句子（如 "…, etc."）会并入下一句 — 宁欠勿过。
+_ABBREV_LOOKBEHIND = (
+    "(?<!\\bMr)(?<!\\bMrs)(?<!\\bMs)(?<!\\bDr)(?<!\\bSt)(?<!\\bProf)"
+    "(?<!\\bJr)(?<!\\bSr)(?<!\\bvs)(?<!\\betc)(?<!\\bInc)(?<!\\bLtd)(?<!\\bNo)"
+)
+_SENT_END_RE = re.compile(
+    _ABBREV_LOOKBEHIND
+    + r"[.!?]+[\"'\)\]”’」』]*"       # 英文句末 + 收尾引号/括号
+    r"(?=\s|$)"                            # 其后须为空白或结尾
+    r"|[。！？；][\"'\)\]”’」』]*"   # 中文句末 + 收尾引号/括号
+)
+
+# v6 音色混合语法正则：^voiceA*weightA+voiceB*weightB+... (weight 可选，缺省 1.0)
+_BLEND_RE = re.compile(r"^[A-Za-z0-9_]+(?:\*[0-9.]+)?(?:\+[A-Za-z0-9_]+(?:\*[0-9.]+)?)*$")
+
+
 def _strip_image_placeholders(text: str) -> str:
     """Remove ``[插图: ...]`` image-understanding blocks from paragraph text
     before TTS. Returns the remaining speakable text (whitespace-normalized);
@@ -57,6 +79,223 @@ def _strip_image_placeholders(text: str) -> str:
         return ""
     cleaned = _IMAGE_PLACEHOLDER_RE.sub(" ", text)
     return " ".join(cleaned.split())
+
+
+def _split_sentences(text: str) -> List[str]:
+    """Split paragraph text into sentences (v6 逐句导演的切句规则).
+
+    English: boundary at ``[.!?]+`` + optional closing quotes/brackets,
+    only when followed by whitespace or end-of-text (mirrors v6's
+    split_sentences quote-boundary behaviour).
+    Chinese: boundary right after ``[。！？；]`` + optional closing quotes.
+    A closing quote stays with the sentence it closes: 'He said "Go!" Then.'
+    → ['He said "Go!"', 'Then.'].
+
+    Batch 2.3: common English abbreviations (Mr./Dr./etc.) are excluded
+    via chained fixed-width negative lookbehinds — no longer split as
+    sentence ends. Residual: a sentence genuinely ending in an
+    abbreviation (e.g. "…, etc.") merges into the next.
+    """
+    if not text or not text.strip():
+        return []
+    sentences: List[str] = []
+    start = 0
+    for m in _SENT_END_RE.finditer(text):
+        end = m.end()
+        # 英文边界：吞掉句后的空白（v6 同款），中文边界不吞（句间无空白）
+        if m.group() and m.group()[0] in ".!?":
+            j = end
+            while j < len(text) and text[j] in " \t":
+                j += 1
+            end = j
+        seg = text[start:end].strip()
+        if seg:
+            sentences.append(seg)
+        start = end
+    tail = text[start:].strip()
+    if tail:
+        sentences.append(tail)
+    return sentences
+
+
+def _is_blend_voice_id(voice_id: str) -> bool:
+    """Check if voice_id uses v6 blend syntax (e.g., 'am_onyx+am_fenrir*0.55')."""
+    return bool(_BLEND_RE.match(voice_id))
+
+
+# ── v6 收编: 逐句三轴导演 + per-voice 响度校准 (纯函数, 便于单测) ─────────
+
+# 句间默认 micro 间隙 (v6 MICRO_GAP=0.22s; 与 kokoro 句内 chunk 间隙 200ms 同档)
+SENTENCE_GAP_DEFAULT_MS = 220
+
+# zh 韵律分级停顿 (Batch 2.3): 句尾标点类别决定句间默认停顿。
+ZH_SENTENCE_END_PAUSE_MS = 500   # 。！？ 完整句末
+ZH_SEMICOLON_PAUSE_MS = 300      # ； 半句停顿
+
+# Batch 3.2: LLM 音频导演的停顿类别 → 默认毫秒 (audio_director sentence_overrides
+# 的 pause_category 语义档; 显式 pause_after_ms 仍优先于类别)
+# 2026-10-14: dramatic 900→600ms (实证: 900ms 中位 1.06s vs 原声 0.70s 偏戏剧化;
+# 600ms 中位 0.87s 更接近原声, WER 19.57% vs 23.12%, UTMOS 持平)
+PAUSE_CATEGORY_DEFAULTS_MS = {
+    "clause": 300,      # 从句边界 — 换气
+    "comma": 150,       # 逗号级微顿 — 语流不断
+    "dramatic": 600,    # 戏剧性停顿 — 悬念/情绪爆发前
+    "paragraph": 1200,  # 段落收束 — 场景切换
+}
+
+# 校准 dB 封顶 (v6 CALIB_CAP 系统化为 ±3dB)
+VOICE_CALIB_CAP_DB = 3.0
+
+# Gap D fix (2026-10-12): 书籍难度 → 段落级语速缩放系数。
+# A = 分级读物 (Oxford Bookworms 等学习者材料, 刻意慢速; 原声对照实测 115 wpm_p
+# vs 系统默认 ~200 wpm_p → 0.75× 基准 ≈ 150 wpm_p, 向原声档靠拢且不过分拖沓)。
+# B/C/D = 母语成人向, 不缩放。BookMeta.difficulty 一直在分析数据里, 但此前
+# 从未传导到合成参数 — 系统不知道「这是分级读物, 该放慢」。
+DIFFICULTY_RATE_SCALE: Dict[str, float] = {
+    "A": 0.75,
+    "B": 1.0,
+    "C": 1.0,
+    "D": 1.0,
+}
+
+
+def _CALIB_TARGET_LUFS() -> float:
+    """Target integrated loudness — utils/loudness.py audiobook 档的 I (EBU R128)."""
+    from ..utils.loudness import resolve_loudness
+
+    return resolve_loudness("audiobook")[0]
+
+
+def compute_voice_calib_db(
+    measured_lufs: Optional[float],
+    target_lufs: Optional[float] = None,
+    cap_db: float = VOICE_CALIB_CAP_DB,
+) -> float:
+    """Per-voice calibration: calib_db = clamp(TARGET_LUFS - measured, -cap, +cap).
+
+    v6 语义: 实测偏响 (measured > target) → 负值压低; 实测偏轻 → 正值抬升;
+    首件实测 -inf / None (mock 离线静音 / 测量失败) → 0 (只对真实引擎生效)。
+    """
+    if measured_lufs is None:
+        return 0.0
+    if math.isinf(measured_lufs) or math.isnan(measured_lufs):
+        return 0.0
+    target = target_lufs if target_lufs is not None else _CALIB_TARGET_LUFS()
+    return float(max(-cap_db, min(cap_db, target - measured_lufs)))
+
+
+def merge_sentence_prosody(
+    paragraph_voice_id: str,
+    paragraph_prosody: dict[str, Any],
+    override: dict[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    """Merge a sentence-level director override onto the paragraph prosody.
+
+    Field semantics (v6 逐句三轴; speed 语义 Gap D 修正 2026-10-12):
+      - ``gain_db``: delta ADDED onto the paragraph volume (dB)
+      - ``speed``: MULTIPLIES the paragraph rate (base × speed; 1.0 = 不变)
+      - ``pitch_st``: REPLACES the paragraph pitch (semitones)
+      - ``voice_id``: REPLACES the sentence voice
+    Missing/None fields inherit the paragraph-level value untouched.
+
+    Gap D 语义修正: speed 此前是 REPLACE — 与导演契约「1.0=不变」矛盾:
+    段落基线 rate≠1.0 (difficulty 缩放 / 标注 speech_rate≠1) 时, 导演
+    speed=1.0 (不干预) 会把基线顶回 1.0, 分级读物的慢速设定被逐句覆盖丢失。
+    乘法语义: rate = base_rate × speed。基线 1.0 时与 REPLACE 完全等价
+    (历史数据不受影响); 基线≠1.0 时导演倍率相对「本书基线」解释, 与
+    prompt 中 speed 的相对倍率定义一致。
+
+    Returns (effective_voice_id, effective_prosody); the input dicts are not
+    mutated (a copy is returned).
+    """
+    prosody = dict(paragraph_prosody)
+    if override.get("speed") is not None:
+        prosody["rate"] = float(prosody.get("rate") or 1.0) * float(override["speed"])
+    if override.get("pitch_st") is not None:
+        prosody["pitch"] = float(override["pitch_st"])
+    if override.get("gain_db") is not None:
+        prosody["volume"] = float(prosody.get("volume") or 0.0) + float(override["gain_db"])
+    voice_id = paragraph_voice_id
+    if override.get("voice_id"):
+        voice_id = str(override["voice_id"])
+    return voice_id, prosody
+
+
+# zh 分级判定用的句尾集合
+_ZH_SENT_END_CHARS = "。！？"
+_PAUSE_CLOSER_CHARS = "」』”’\"'）)]}>》"
+
+
+def _sentence_pause_default_ms(sent: str) -> int:
+    """按句尾标点类别给出默认句间停顿 (纯函数, 便于单测).
+
+    中文句末 (。！？) → 500ms; 中文分号 (；) → 300ms;
+    英文句末/其他 (省略号、无标点残句) → SENTENCE_GAP_DEFAULT_MS (220ms,
+    v6 校准值, 无证据不调)。中文逗号/顿号不构成句边界 (_SENT_END_RE 不含),
+    句内停顿由引擎 clause pause 处理。判定前剥除句尾空白与收尾引号/括号;
+    显式 override 的 pause_after_ms 经 _override_pause_ms 仍优先于此默认。
+    """
+    for ch in reversed((sent or "").rstrip()):
+        if ch in _ZH_SENT_END_CHARS:
+            return ZH_SENTENCE_END_PAUSE_MS
+        if ch == "；":
+            return ZH_SEMICOLON_PAUSE_MS
+        if ch in _PAUSE_CLOSER_CHARS:
+            continue
+        return SENTENCE_GAP_DEFAULT_MS
+    return SENTENCE_GAP_DEFAULT_MS
+
+
+def _override_pause_ms(override: dict[str, Any], default_ms: int) -> int:
+    """Resolve the after-sentence pause from an override.
+
+    Priority (Batch 3.2): explicit ``pause_after_ms`` > ``pause_category``
+    (LLM 导演语义档, PAUSE_CATEGORY_DEFAULTS_MS) > caller default
+    (Batch 2.3 标点分级). 坏值/未知类别诚实回退 default, 不抛错。
+    """
+    raw = override.get("pause_after_ms")
+    if raw is not None:
+        try:
+            return max(0, int(float(raw)))
+        except (TypeError, ValueError):
+            pass  # 坏显式值不可用 → 穿透到类别档/默认
+    cat = override.get("pause_category")
+    if cat is not None:
+        cat_ms = PAUSE_CATEGORY_DEFAULTS_MS.get(str(cat))
+        if cat_ms is not None:
+            return int(cat_ms)
+    return int(default_ms)
+
+
+def compute_declared_pause_ms(
+    text: str, sentence_overrides: Optional[list[dict[str, Any]]] = None
+) -> int:
+    """Gap C fix: 计算本段「声明停顿预算」总毫秒 (质检门静音扣除项).
+
+    与 _synthesize_paragraph_with_overrides 的插入逻辑同源:
+    每个非末句 pause = _override_pause_ms(ovr, _sentence_pause_default_ms(sent)),
+    末句 = _override_pause_ms(ovr, 0)。逐句路径实际插入的静音恰好等于本和,
+    质检门据此区分「导演声明的停顿」(dramatic/paragraph/标点分级) 与
+    「意外静音」(engine 哑段/截断), 前者不算 Excessive silence 违规。
+    """
+    sentences = _split_sentences(text)
+    n = len(sentences)
+    if n == 0:
+        return 0
+    ovr_by_idx: Dict[int, dict[str, Any]] = {}
+    for ovr in sentence_overrides or []:
+        if not isinstance(ovr, dict):
+            continue
+        try:
+            ovr_by_idx[int(ovr.get("idx"))] = ovr
+        except (TypeError, ValueError):
+            continue
+    total = 0
+    for k, sent in enumerate(sentences):
+        ovr = ovr_by_idx.get(k, {})
+        default = _sentence_pause_default_ms(sent) if k < n - 1 else 0
+        total += _override_pause_ms(ovr, default)
+    return total
 
 
 # Edge-TTS voice ID -> Kokoro voice ID mapping
@@ -77,13 +316,24 @@ _EDGE_TO_KOKORO: Dict[str, str] = {
     "zh-CN-YangyangNeural": "zm_yunyang",
     "zh-CN-YunhaoNeural": "zm_yunjian",
     "zh-CN-YunzeNeural": "zm_yunjian",
-    "en-US-AriaNeural": "zf_xiaoxiao",
-    "en-US-JennyNeural": "zf_xiaoxiao",
-    "en-US-GuyNeural": "zm_yunjian",
-    "en-US-ChristopherNeural": "zm_yunjian",
-    "en-US-EricNeural": "zm_yunjian",
-    "en-US-RogerNeural": "zm_yunjian",
-    "en-US-SteffanNeural": "zm_yunjian",
+    # 升级点 #2c: 英文 Edge 音色曾全部映射到中文音色 (en-US-GuyNeural→zm_yunjian)
+    # —— 英文书路由到 kokoro 后由中文音色读英文, 静默灾难。改为英文池映射
+    # (池以 reference_analysis._BLEND_TABLE / kokoro v1.0 实际音色为准)。
+    "en-US-AriaNeural": "af_bella",
+    "en-US-JennyNeural": "af_sarah",
+    "en-US-MichelleNeural": "af_nicole",
+    "en-US-AnaNeural": "af_sky",
+    "en-US-AvaNeural": "af_bella",
+    "en-US-EmmaNeural": "af_sarah",
+    "en-US-GuyNeural": "am_adam",
+    "en-US-ChristopherNeural": "am_onyx",
+    "en-US-EricNeural": "am_liam",
+    "en-US-RogerNeural": "am_michael",
+    "en-US-SteffanNeural": "am_puck",
+    "en-US-AndrewNeural": "am_fenrir",
+    "en-GB-RyanNeural": "am_fenrir",
+    "en-GB-SoniaNeural": "af_sarah",
+    "en-GB-MaisieNeural": "af_sky",
     "ja-JP-NanamiNeural": "zf_xiaoxiao",
     "ja-JP-KeitaNeural": "zm_yunjian",
     "ko-KR-SunHiNeural": "zf_xiaoxiao",
@@ -91,7 +341,9 @@ _EDGE_TO_KOKORO: Dict[str, str] = {
 }
 
 
-def _normalize_voice_id(voice_id: str, engine_choice: str, *, strict: bool = False) -> str:
+def _normalize_voice_id(
+    voice_id: str, engine_choice: str, *, strict: bool = False, lang: Optional[str] = None
+) -> str:
     """Pick a voice_id understood by the chosen TTS engine.
 
     Edge-TTS voice IDs (e.g. ``zh-CN-XiaoxiaoNeural``) are the default stored in
@@ -122,18 +374,32 @@ def _normalize_voice_id(voice_id: str, engine_choice: str, *, strict: bool = Fal
       owns the final accept/reject (it may raise honestly at synthesis time,
       which is preferable to silently swapping voices).
     """
+    # 升级点 #2c: 语言感知默认音色。此前 default/未知 ID 一律回中文音色
+    # (kokoro zf_xiaoxiao / piper zh_CN / edge zh-CN-XiaoxiaoNeural) —— 英文书
+    # 走非 strict 路径会被静默换成中文音色读英文。lang 为 None (调用方无语言
+    # 上下文, 如合成内层对端口引擎的再归一) 时保持历史 zh 行为; 但已知音色
+    # (含英文 am_/af_ 池) 不受影响。
+    is_en = (lang or "zh-CN").split("-")[0].lower() == "en"
     if voice_id == "default":
         if engine_choice == "kokoro":
-            return "zf_xiaoxiao"
+            return "am_adam" if is_en else "zf_xiaoxiao"
         if engine_choice == "piper":
-            return "zh_CN-huayan-medium"
-        return "zh-CN-XiaoxiaoNeural"
+            return "en_US-hfc_male-medium" if is_en else "zh_CN-huayan-medium"
+        return "en-US-GuyNeural" if is_en else "zh-CN-XiaoxiaoNeural"
+    # v6 blend syntax (e.g. "am_onyx+am_fenrir*0.55") — explicit caller intent
+    # (multi-timbre weighted mix). Pass through untouched for any engine and
+    # strictness: the engine owns the honest accept/reject (kokoro_backend
+    # resolves blends via parse_blend_voice; other engines fail loudly rather
+    # than silently swapping in the narrator default).
+    if _is_blend_voice_id(voice_id) and "+" in voice_id:
+        return voice_id
     if engine_choice == "kokoro":
         # Map Edge voice_id to Kokoro equivalent; pass through if it's already a
         # Kokoro ID, else default to ``zf_xiaoxiao``.
         if voice_id in _EDGE_TO_KOKORO:
             return _EDGE_TO_KOKORO[voice_id]
-        # Already a Kokoro ID? accept as-is.
+        # Already a Kokoro ID? accept as-is. (升级点 #2c: 原白名单纯中文 8 音色,
+        # 英文 am_*/af_* 池不被识别, 走非 strict 会被静默换成 zf_xiaoxiao。)
         if voice_id in (
             "zf_xiaobei",
             "zf_xiaoni",
@@ -143,14 +409,15 @@ def _normalize_voice_id(voice_id: str, engine_choice: str, *, strict: bool = Fal
             "zm_yunxi",
             "zm_yunxia",
             "zm_yunyang",
-        ):
+        ) or voice_id.startswith(("am_", "af_")):
             return voice_id
         # Unknown — in strict mode honour it (caller explicitly named a voice,
         # e.g. a custom voice ID); the engine owns the honest accept/reject.
-        # Otherwise fall back to the canonical narrator voice (production-safe).
+        # Otherwise fall back to the canonical narrator voice (production-safe,
+        # 语言感知: en → am_adam)。
         if strict:
             return voice_id
-        return "zf_xiaoxiao"
+        return "am_adam" if is_en else "zf_xiaoxiao"
     if engine_choice == "piper":
         # Piper's Chinese preset pool is tiny (``zh_CN-huayan-medium`` narrator +
         # ``zh_CN-shaoer-medium`` child); the analyse stage writes Edge-TTS voice
@@ -162,14 +429,16 @@ def _normalize_voice_id(voice_id: str, engine_choice: str, *, strict: bool = Fal
         if voice_id.startswith("zh-"):
             return "zh_CN-huayan-medium"
         # Unknown (e.g. a custom voice ID) — strict honours it, non-strict falls
-        # back to the piper narrator default (same contract as kokoro/edge).
-        return voice_id if strict else "zh_CN-huayan-medium"
+        # back to the piper narrator default (same contract as kokoro/edge,
+        # 语言感知: en → en_US-hfc_male-medium)。
+        return voice_id if strict else ("en_US-hfc_male-medium" if is_en else "zh_CN-huayan-medium")
     # engine_choice == "edge": Edge accepts its own IDs and ignores Kokoro IDs;
     # map Kokoro IDs back to Edge if we get one (edge case).
-    if not voice_id.startswith("zh-"):
+    if not voice_id.startswith("zh-") and not voice_id.startswith("en-"):
         # Unknown / Kokoro-style ID on edge engine. Strict mode honours it
-        # (edge may reject honestly); non-strict falls back to the Edge default.
-        return voice_id if strict else "zh-CN-XiaoxiaoNeural"
+        # (edge may reject honestly); non-strict falls back to the Edge default
+        # (语言感知: en → en-US-GuyNeural)。en-* 前缀是 Edge 自家 ID, 原样接受。
+        return voice_id if strict else ("en-US-GuyNeural" if is_en else "zh-CN-XiaoxiaoNeural")
     return voice_id
 
 
@@ -310,6 +579,10 @@ class SynthesizePipeline:
         # Track existing segments for incremental synthesis
         self.existing_segments: dict[str, AudioSegment] = {}
         self._mock_segment_counter = 0
+        # P2a: per-voice loudness calibration (run-level cache, voice_id → calib dB).
+        # 首件实测 ebur128 → clamp ±3dB → 后续该音色 volume += calib_db;
+        # 落盘 self.output_dir / voice_calibration.json 便于观测。
+        self._voice_calib: Dict[str, float] = {}
 
         logger.info(f"SynthesizePipeline initialized with mock_mode={self.mock_mode}, crossfade_ms={self.crossfade_ms}")
 
@@ -334,6 +607,19 @@ class SynthesizePipeline:
     def _text_hash(self, text: str) -> str:
         # Use SHA256 with usedforsecurity=False for cache key generation (non-cryptographic)
         return hashlib.sha256(text.encode(), usedforsecurity=False).hexdigest()[:12]
+
+    def _registry_fingerprint(self, registry: Dict[str, "DictEntry"]) -> str:
+        """Stable fingerprint of pronunciation registry (voice_variants only).
+
+        Only voice_variants entries affect sentence-level pronunciation, so
+        fingerprint includes only those to keep cache stable for irrelevant changes.
+        """
+        items = []
+        for word, entry in sorted(registry.items()):
+            if entry.voice_variants:
+                variants = tuple(sorted(entry.voice_variants.items()))
+                items.append((word, entry.phoneme, variants))
+        return hashlib.sha256(str(items).encode(), usedforsecurity=False).hexdigest()[:16]
 
     def _metadata_path(self, segment_id: str) -> Path:
         """Return the sidecar metadata path for a synthesized segment."""
@@ -429,6 +715,7 @@ class SynthesizePipeline:
         prosody: dict[str, Any],
         output_path: Path,
         segment_id: str,
+        voice_strict: bool = False,
     ) -> tuple[int, str]:
         """Synthesize text to audio via RemoteTTSPort.
 
@@ -440,6 +727,9 @@ class SynthesizePipeline:
             prosody: Prosody parameters.
             output_path: Local path to save audio.
             segment_id: Unique segment identifier for task tracking.
+            voice_strict: Pass caller-named voice IDs through engine
+                normalization untouched (sentence-level director overrides
+                name a voice explicitly; the engine owns accept/reject).
 
         Returns:
             Tuple of (duration_ms, engine_name).
@@ -455,7 +745,7 @@ class SynthesizePipeline:
         # the port's real engine so we never feed an Edge voice_id to
         # Kokoro (or vice versa). See ADR-005 / fallback-chain.
         actual_engine = _port_engine_name(port)
-        voice_id = _normalize_voice_id(voice_id, actual_engine)
+        voice_id = _normalize_voice_id(voice_id, actual_engine, strict=voice_strict)
         payload = self._build_payload(text, voice_id, prosody)
 
         # Check audio semantic cache first (Tier 1: exact, Tier 2: semantic)
@@ -728,6 +1018,248 @@ class SynthesizePipeline:
             logger.info("Falling back to port synthesis")
             return await self._synthesize_via_port(text, voice_id, prosody, output_path, segment_id)
 
+    # ── P2a: per-voice loudness calibration (v6 收编) ─────────────────────
+    # 每音色首件实测 ebur128 integrated loudness → 校准 dB (cap ±3dB) →
+    # run 级缓存 → 后续该音色件 volume += calib_db → 落盘 voice_calibration.json。
+
+    async def _measure_integrated_lufs(self, audio_path: Path) -> Optional[float]:
+        """Measure EBU R128 integrated loudness (LUFS) via ffmpeg ebur128.
+
+        Returns None when ffmpeg is unavailable / fails / no parsable summary
+        (mock-offline silence yields ``-inf`` which IS returned as-is; callers
+        treat it via compute_voice_calib_db → 0).
+        """
+        if not audio_path.exists():
+            return None
+        cmd = [
+            "ffmpeg",
+            "-hide_banner",
+            "-nostats",
+            "-i",
+            str(audio_path),
+            "-af",
+            "ebur128=peak=true",
+            "-f",
+            "null",
+            "-",
+        ]
+        cmd = safe_subprocess_args(cmd)
+        try:
+            result = await run_ffmpeg(cmd, timeout=30, capture_output=True)
+        except Exception as e:
+            logger.warning("ebur128 measurement failed for %s: %s", audio_path, e)
+            return None
+        if result.returncode != 0:
+            logger.warning("ebur128 returned rc=%s for %s", result.returncode, audio_path)
+            return None
+        stderr_text = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
+        summary_at = stderr_text.find("Summary:")
+        if summary_at < 0:
+            return None
+        summary = stderr_text[summary_at:]
+        m = re.search(r"I:\s*(-?\d+(?:\.\d+)?|-inf)\s*LUFS", summary)
+        if not m:
+            return None
+        raw = m.group(1)
+        return float("-inf") if raw == "-inf" else float(raw)
+
+    async def _probe_voice_calibration(self, voice_id: str, audio_path: Path) -> float:
+        """First successful synthesis of a voice → measure → cache calib_db.
+
+        Measured loudness of -inf/None (mock/offline silence, empty audio)
+        → calib 0 (calibration only kicks in for real engines).
+        """
+        measured = await self._measure_integrated_lufs(audio_path)
+        calib = compute_voice_calib_db(measured)
+        self._voice_calib[voice_id] = calib
+        logger.info(
+            "P2a voice calibration: voice=%s measured=%s LUFS → calib=%+.2f dB (target %.1f LUFS)",
+            voice_id,
+            measured,
+            calib,
+            _CALIB_TARGET_LUFS(),
+        )
+        self._persist_voice_calibration()
+        return calib
+
+    def _persist_voice_calibration(self) -> None:
+        """Write the run-level calibration table to voice_calibration.json (observability)."""
+        payload = {
+            "target_lufs": _CALIB_TARGET_LUFS(),
+            "cap_db": VOICE_CALIB_CAP_DB,
+            "voices": {k: round(v, 3) for k, v in sorted(self._voice_calib.items())},
+        }
+        try:
+            (self.output_dir / "voice_calibration.json").write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+        except OSError as exc:
+            logger.warning("Unable to persist voice_calibration.json: %s", exc)
+
+    def _apply_voice_calibration(self, voice_id: str, prosody: dict[str, Any]) -> dict[str, Any]:
+        """Return a prosody copy with the cached per-voice calib added to volume."""
+        calib = self._voice_calib.get(voice_id, 0.0)
+        if not calib:
+            return prosody
+        merged = dict(prosody)
+        merged["volume"] = float(prosody.get("volume") or 0.0) + calib
+        logger.debug("P2a calib applied: voice=%s volume %+.1f → %+.1f dB",
+                     voice_id, float(prosody.get("volume") or 0.0), merged["volume"])
+        return merged
+
+    # ── v6 逐句三轴导演: sentence-level synthesis path ─────────────────────
+
+    async def _synthesize_paragraph_with_overrides(
+        self,
+        text: str,
+        paragraph_voice_id: str,
+        paragraph_prosody: dict[str, Any],
+        sentence_overrides: List[dict[str, Any]],
+        output_path: Path,
+        segment_id: str,
+        engine_choice: str = "kokoro",
+        language: Optional[str] = None,
+        pronunciation_registry: Optional[Dict[str, Any]] = None,
+    ) -> tuple[int, str]:
+        """Synthesize a paragraph sentence-by-sentence per the v6 director table.
+
+        Prosody merge (per sentence): paragraph-level prosody, fields replaced
+        by the sentence override — speed→rate, pitch_st→pitch, voice_id→voice,
+        gain_db is a delta added onto volume, pause_after_ms is silence after
+        the sentence (default: 220ms between sentences, 0 after the last).
+
+        Each sentence synthesizes via the Port (per-sentence semantic cache
+        applies); the pieces are read back, silence is inserted, numpy
+        concatenated and written as the single paragraph WAV so the downstream
+        chapter stitch is unchanged.
+
+        Sentence-level voice overrides use strict normalization (the caller
+        named a voice; the engine owns the honest accept/reject), and each
+        newly seen voice gets its own per-voice calibration probe (P2a).
+
+        #10 (2026-10-14): 句级 voice-aware 字典应用 — `text` 须为字典应用前
+        原文 (调用侧 run() 传 original_text); 每句在 voice 归一化后按该句
+        实际音色 apply_pronunciation_dict (voice_variants 分音色选注音)。
+        pronunciation_registry=None → 句子原样透传 (旧调用兼容)。
+        """
+        # #10: 句级字典应用需模块级 apply 函数 (registry 为 None 时透传)。
+        if pronunciation_registry:
+            from ..tts.pronunciation_dict import apply_pronunciation_dict
+
+        sentences = _split_sentences(text)
+        if not sentences:
+            # Degenerate (no speakable sentence) → whole-paragraph fallback.
+            # #10: 回落分支也须做字典应用 (按段落音色), 否则纯图片/极短段丢注音。
+            fallback_text = text
+            if pronunciation_registry:
+                fallback_text = apply_pronunciation_dict(
+                    text, pronunciation_registry, voice_id=paragraph_voice_id
+                )
+            return await self._synthesize_via_port(
+                fallback_text, paragraph_voice_id, paragraph_prosody, output_path, segment_id
+            )
+
+        ovr_by_idx: Dict[int, dict[str, Any]] = {}
+        for ovr in sentence_overrides or []:
+            if not isinstance(ovr, dict):
+                continue
+            try:
+                ovr_by_idx[int(ovr.get("idx"))] = ovr
+            except (TypeError, ValueError):
+                logger.warning("Skipping malformed sentence override (bad idx) for %s", segment_id)
+        out_of_range = [i for i in ovr_by_idx if i < 0 or i >= len(sentences)]
+        if out_of_range:
+            logger.warning(
+                "Sentence overrides %s out of range (%d sentences) for %s; ignored",
+                out_of_range, len(sentences), segment_id,
+            )
+
+        import shutil
+
+        import numpy as np
+        import soundfile as sf
+
+        piece_dir = self.output_dir / f"{segment_id}_sentences"
+        piece_dir.mkdir(parents=True, exist_ok=True)
+
+        audio_parts: List[Any] = []
+        target_sr: Optional[int] = None
+        engine_name = ""
+        n = len(sentences)
+        try:
+            for k, sent in enumerate(sentences):
+                ovr = ovr_by_idx.get(k, {})
+                voice_id, prosody = merge_sentence_prosody(
+                    paragraph_voice_id, paragraph_prosody, ovr
+                )
+                # Gap G fix (2026-10-12): 导演 (LLM) 的 sentence voice_id 可能是
+                # 语义角色标签 ("coach"/"lenda") 而非引擎音色 — 未知 ID 经非 strict
+                # 归一化落引擎安全默认 (已知 ID/blend 原样或跨引擎映射), 不让
+                # LLM 幻觉标签炸掉整段合成。人工编辑的已知 ID 不受影响。
+                if ovr.get("voice_id") is not None:
+                    voice_id = _normalize_voice_id(
+                        voice_id, engine_choice, strict=False, lang=language
+                    )
+                # #10: 句级 voice-aware 字典应用 — voice 归一化后按该句实际
+                # 音色选注音 (voice_variants); blend 音色未命中 variants 回落默认。
+                if pronunciation_registry:
+                    sent = apply_pronunciation_dict(
+                        sent, pronunciation_registry, voice_id=voice_id
+                    )
+                # P2a: per-voice calibration on the effective sentence voice
+                prosody = self._apply_voice_calibration(voice_id, prosody)
+
+                piece_path = piece_dir / f"s{k:03d}.wav"
+                _, piece_engine = await self._synthesize_via_port(
+                    sent, voice_id, prosody, piece_path, f"{segment_id}_s{k}", voice_strict=True
+                )
+                engine_name = engine_name or piece_engine
+
+                # P2a: first synthesis of this voice → calibration probe on the piece
+                if voice_id not in self._voice_calib:
+                    await self._probe_voice_calibration(voice_id, piece_path)
+
+                data, sr = sf.read(str(piece_path), dtype="float32", always_2d=False)
+                if data.ndim > 1:
+                    data = data.mean(axis=1)
+                if target_sr is None:
+                    target_sr = int(sr)
+                elif int(sr) != target_sr:
+                    logger.warning(
+                        "Sentence %d of %s at %dHz != paragraph %dHz; resampling",
+                        k, segment_id, sr, target_sr,
+                    )
+                    try:
+                        import soxr
+
+                        data = soxr.resample(data, sr, target_sr)
+                    except ImportError:
+                        logger.warning("soxr unavailable; keeping native-rate piece (will drift)")
+                audio_parts.append(data.astype(np.float32))
+
+                # Silence after the sentence: explicit override > punctuation-class default (Batch 2.3 zh 分级).
+                if k < n - 1:
+                    pause_ms = _override_pause_ms(ovr, _sentence_pause_default_ms(sent))
+                else:
+                    pause_ms = _override_pause_ms(ovr, 0)
+                if pause_ms > 0 and target_sr:
+                    audio_parts.append(np.zeros(int(target_sr * pause_ms / 1000.0), dtype=np.float32))
+
+            if not audio_parts or target_sr is None:
+                raise RuntimeError(f"Sentence synthesis produced no audio for {segment_id}")
+
+            merged = np.concatenate(audio_parts)
+            sf.write(str(output_path), merged, target_sr)
+            duration_ms = int(len(merged) / target_sr * 1000)
+        finally:
+            shutil.rmtree(piece_dir, ignore_errors=True)
+
+        logger.info(
+            "Sentence-directed synthesis for %s: %d sentences → %dms",
+            segment_id, n, duration_ms,
+        )
+        return duration_ms, engine_name
+
     @trace_function(name="pipeline.synthesize.run", stage="synthesize")  # type: ignore[untyped-decorator]  # trace_function (monitoring/) returns Callable[...,Any] w/o preserving the wrapped signature; fix lives outside this file's scope.
     async def run(self, inputs: List[TtsRoutingInput]) -> List[AudioSegment]:
         """Synthesize multiple paragraphs incrementally with quality gate.
@@ -747,14 +1279,35 @@ class SynthesizePipeline:
         # P2.12: 发音字典一次性加载 (项目级覆盖全局); 注音替换无条目时原样透传 (向后兼容)。
         # 字典加载失败 → 降级 warn 且 registry 为空 → apply 等价原样透传, 主路径不崩。
         from ..tts.pronunciation_dict import apply_pronunciation_dict, load_pronunciation_dict
+        from ..storage import project_dir as storage_project_dir
 
-        pronunciation_registry = load_pronunciation_dict()
+        # Gap #11 (2026-10-13): 推导 project_dir 以加载项目级字典。
+        # book_id 在 s3b/s3c 为 "football_forever" (非数字) → 回退 None 仅加载全局;
+        # 真实项目 (数字 project_id) 自动加载 storage/books/<id>/pronunciation_dict.yaml。
+        project_dir_path = None
+        if inputs:
+            bid = inputs[0].book_id
+            try:
+                pid = int(bid)
+                project_dir_path = storage_project_dir(pid, ensure=False)
+            except (ValueError, TypeError):
+                project_dir_path = None  # 非数字 book_id 回退 None
+
+        pronunciation_registry = load_pronunciation_dict(project_dir=project_dir_path)
 
         logger.info(f"Synthesizing {len(inputs)} paragraphs via Port")
 
         segments: list[AudioSegment] = []
         segment_files: list[Path] = []
         segment_ids: list[str] = []
+
+        # #10: 保存字典应用前的 original_text 供句级路径用 (按段落级 voice_id 做 apply);
+        # 句级路径在 _synthesize_paragraph_with_overrides 内按句级 voice 再 apply,
+        # 需原文 + registry。用 segment_id 做键避免 pydantic extra="forbid" 报错。
+        original_text_by_seg: Dict[str, str] = {}
+
+        # #10: 计算 registry 指纹掺入缓存键 —— voice_variants 变更即失效缓存。
+        registry_fp = self._registry_fingerprint(pronunciation_registry)
 
         for i, inp in enumerate(inputs):
             decision = self._make_routing_decision(inp)
@@ -774,10 +1327,33 @@ class SynthesizePipeline:
 
             # P2.12: 合成前按字典对 inp.text 做注音替换 (在 hash 前, 保证 cache 键与
             # 实际合成文本幂等一致; 无条目原样透传, 不破主路径)。就地改 inp.text 局部副本安全。
-            inp.text = apply_pronunciation_dict(inp.text, pronunciation_registry)
+            # Gap #7 (2026-10-13): 传段落路由音色 → 条目 voice_variants 分音色选注音
+            # (矩阵实证: "Len da" 6/10 音色命中, am_liam/am_michael/am_puck 需
+            # "Lenn-dah"; am_onyx 池内不可修 → 未列出即回落默认)。限制: 这是段落级
+            # 音色 — 句级 voice override 在 _synthesize_paragraph_with_overrides
+            # 内晚于此解析, 句级换音色的句子按段落音色选注音 (范围外, gap_report
+            # 记后续项)。voice_id 未命中 variants 时 apply 内部回落默认, 主路径不崩。
+            original_text = inp.text  # 保存字典前原文供 #10 句级路径用
+            inp.text = apply_pronunciation_dict(
+                inp.text, pronunciation_registry, voice_id=decision.voice_id
+            )
+            original_text_by_seg[decision.segment_id] = original_text
 
-            # Check if regeneration needed (text changed)
-            text_hash = self._text_hash(inp.text)
+            # v6 逐句三轴导演：非空 sentence_overrides → 走逐句合成路径。
+            # 过滤非 dict 项；idx 越界在句路径内 warn 忽略。
+            sentence_overrides = [
+                o for o in (getattr(inp, "sentence_overrides", None) or []) if isinstance(o, dict)
+            ]
+
+            # Check if regeneration needed (text changed).
+            # 逐句路径把 overrides 序列化掺入缓存键 —— override 改了 → hash 变 →
+            # 重合成；文本与 overrides 均未变 → 照常跳过（增量缓存语义不变）。
+            # #10: 掺入 registry 指纹 → voice_variants 变更即失效缓存。
+            if sentence_overrides:
+                overrides_blob = json.dumps(sentence_overrides, ensure_ascii=False, sort_keys=True)
+                text_hash = self._text_hash(inp.text + "\x00sov\x00" + overrides_blob + "\x00reg\x00" + registry_fp)
+            else:
+                text_hash = self._text_hash(inp.text + "\x00reg\x00" + registry_fp)
             segment_id = decision.segment_id
 
             # Emit stage progress for each paragraph
@@ -868,12 +1444,36 @@ class SynthesizePipeline:
                 # Check if streaming TTS is enabled for first-byte latency optimization
                 enable_streaming = os.getenv("ENABLE_STREAMING_TTS", "false").lower() == "true"
 
-                if enable_streaming:
+                # P2a: 该音色已有校准缓存 → volume += calib_db（首件即探针件本身，
+                # 不回改；-inf/None → 0 已在探针内保护）。复制 prosody 避免污染
+                # decision（同一 decision 对象可能被 quality 重试复用）。
+                effective_prosody = self._apply_voice_calibration(
+                    decision.voice_id, dict(decision.prosody_overrides or {})
+                )
+
+                if sentence_overrides:
+                    # v6 逐句三轴导演路径：逐句合成 → 句间静音 → 单一段落文件。
+                    # 逐句需要逐件韵律/音色，流式引擎不支持 → 覆盖流式优先。
+                    # #10: 传 original_text (字典前) + registry → 句级 voice-aware
+                    # 字典应用在句路径内按每句实际音色选注音 (inp.text 已被段落级
+                    # apply 消费过一次, 不能再喂句路径 → 双重替换)。
+                    duration, engine = await self._synthesize_paragraph_with_overrides(
+                        original_text_by_seg.get(segment_id, inp.text),
+                        decision.voice_id,
+                        effective_prosody,
+                        sentence_overrides,
+                        output_path,
+                        segment_id,
+                        engine_choice=decision.engine_choice,
+                        language=inp.language,
+                        pronunciation_registry=pronunciation_registry,
+                    )
+                elif enable_streaming:
                     # Run streaming synthesis with WebSocket progress
                     duration, engine = await self._synthesize_streaming(
                         inp.text,
                         decision.voice_id,
-                        decision.prosody_overrides or {},
+                        effective_prosody,
                         output_path,
                         segment_id,
                         project_id=inputs[0].book_id if inputs else 0,
@@ -885,13 +1485,18 @@ class SynthesizePipeline:
                     duration, engine = await self._synthesize_via_port(
                         inp.text,
                         decision.voice_id,
-                        decision.prosody_overrides or {},
+                        effective_prosody,
                         output_path,
                         segment_id,
                     )
 
                 synthesis_latency_ms = (time.time() - start_time) * 1000
                 success = True
+
+                # P2a: 该音色 run 内首次成功合成 → ebur128 实测 → 校准缓存。
+                # 仅段落级路径在此探针（逐句路径已按句件探针）；静音/-inf → 0。
+                if success and not sentence_overrides and decision.voice_id not in self._voice_calib:
+                    await self._probe_voice_calibration(decision.voice_id, Path(output_path))
 
                 # P2.13: 首段注册锚 — 角色在本章首次成功合成, 用本段真实音频作该章
                 # 参考音频 (VoiceAnchor.register_character 拷贝到 anchor 目录持久化)。
@@ -1025,8 +1630,9 @@ class SynthesizePipeline:
             # Define retry callback for quality failures
             async def retry_callback(seg_id: str, attempt: int) -> Optional[Path]:
                 """Re-synthesize a failed segment."""
-                # Find the original input for this segment
-                seg_input = next((inp for inp in inputs if f"_p{inp.paragraph_index}" in seg_id), None)
+                # Find the original input for this segment — 按尾部段落号精确匹配
+                # (历史子串 bug 见 _match_retry_input docstring)。
+                seg_input = _match_retry_input(inputs, seg_id)
                 if seg_input is None:
                     logger.warning(f"No input found for segment {seg_id}")
                     return None
@@ -1036,13 +1642,36 @@ class SynthesizePipeline:
 
                 try:
                     logger.info(f"Retrying synthesis for {seg_id} (attempt {attempt})")
-                    retry_duration, retry_engine = await self._synthesize_via_port(
-                        seg_input.text,
-                        decision.voice_id,
-                        decision.prosody_overrides or {},
-                        retry_output,
-                        f"{seg_id}_retry{attempt}",
+                    # 与主路径同款 P2a 校准 + v6 逐句导演（重试保持逐件韵律一致性）
+                    retry_prosody = self._apply_voice_calibration(
+                        decision.voice_id, dict(decision.prosody_overrides or {})
                     )
+                    retry_overrides = [
+                        o for o in (getattr(seg_input, "sentence_overrides", None) or [])
+                        if isinstance(o, dict)
+                    ]
+                    # #10: 重试也需 original_text + registry → 句级 voice-aware 字典应用
+                    retry_original_text = original_text_by_seg.get(seg_id, seg_input.text)
+                    if retry_overrides:
+                        retry_duration, retry_engine = await self._synthesize_paragraph_with_overrides(
+                            retry_original_text,
+                            decision.voice_id,
+                            retry_prosody,
+                            retry_overrides,
+                            retry_output,
+                            f"{seg_id}_retry{attempt}",
+                            engine_choice=decision.engine_choice,
+                            language=seg_input.language,
+                            pronunciation_registry=pronunciation_registry,
+                        )
+                    else:
+                        retry_duration, retry_engine = await self._synthesize_via_port(
+                            retry_original_text,
+                            decision.voice_id,
+                            retry_prosody,
+                            retry_output,
+                            f"{seg_id}_retry{attempt}",
+                        )
                     # Record retry telemetry
                     record_tts_retry(fallback_from=decision.engine_choice)
 
@@ -1067,6 +1696,17 @@ class SynthesizePipeline:
                 for inp in inputs
             }
 
+            # Gap C fix (2026-10-12): 透传 segment_id -> 导演声明停顿预算给质量层。
+            # 逐句路径实际插入的句间静音 (dramatic/paragraph/标点分级) 是演绎意图,
+            # 不应计入 Excessive silence 比例 (p0/p4 短段 dramatic 停顿曾把静音
+            # 比例顶到 57%/44% 三振人工复核, 复核根因即此规则冲突)。
+            pause_budget_map = {
+                f"{inp.book_id}_ch{inp.chapter_index}_p{inp.paragraph_index}": compute_declared_pause_ms(
+                    inp.text, getattr(inp, "sentence_overrides", None)
+                )
+                for inp in inputs
+            }
+
             # Run quality checks with auto-retry
             quality_report: QualityReport = await check_all_segments(
                 segment_files=segment_files,
@@ -1076,6 +1716,7 @@ class SynthesizePipeline:
                 max_retries=2,
                 retry_callback=retry_callback,
                 speaker_map=speaker_map,
+                pause_budget_map=pause_budget_map,
             )
 
             # Save quality report
@@ -1194,7 +1835,7 @@ class SynthesizePipeline:
 
             logger.info(f"Crossfade stitching {len(valid_segments)} segments with {crossfade_ms}ms crossfade")
             # Run under global semaphore with timeout
-            result = await run_ffmpeg(cmd, timeout=120)
+            result = await run_ffmpeg(cmd, timeout=120, capture_output=True)
 
             if result.returncode != 0:
                 stderr_text = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
@@ -1262,7 +1903,7 @@ class SynthesizePipeline:
                 cmd = safe_subprocess_args(cmd)
 
                 # Run under global semaphore with timeout
-                result = await run_ffmpeg(cmd, timeout=60)
+                result = await run_ffmpeg(cmd, timeout=60, capture_output=True)
                 result.check_returncode()
 
             duration = get_duration_sync(output_path)
@@ -1390,7 +2031,7 @@ class SynthesizePipeline:
             logger.info(
                 f"Crossfade replacing segment {segment_index} in {chapter_audio_path.name} with {crossfade_ms}ms crossfade"
             )
-            result = await run_ffmpeg(cmd, timeout=120)
+            result = await run_ffmpeg(cmd, timeout=120, capture_output=True)
             result.check_returncode()
 
             duration = get_duration_sync(output_path)
@@ -1518,6 +2159,92 @@ class SynthesizePipeline:
             self._port = None
 
 
+_LANGUAGE_ALIASES = {
+    "english": "en", "eng": "en", "英语": "en", "英文": "en",
+    "chinese": "zh", "mandarin": "zh", "中文": "zh", "汉语": "zh", "普通话": "zh",
+}
+
+# kokoro 原生音色白名单 (升级点 #2c 与 _normalize_voice_id 同源维护)
+_KOKORO_ZH_VOICES = (
+    "zf_xiaobei", "zf_xiaoni", "zf_xiaoxuan", "zf_xiaoxiao",
+    "zm_yunjian", "zm_yunxi", "zm_yunxia", "zm_yunyang",
+)
+
+
+def list_engine_voices(language: Optional[str], engine: str = "kokoro") -> list[str]:
+    """List the engine-native voice IDs for a language (Gap G fix).
+
+    audio_director 的 available_voices 输入来源: 导演 prompt 只能从本表
+    选 voice_id, _sanitize 对照本表丢弃越界标签 (曾把语义角色 "coach"/
+    "lenda" 当 voice_id 输出, 引擎音色表不存在 → 合成崩)。
+    """
+    lang = _normalize_language(language).split("-")[0].lower()
+    if engine == "kokoro":
+        if lang == "en":
+            return [k for k in _EDGE_TO_KOKORO.values() if k.startswith(("am_", "af_"))]
+        return list(_KOKORO_ZH_VOICES)
+    if engine == "piper":
+        return ["zh_CN-huayan-medium"] if lang != "en" else ["en_US-hfc_male-medium"]
+    # edge: 本表 _EDGE_TO_KOKORO 的键即 Edge ID 全集 (zh-CN-* / en-US-*)
+    return [
+        k for k, v in _EDGE_TO_KOKORO.items()
+        if k.split("-")[0].lower() == lang
+    ]
+
+
+def _normalize_language(value: Optional[str]) -> str:
+    """归一化语言标签为路由语言键 (select_engine 自行取 `-` 前缀比较).
+
+    BookMeta.language 契约为 ISO 639-1, 但 LLM 分析输出未强校验 Literal —
+    "English"/"中文" 等常见别名诚实归一; 空值回退历史默认 zh-CN。
+    """
+    v = (value or "").strip()
+    if not v:
+        return "zh-CN"
+    return _LANGUAGE_ALIASES.get(v.lower(), v)
+
+
+def _normalize_speaker_name(name: str) -> str:
+    """Normalize a speaker name for binding lookup (Gap B fix).
+
+    annotate 输出 ``_narrator_`` / ``Narrator`` / ``narrator``，分析期
+    character_voice_map 又可能写 ``旁白``/``Narrator`` — 三种拼写同一角色
+    此前永不匹配 (``==`` 严格比较), Narrator 绑定的 suggested_voice_id
+    从未生效, 一律落到 "default"。统一成小写去下划线/空格键比较;
+    中文习惯名 ``旁白``/``旁白者`` 亦归一到 ``narrator``。
+    """
+    v = (name or "").strip().strip("_").replace(" ", "").lower()
+    return {"旁白": "narrator", "旁白者": "narrator"}.get(v, v)
+
+
+def _find_voice_binding(
+    cvm: List[CharacterVoiceBinding], speaker: str
+) -> Optional[CharacterVoiceBinding]:
+    """Resolve the voice binding for a speaker (Gap B fix).
+
+    匹配优先级: canonical_name 精确 > canonical_name 归一化 > aliases 归一化。
+    历史上只有第一条路, annotate 的 ``_narrator_`` 永远找不到 cvm 的
+    ``Narrator`` 绑定。
+    """
+    if not speaker:
+        return None
+    # 1. exact canonical match (historical fast path)
+    for c in cvm:
+        if c.canonical_name == speaker:
+            return c
+    # 2. normalized canonical match (Gap B: _narrator_ ↔ Narrator ↔ narrator)
+    key = _normalize_speaker_name(speaker)
+    for c in cvm:
+        if _normalize_speaker_name(c.canonical_name) == key:
+            return c
+    # 3. alias match (normalized) — 分析期登记的别名 (the coach → Coach Zangado)
+    for c in cvm:
+        for alias in getattr(c, "aliases", None) or []:
+            if _normalize_speaker_name(alias) == key:
+                return c
+    return None
+
+
 def make_tts_routing_decision(inp: TtsRoutingInput) -> TtsRoutingDecision:
     """Make TTS routing decision using capability-aware selector.
 
@@ -1532,17 +2259,20 @@ def make_tts_routing_decision(inp: TtsRoutingInput) -> TtsRoutingDecision:
     """
     from ..tts.providers_config import gpu_backends_enabled, select_engine
 
-    char = next(
-        (c for c in inp.character_voice_map if c.canonical_name == inp.paragraph_annotation.speaker_canonical_name),
-        None,
-    )
+    # Gap B fix: _narrator_ ↔ Narrator ↔ narrator/旁白 此前严格 == 永不匹配,
+    # Narrator 绑定的 suggested_voice_id 从未生效。归一化三段式解析。
+    char = _find_voice_binding(inp.character_voice_map, inp.paragraph_annotation.speaker_canonical_name)
     suggested = char.suggested_voice_id if char else None
     voice_id: str = suggested or "default"
 
     # Determine engine via capability-aware selector
-    # Language from paragraph annotation or default to zh-CN
-    lang = inp.paragraph_annotation.emotion or "zh-CN"  # rough fallback; ideally from text analysis
-    # prefer_local override still respected
+    # 语言键: TtsRoutingInput.language (来自 BookMeta.language, build_routing_input
+    # 从 chapter.analyzed_json 注入)。曾误用 annotation.emotion (14 枚举标签, 如
+    # "tense") 当语言码 → select_engine 的 lang_prefix 解析成 "tense",
+    # priority_by_lang en:1 永不命中, 英文书语言路由形同虚设 (升级点 #2)。
+    lang = _normalize_language(inp.language)
+    # prefer_local (升级点 #2): True=本地优先 (select_engine 仅在本地引擎中选,
+    # 无本地语言匹配才放行云端); False=用户显式要云端 → 强制 edge。schema 默认 True。
     prefer_local = inp.prefer_local if inp.prefer_local is not None else True  # default to local
     # Emotion capability requested?
     need_emotion = bool(inp.paragraph_annotation.emotion and inp.paragraph_annotation.emotion != "neutral")
@@ -1552,8 +2282,16 @@ def make_tts_routing_decision(inp: TtsRoutingInput) -> TtsRoutingDecision:
         language=lang,
         need_clone=need_clone,
         need_emotion=need_emotion,
+        prefer_local=prefer_local,
         gpu_available=gpu_backends_enabled(),
     )
+    # 注册键归一 (升级点 #2b): yaml engine 名 (``edge_tts``) → EngineChoice
+    # 枚举值 (``edge``)。TtsRoutingDecision.engine_choice 是 Literal, 裸传
+    # 注册键在 pydantic 校验时直接 422 —— 显式云端路径 (prefer_local=False)
+    # 一旦走到该分支即炸, 此前从未暴露只因语言键 bug 让 select_engine 恒回
+    # piper (全局 priority 0)。
+    if engine == "edge_tts":
+        engine = "edge"
     # Map mode back to engine_choice/fallback for compatibility
     if mode == "preset":
         # Cloning requested but no GPU clone backend -> CPU preset engine
@@ -1568,7 +2306,7 @@ def make_tts_routing_decision(inp: TtsRoutingInput) -> TtsRoutingDecision:
         engine_choice = "edge"
         fallback_engine = "kokoro"
 
-    reasoning = f"Capability routing: {engine_choice} (mode={mode}), {fallback_engine} fallback (gpu={gpu_backends_enabled()}, need_emotion={need_emotion})"
+    reasoning = f"Capability routing: {engine_choice} (mode={mode}), {fallback_engine} fallback (gpu={gpu_backends_enabled()}, need_emotion={need_emotion}, lang={lang}, prefer_local={prefer_local})"
     # Voice IDs are engine-specific. The book analyse stage writes
     # Edge-TTS voice IDs (``zh-CN-XiaoxiaoNeural`` etc.) since that is the
     # default suggested_voice_id in CharacterVoiceBinding. Kokoro voices a
@@ -1584,7 +2322,7 @@ def make_tts_routing_decision(inp: TtsRoutingInput) -> TtsRoutingDecision:
     # the honest accept/reject at synthesis time. When no binding matched
     # (``char is None``, voice_id == "default") keep the production-safe
     # fallback. See ``_normalize_voice_id`` docstring for the contract.
-    voice_id = _normalize_voice_id(voice_id, engine_choice, strict=(char is not None))
+    voice_id = _normalize_voice_id(voice_id, engine_choice, strict=(char is not None), lang=lang)
     # P1.9 red-line #1: ``prosody_overrides`` MUST carry the emotion-derived
     # ``volume`` and the emotion tag itself, not just rate/pitch. The acoustic
     # emotion map (``config.acoustic_mapping.get_emotion_map``) already maps
@@ -1634,22 +2372,30 @@ def make_tts_routing_decision(inp: TtsRoutingInput) -> TtsRoutingDecision:
     # —— Edge↔Kokoro ID 交叉映射 —— 避免跨引擎非法 ID 流到合成。
     if inp.manual_engine:
         if inp.manual_engine != engine_choice and not inp.manual_voice_id:
-            voice_id = _normalize_voice_id(voice_id, inp.manual_engine, strict=(char is not None))
+            voice_id = _normalize_voice_id(voice_id, inp.manual_engine, strict=(char is not None), lang=lang)
         engine_choice = inp.manual_engine
         fallback_engine = "kokoro" if engine_choice == "edge" else "edge"
         reasoning += f"; manual engine override → {engine_choice}"
     if inp.manual_voice_id:
-        voice_id = _normalize_voice_id(inp.manual_voice_id, engine_choice, strict=True)
+        voice_id = _normalize_voice_id(inp.manual_voice_id, engine_choice, strict=True, lang=lang)
         reasoning += f"; manual voice override → {voice_id}"
 
     prosody_overrides = {
-        "rate": float(annotation.speech_rate) if annotation.speech_rate else 1.0,
+        # Gap D fix: 段落级语速 = 标注 speech_rate × 难度缩放系数。
+        # difficulty="A" (分级读物) → ×0.75: BookMeta.difficulty 首次传导到
+        # 合成参数 (此前分析数据里有难度但合成层一概不知, 英文分级读物按
+        # 母语成人语速 ~200 wpm_p 播, 原声对照实测 115 wpm_p)。
+        "rate": (
+            float(annotation.speech_rate) if annotation.speech_rate else 1.0
+        ) * DIFFICULTY_RATE_SCALE.get(inp.difficulty or "B", 1.0),
         "pitch": (float(annotation.pitch_shift_semitones) if annotation.pitch_shift_semitones is not None else 0.0),
         # emotion-derived volume (dB); angry>0, whisper<0, neutral=0.
         "volume": volume_db,
         # pass the emotion tag through for engines that support emotion
         "emotion": emotion_tag,
     }
+    if DIFFICULTY_RATE_SCALE.get(inp.difficulty or "B", 1.0) != 1.0:
+        reasoning += f"; difficulty={inp.difficulty} graded-reader rate ×{DIFFICULTY_RATE_SCALE[inp.difficulty]}"
     # P2.13: 注入参考音频到 prosody (引擎若支持 reference_audio 则用于声纹对齐).
     if ref_audio_for_prosody:
         prosody_overrides["reference_audio"] = ref_audio_for_prosody
@@ -1675,8 +2421,10 @@ def build_routing_input(
 
     Shared by the synthesis path (``SynthesizeStage.run``) and the review-gate
     routing preview so the two constructions can never drift. Mirrors the
-    historical inline construction verbatim, including the ``or`` coercions,
-    the default narrator voice-map fallback and ``prefer_local=False``.
+    historical inline construction verbatim, including the ``or`` coercions
+    and the default narrator voice-map fallback. ``prefer_local`` now follows
+    the schema default ``True`` (local-first, 升级点 #2: 历史硬编码 False 曾
+    无条件强制云端 edge, 而 edge 免费端点 403 不可达时英文书合成整体失败).
 
     Returns ``None`` for paragraphs with empty/whitespace text — the
     ``edited_text == ""`` case (edit stage intentionally cleared a
@@ -1718,11 +2466,17 @@ def build_routing_input(
 
     # Build voice_map from chapter's analyzed_json
     voice_map: List[CharacterVoiceBinding] = []
+    language: Optional[str] = None  # BookMeta.language (升级点 #2 语言路由键)
+    difficulty: Optional[str] = None  # BookMeta.difficulty (Gap D 语速缩放键)
     if chapter and chapter.analyzed_json:
         raw = chapter.analyzed_json
         if isinstance(raw, str):
             raw = json.loads(raw)
         voice_map = [CharacterVoiceBinding(**c) for c in raw.get("character_voice_map", [])]
+        book_meta_raw = raw.get("book_meta")
+        if isinstance(book_meta_raw, dict):
+            language = (book_meta_raw.get("language") or "").strip() or None
+            difficulty = (book_meta_raw.get("difficulty") or "").strip() or None
 
     if not voice_map:
         voice_map = [
@@ -1752,18 +2506,42 @@ def build_routing_input(
         text=text,
         character_voice_map=voice_map,
         book_id=str(project_id) if project_id is not None else "",
+        language=language,
+        difficulty=difficulty,
         chapter_index=chapter.index if chapter else 1,
         paragraph_index=para.index if para else 0,
         cumulative_cost_usd=0.0,
         cost_limit_per_book=20.0,
         cost_limit_per_chapter=5.0,
-        prefer_local=False,
+        prefer_local=True,
         # 人工终审覆盖 (Manual Review Gate)：getattr 容错 —— 测试替身/旧
         # 段落对象无此属性时不覆盖，走自动决策。
         manual_voice_id=(getattr(para, "manual_voice_id", None) if para else None),
         manual_engine=(getattr(para, "manual_engine", None) if para else None),
+        # v6 逐句三轴导演覆盖
+        sentence_overrides=(getattr(para, "sentence_overrides", None) if para else None),
         contract_version=1,
     )
+
+
+def _match_retry_input(
+    inputs: List["TtsRoutingInput"], seg_id: str
+) -> Optional["TtsRoutingInput"]:
+    """质检重试回调用：按 seg_id 尾部段落号精确匹配原输入。
+
+    历史教训（2026-10-13 Run B 全书实证）：旧实现用子串包含判断
+    ``f"_p{idx}" in seg_id``——seg_id "stockholm_ch6_p10" 会命中 "_p1"，
+    导致 p10-p19 段的质检重试拿到 p1 的输入（p20-p29 拿到 p2 的，依此
+    类推）。重试产物是错误文本的音频，而质检复检只验音质不验文本
+    （reference_texts 未传 → WER 诚实跳过），错误内容于是通过复检被
+    换进对应槽位：全书 21/33 章出现大段重复朗读（ch6 p10_retry 即 p1
+    的音频，时长 19285ms 与 p1 一字不差）。必须按尾部段落号精确匹配。
+    """
+    m = re.search(r"_p(\d+)$", seg_id)
+    if not m:
+        return None
+    idx = int(m.group(1))
+    return next((inp for inp in inputs if inp.paragraph_index == idx), None)
 
 
 def synthesize_paragraphs(

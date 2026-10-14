@@ -84,12 +84,13 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function fetchUser(): Promise<void> {
-    if (!token.value) return
+    if (!token.value) throw new Error('No token')
     try {
       const { data } = await api.get<User>('/api/auth/me')
       setUser(data)
-    } catch {
+    } catch (err) {
       clearAuth()
+      throw err
     }
   }
 

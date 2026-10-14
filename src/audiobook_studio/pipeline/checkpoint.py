@@ -50,13 +50,14 @@ STAGE_ORDER = [
     "analyze",
     "annotate",
     "edit",
+    "audio_director",
     "synthesize",
     "quality",
 ]
 
 # Stages that operate per-paragraph and therefore require paragraph_index in
 # checkpoint tracking (ADR-005).
-PACKAGE_STAGES = frozenset({"annotate", "edit", "synthesize", "quality"})
+PACKAGE_STAGES = frozenset({"annotate", "edit", "audio_director", "synthesize", "quality"})
 
 # Chapter-level stages tracked with (stage, chapter_index) only.
 CHAPTER_STAGES = frozenset({"extract", "analyze", "review"})

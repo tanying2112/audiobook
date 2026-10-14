@@ -246,7 +246,7 @@ async def _run_translate_stage(
 
             # Emit stage exit
             await emit_pipeline_event(
-                project_idproject_id=project_id,
+                project_id=project_id,
                 event_type=PipelineEventType.STAGE_EXIT,
                 stage="translate",
                 chapter_index=chapter.index,

@@ -2,7 +2,7 @@
   <div class="page-container harness-dashboard">
     <!-- Header -->
     <div class="page-header">
-      <button class="btn btn-ghost touch-target" @click="router.push('/')">
+      <button class="btn btn-ghost touch-target" @click="router.push('/')" aria-label="Go back">
         ← <span class="hidden-mobile">{{ t('common.back') }}</span>
       </button>
       <h1>{{ t('harness_dashboard.title') }}</h1>
@@ -11,10 +11,11 @@
           class="btn btn-primary touch-target"
           @click="handleTrigger"
           :disabled="triggering"
+          :aria-label="t('harness_dashboard.trigger_iteration')"
         >
           {{ triggering ? t('harness_dashboard.triggering') : t('harness_dashboard.trigger_iteration') }}
         </button>
-        <button class="btn btn-outline touch-target" @click="loadDashboard" :disabled="loading">
+        <button class="btn btn-outline touch-target" @click="loadDashboard" :disabled="loading" :aria-label="t('common.refresh')">
           <span class="hidden-mobile">{{ t('common.refresh') }}</span>
           <span class="visible-mobile">↻</span>
         </button>
@@ -30,7 +31,7 @@
     </div>
 
     <!-- Error -->
-    <div v-if="error" class="error-banner">{{ error }}</div>
+    <div v-if="error" class="error-banner" role="alert">{{ error }}</div>
 
     <!-- Loading -->
     <div v-if="loading && !dashboard" class="loading">{{ t('common.loading') }}</div>

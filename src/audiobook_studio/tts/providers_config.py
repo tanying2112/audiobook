@@ -29,7 +29,7 @@ from typing import Dict, List, Optional, Tuple
 
 logger = __import__("logging").getLogger(__name__)
 
-DEFAULT_CONFIG_PATH = Path(__file__).parent.parent.parent / "config" / "tts_providers.yaml"
+DEFAULT_CONFIG_PATH = Path(__file__).parent.parent.parent.parent / "config" / "tts_providers.yaml"
 
 #: Fallback ordering if the YAML file is missing.
 FALLBACK_PROVIDERS: List[Dict[str, object]] = [
@@ -38,6 +38,7 @@ FALLBACK_PROVIDERS: List[Dict[str, object]] = [
         "engine": "piper",
         "priority": 0,
         "enabled": True,
+        "local": True,
         "capabilities": {"cloning": False, "emotion": False, "languages": ["zh", "en"], "min_compute": "cpu"},
         "license": {"commercial_use": True, "name": "Piper (MIT/Apache)", "verified_at": None},
     },
@@ -46,6 +47,7 @@ FALLBACK_PROVIDERS: List[Dict[str, object]] = [
         "engine": "kokoro",
         "priority": 1,
         "enabled": True,
+        "local": True,
         "capabilities": {"cloning": False, "emotion": False, "languages": ["zh", "en"], "min_compute": "cpu"},
         "license": {"commercial_use": True, "name": "Kokoro-82M Apache-2.0", "verified_at": None},
     },
@@ -54,6 +56,7 @@ FALLBACK_PROVIDERS: List[Dict[str, object]] = [
         "engine": "edge_tts",
         "priority": 2,
         "enabled": True,
+        "local": False,
         "capabilities": {"cloning": False, "emotion": False, "languages": ["zh", "en"], "min_compute": "cpu"},
         "license": {"commercial_use": None, "name": "Edge-TTS (Microsoft cloud, ToS-restricted)", "verified_at": None},
     },
@@ -134,10 +137,14 @@ def load_tts_provider_config(path: Optional[str] = None) -> List[Dict[str, objec
                     "name": p.get("name", f"provider_{idx}"),
                     "engine": p.get("engine", p.get("name")),
                     "priority": int(p.get("priority", idx)),
+                    "priority_by_lang": p.get("priority_by_lang"),
                     "enabled": bool(p.get("enabled", True)),
                     "default_voice": p.get("default_voice"),
                     "auto_download": bool(p.get("auto_download", False)),
                     "model_dir": p.get("model_dir"),
+                    # 升级点 #2: 本地离线引擎标记 (云端 edge=false)。缺失默认
+                    # false —— 只有显式声明才承认本地, prefer_local 不会误放行。
+                    "local": bool(p.get("local", False)),
                     "capabilities": {
                         "cloning": bool(cap.get("cloning", False)),
                         "emotion": bool(cap.get("emotion", False)),
@@ -195,10 +202,22 @@ def license_matrix(path: Optional[str] = None) -> Dict[str, EngineLicense]:
     return matrix
 
 
+def _get_effective_priority(provider: dict, lang_prefix: str) -> int:
+    """Get effective priority for a given language.
+
+    Checks priority_by_lang first, falls back to global priority.
+    """
+    priority_by_lang = provider.get("priority_by_lang")
+    if priority_by_lang and isinstance(priority_by_lang, dict):
+        return int(priority_by_lang.get(lang_prefix, provider.get("priority", 999)))
+    return int(provider.get("priority", 999))
+
+
 def select_engine(
     language: str = "zh-CN",
     need_clone: bool = False,
     need_emotion: bool = False,
+    prefer_local: bool = False,
     gpu_available: Optional[bool] = None,
     path: Optional[str] = None,
 ) -> Tuple[str, str]:
@@ -216,6 +235,9 @@ def select_engine(
     which is ``False``), GPU-only engines are skipped and cloning degrades to
     ``"preset"`` — the selector never returns an engine it cannot run, and never
     pretends to clone.
+
+    Language-specific priority: providers can define ``priority_by_lang`` mapping
+    (e.g., ``{"en": 0, "zh": 2}``) to override global priority per language.
     """
     if gpu_available is None:
         gpu_available = gpu_backends_enabled()
@@ -240,6 +262,18 @@ def select_engine(
             return True  # unknown engine: don't filter on language
         return lang_prefix in [str(lang).split("-")[0].lower() for lang in cap.languages]
 
+    # prefer_local (升级点 #2): 本地优先 —— 有本地引擎 (`local: true`) 能服务
+    # 该语言时, 仅在本地引擎中选择; 无本地匹配时诚实放行全量候选 (云端兜底)。
+    # 该语义此前从未生效: select_engine 不区分本地/云端, 生产构造器又硬编码
+    # prefer_local=False 强制云端 edge, edge 端点 403 不可达时英文书合成整体失败。
+    if prefer_local:
+        local_feasible = [p for p in feasible if p.get("local", False)]
+        if any(_lang_match(p["engine"]) for p in local_feasible):
+            feasible = local_feasible
+
+    # Sort feasible by effective priority for this language (lower = higher priority)
+    feasible.sort(key=lambda p: _get_effective_priority(p, lang_prefix))
+
     # 1) Clone requested -> prefer a real clone engine (needs GPU), else preset.
     if need_clone:
         for p in feasible:
@@ -260,7 +294,7 @@ def select_engine(
             if cap and cap.emotion and _lang_match(p["engine"]):
                 return (p["engine"], "standard")
 
-    # 3) Default: highest-priority feasible engine.
+    # 3) Default: highest-priority feasible engine for this language.
     if feasible:
         return (feasible[0]["engine"], "standard")
     return ("kokoro", "standard")

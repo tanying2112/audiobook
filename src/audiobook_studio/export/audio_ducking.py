@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 
 from ..analyzer import SceneTagMapper, normalize_scene_tag
 from ..utils.ffmpeg_probe import detect_silence_sync, get_duration_sync
+from ..utils.loudness import resolve_loudness, aresample_filter
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,9 @@ class MixConfig:
     duck_threshold_db: float = -24.0  # Ducking 触发阈值
     duck_ratio: float = 4.0  # Ducking 压缩比
     sfx_volume_db: float = -6.0  # SFX 音量
+    # 混音输出响度档 (2026-10-09): 有声书分发走 EBU R128 audiobook 档
+    # (-23 LUFS/TP-3, 同稿原声实测 -22.7 LUFS);单一事实源 utils/loudness.py
+    loudness_preset: Optional[str] = "audiobook"  # None=沿用旧 -16 流媒体档
     silence_threshold_db: float = -50.0  # 静音检测阈值
     # SFX 相关配置
     sfx_library_path: Optional[str] = None  # SFX 素材库路径
@@ -130,25 +134,39 @@ def mix_with_ducking(
     speech_duration_ms = get_duration_sync(speech_path)
     speech_duration_s = speech_duration_ms / 1000.0
 
-    # Detect segments if not provided
-    ducking_segments or detect_speech_segments(speech_path, cfg.silence_threshold_db)
+    # 混音输出响度档解析 (audiobook 默认, 2026-10-09)
+    mix_i, mix_lra, mix_tp = resolve_loudness(cfg.loudness_preset, default_preset="audiobook")
+
+    # 段落参数仅作 API 兼容保留: sidechaincompress 由主轨电平自动 duck,
+    # 不需要逐段音量自动化 (2026-10-09 移除丢弃式的空调用)。
 
     if not bgm_path:
         # No BGM — just apply post-processing (normalize + fade)
         logger.info("No BGM provided; applying post-processing only")
+        # v6 链: loudnorm 后串 TP 限幅器 (level=disabled 防自动 makeup);
+        # aresample 走 soxr 探测 (有则用, 无则 swr)
+        tp_limit = 10 ** (mix_tp / 20.0)
+        # P3a 修复: 旧写法 "afade=t=out:st=0:d=0.5" 从 0s 起淡出且此后恒静音
+        # (2s 素材 75% 能量被抹, 实测 I=-37 LUFS) — 淡出起点应为
+        # 时长-0.5s (与 BGM 路径既有写法一致)。
+        af_chain = (
+            f"loudnorm=I={mix_i}:LRA={mix_lra}:TP={mix_tp},"
+            f"alimiter=limit={tp_limit:.4f}:attack=5:release=100:level=disabled,"
+            "afade=t=in:ss=0:d=0.3,"
+            f"afade=t=out:st={max(0.0, speech_duration_s - 0.5)}:d=0.5,"
+            f"{aresample_filter(44100)}"
+        )
         cmd = [
             "ffmpeg",
             "-y",
             "-i",
             str(speech_path),
             "-af",
-            "loudnorm=I=-16:LRA=11:TP=-1.5,afade=t=in:ss=0:d=0.3,afade=t=out:st=0:d=0.5",
+            af_chain,
             "-c:a",
             "aac",
             "-b:a",
             "128k",
-            "-ar",
-            "44100",
             "-ac",
             "2",
             str(output_path),
@@ -166,20 +184,31 @@ def mix_with_ducking(
     ]
 
     # Build ffmpeg filter for sidechain compression (auto-ducking)
-    # sidechaincompress: when speech detected, BGM volume reduces by duck_gain_db
+    # P1 修复 (2026-10-11): sidechaincompress 只输出"主轨被侧链电平压缩"的结果。
+    # 旧写法 [0:a][bgm] 把人声当主轨 → 输出仅含被压缩人声, BGM 从未进入输出流
+    # (ducking BGM 路径实为纯人声后处理)。正确语义: BGM 作主轨、人声作侧链 →
+    # [ducked] 是被压低的 BGM, 再 amix 混回干净人声; 人声需同时喂侧链与混音
+    # 两路, 用 asplit 分流。
     threshold_db = cfg.duck_threshold_db
+    # v6 链: 最终 loudnorm 后串 TP 限幅器 (level=disabled 防自动 makeup);
+    # aresample 走 soxr 探测 (有则用, 无则 swr)
+    tp_limit = 10 ** (mix_tp / 20.0)
     filter_complex = (
         f"[1:a]loudnorm=I=-20:LRA=7:TP=-2,"
         f"volume={cfg.bgm_volume_db}dB[bgm];"
-        f"[0:a][bgm]sidechaincompress="
+        f"[0:a]asplit=2[voice][sc];"
+        f"[bgm][sc]sidechaincompress="
         f"threshold={threshold_db}dB:"
         f"ratio={cfg.duck_ratio}:"
         f"attack={cfg.duck_attack_ms}:"
         f"release={cfg.duck_release_ms}:"
-        f"makeup=2dB[mixed];"
-        f"[mixed]loudnorm=I=-16:LRA=11:TP=-1.5,"
+        f"makeup=2dB[ducked];"
+        f"[voice][ducked]amix=inputs=2:duration=first:normalize=0[mixed];"
+        f"[mixed]loudnorm=I={mix_i}:LRA={mix_lra}:TP={mix_tp},"
+        f"alimiter=limit={tp_limit:.4f}:attack=5:release=100:level=disabled,"
         f"afade=t=in:ss=0:d=0.5,"
-        f"afade=t=out:st={speech_duration_s - 0.5}:d=0.5[out]"
+        f"afade=t=out:st={speech_duration_s - 0.5}:d=0.5,"
+        f"{aresample_filter(44100)}[out]"
     )
 
     cmd = (
@@ -199,8 +228,6 @@ def mix_with_ducking(
             "aac",
             "-b:a",
             "128k",
-            "-ar",
-            "44100",
             "-ac",
             "2",
             "-shortest",
@@ -220,7 +247,7 @@ def mix_with_ducking(
             "-i",
             str(speech_path),
             "-af",
-            "loudnorm=I=-16:LRA=11:TP=-1.5",
+            f"loudnorm=I={mix_i}:LRA={mix_lra}:TP={mix_tp}",
             "-c:a",
             "aac",
             "-b:a",
@@ -350,6 +377,7 @@ def mix_sfx_segments(
     speech_path: Path,
     sfx_segments: List[SFXSegment],
     output_path: Path,
+    config: Optional[MixConfig] = None,
 ) -> Path:
     """将多个 SFX 段落混音到语音轨道上.
 
@@ -374,31 +402,40 @@ def mix_sfx_segments(
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Build ffmpeg filter complex for multiple SFX overlays
-    # We'll chain overlays: [0:a][1:a]overlay[tmp1]; [tmp1][2:a]overlay[tmp2]...
+    # 2026-10-09 修复: 旧实现把视频滤镜 overlay 用在音频流上, 必然失败。
+    # 音频正确做法: 每段 SFX 加延时 (adelay all=1) 后 amix 汇入主轨。
+    cfg = config or MixConfig()
+    sfx_i, sfx_lra, sfx_tp = resolve_loudness(cfg.loudness_preset, default_preset="audiobook")
+
     inputs = ["-i", str(speech_path)]
     filter_parts = []
-    last_label = "0:a"
+    delayed_refs = []
 
     for i, seg in enumerate(sfx_segments):
         sfx_input_idx = i + 1
         inputs.extend(["-i", str(seg.sfx_file)])
 
-        # Apply volume and fade to SFX
-        sfx_label = f"sfx{i}"
+        # 音量 + 段内淡入淡出, 再按段起点延时 (淡出在延时前按段长算, 延时后落点正确)
+        d_label = f"ad{i}"
         filter_parts.append(
             f"[{sfx_input_idx}:a]volume={seg.volume_db}dB,"
             f"afade=t=in:st=0:d={seg.fade_ms/1000},"
-            f"afade=t=out:st={(seg.end_ms - seg.start_ms)/1000 - seg.fade_ms/1000}:d={seg.fade_ms/1000}[{sfx_label}]"
+            f"afade=t=out:st={(seg.end_ms - seg.start_ms)/1000 - seg.fade_ms/1000}:d={seg.fade_ms/1000},"
+            f"adelay={seg.start_ms}:all=1[{d_label}]"
         )
+        delayed_refs.append(f"[{d_label}]")
 
-        # Overlay SFX at the right time
-        next_label = f"mix{i}"
-        enable_expr = f"between(t,{seg.start_ms/1000},{seg.end_ms/1000})"
-        filter_parts.append(f"[{last_label}][{sfx_label}]overlay=enable='{enable_expr}':format=auto[{next_label}]")
-        last_label = next_label
-
-    filter_complex = ";".join(filter_parts) + f";[{last_label}]loudnorm=I=-16:LRA=11:TP=-1.5[out]"
+    # v6 链: loudnorm 后串 TP 限幅器 (level=disabled 防自动 makeup);
+    # aresample 走 soxr 探测 (有则用, 无则 swr)
+    sfx_tp_limit = 10 ** (sfx_tp / 20.0)
+    filter_complex = (
+        ";".join(filter_parts)
+        + ";[0:a]" + "".join(delayed_refs)
+        + f"amix=inputs={1 + len(sfx_segments)}:duration=first:normalize=0,"
+        + f"loudnorm=I={sfx_i}:LRA={sfx_lra}:TP={sfx_tp},"
+        + f"alimiter=limit={sfx_tp_limit:.4f}:attack=5:release=100:level=disabled,"
+        + f"{aresample_filter(44100)}[out]"
+    )
 
     cmd = (
         ["ffmpeg", "-y"]
@@ -412,8 +449,6 @@ def mix_sfx_segments(
             "aac",
             "-b:a",
             "128k",
-            "-ar",
-            "44100",
             "-ac",
             "2",
             str(output_path),

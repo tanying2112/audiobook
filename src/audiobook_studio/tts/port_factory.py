@@ -124,6 +124,8 @@ def _get_engine_factory_map() -> Dict[str, Callable[..., Any]]:
         "xtts_v2": _clone_factory("xtts_v2"),
         "openvoice_v2": _clone_factory("openvoice_v2"),
         "cosyvoice_clone": _clone_factory("cosyvoice_clone"),
+        # Batch 2.2: 本地 CPU 近似克隆 (纯 CPU, 不受 GPU 门控)
+        "kokoro_zeroshot": _clone_factory("kokoro_zeroshot"),
     }
     # Merge plugin-registered TTS engine factories (item 11: no hardcoded factory).
     try:

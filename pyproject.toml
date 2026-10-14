@@ -11,7 +11,7 @@ requires-python = ">=3.11,<3.13"
 dependencies = [
     "fastapi>=0.109.0",
     "uvicorn>=0.27.0",
-    "sqlalchemy>=2.0.0",
+    "sqlalchemy[asyncio]>=2.0.0",
     "alembic>=1.13.0",
     "pydantic>=2.7.0",
     "pydantic-settings>=2.0.0",
@@ -81,7 +81,11 @@ dev = [
     "bandit>=1.7.0",
     "detect-secrets>=1.5.0",
     "mypy>=1.8.0",
+    "ruff>=0.6.0",
     "pre-commit>=3.6.0",
+]
+evolution = [
+    "dspy-ai>=2.5.0",
 ]
 
 [project.scripts]
@@ -236,6 +240,23 @@ ignore = "E203,W503"
 per-file-ignores = [
     "tests/*:S101",
     "src/audiobook_studio/tts/voice_cloning.py:ALL",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+# 与既有 flake8 门禁（[tool.flake8]）对齐：C90,E,F,W,B,B9；
+# ignore 部分 = flake8 既有 ignore + 现状未满足的增量规则，
+# 收敛到「与 pre-commit 门禁等价」为止，后续逐步收紧。
+select = ["C90", "E", "F", "W", "B"]
+ignore = [
+    "E203", "E501", "E402",          # flake8 既有 ignore（W503 ruff 默认即不含）
+    "F401", "F811", "B008",          # flake8 既有 ignore
+    "C901",                          # 圈复杂度（118 处存量，flake8 未启用 mccabe）
+    "B033", "B904",                  # bugbear 增量规则（94 处存量）
+    "F841", "B018", "F601", "B004",  # 存量未达标（19 处），列入后续清理
 ]
 
 [tool.mypy]

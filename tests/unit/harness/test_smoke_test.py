@@ -28,14 +28,16 @@ class TestSmokeTestModule:
 
     def test_run_smoke_test_captures_exception(self, monkeypatch):
         """任一对照异常时返回 all_passed=False 且带 error，不向上抛。"""
-        import audiobook_studio.harness.smoke_test as smoke_mod
 
         # run_iteration_cycle 是 run_smoke_test 内部直接调用、且不会被其自带的
         # load_samples 桩覆盖的真实入口；让它抛错以验证异常被捕获进报告。
         def _boom(stage, run_fn, baseline_fn=None, **kw):
             raise RuntimeError("injected")
 
-        monkeypatch.setattr(smoke_mod, "run_iteration_cycle", _boom)
+        # pytest 的 alias 统一会把 ``run_smoke_test``（收集期 import）与运行时
+        # ``import audiobook_studio.harness.smoke_test`` 解析到两个不同的模块 dict；
+        # 直接补丁被调用函数的 __globals__ 才能命中它内部的名称查找。
+        monkeypatch.setitem(run_smoke_test.__globals__, "run_iteration_cycle", _boom)
         report = run_smoke_test(stage="analyze", cases=1)
         assert report["all_passed"] is False
         assert "error" in report

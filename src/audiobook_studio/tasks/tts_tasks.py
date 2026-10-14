@@ -29,15 +29,8 @@ from ..celery_app import celery_app
 from ..database import AsyncSessionLocal
 from ..models import AudioSegment, Chapter, Paragraph, Project
 from ..pipeline.synthesize import AudioSegment as PipelineAudioSegment
-from ..pipeline.synthesize import SynthesizePipeline
-from ..tts import (
-    RemoteTTSPort,
-    TTSProsody,
-    TTSStatus,
-    TTSTaskPayload,
-    TTSVoiceAnchor,
-    get_port,
-)
+from ..pipeline.synthesize import SynthesizePipeline, _port_engine_name
+from ..tts import RemoteTTSPort, TTSProsody, TTSStatus, TTSTaskPayload, TTSVoiceAnchor, get_port
 
 logger = logging.getLogger(__name__)
 
@@ -451,7 +444,8 @@ async def _synthesize_via_port(
         raise RuntimeError("Synthesis completed but no audio path returned")
 
     duration_ms = result.duration_ms or _get_audio_duration(output_path)
-    engine = getattr(result, "metadata", {}).get("engine", "hermes") if hasattr(result, "metadata") else "hermes"
+    engine_meta = getattr(result, "metadata", None)
+    engine = (engine_meta.get("engine") if engine_meta else None) or _port_engine_name(port)
 
     logger.info(f"Segment {segment_id} synthesized via {engine}: {duration_ms}ms")
     return duration_ms, engine
@@ -610,7 +604,7 @@ async def _run_synthesize_chapter_async(
                                     segment_id=f"{project_id}_ch{chapter_index}_p{para_index}",
                                     file_path=existing.file_path,
                                     duration_ms=existing.duration_ms or 0,
-                                    engine=existing.engine or "hermes",
+                                    engine=existing.engine or _port_engine_name(port),
                                     voice_id=existing.voice_id or voice_id,
                                     text_hash=hashlib.sha256(text.encode(), usedforsecurity=False).hexdigest()[:12],
                                 )

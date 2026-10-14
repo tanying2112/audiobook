@@ -14,9 +14,9 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import BaseModel
 
-from audiobook_studio.llm.client import LLMCallResult, LLMClient, LLMClientConfig, create_client
-from audiobook_studio.llm.semantic_cache import get_semantic_cache, reset_semantic_cache
-from audiobook_studio.schemas import (
+from src.audiobook_studio.llm.client import LLMCallResult, LLMClient, LLMClientConfig, create_client
+from src.audiobook_studio.llm.semantic_cache import get_semantic_cache, reset_semantic_cache
+from src.audiobook_studio.schemas import (
     BookAnalysisOutput,
     ExtractionResult,
     FeedbackAnalysis,
@@ -450,7 +450,7 @@ class TestNonMockCall:
         assert result.cost_usd == 0.0
 
     def test_raw_response_validation_failure_raises(self, monkeypatch):
-        from audiobook_studio.llm.utils import LLMParseError
+        from src.audiobook_studio.llm.utils import LLMParseError
 
         client = self._non_mock_client(monkeypatch)
 
@@ -497,7 +497,7 @@ class TestNonMockCall:
         assert result.tokens_out == 0
 
     def test_raw_response_empty_choices(self, monkeypatch):
-        from audiobook_studio.llm.utils import LLMParseError
+        from src.audiobook_studio.llm.utils import LLMParseError
 
         client = self._non_mock_client(monkeypatch)
         fake_raw = MagicMock()

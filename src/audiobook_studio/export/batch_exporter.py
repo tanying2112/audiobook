@@ -19,6 +19,7 @@ from .m4b import ChapterMarker, M4bMetadata, build_m4b
 from .mastering import MasteringConfig, master_audio
 from .mp3 import Mp3Metadata, export_mp3_chapters, write_chapters_only
 from .srt import SubtitleConfig, SubtitleEntry, generate_srt
+from .srt_cleaner import clean_srt_to_readable_text
 
 logger = logging.getLogger(__name__)
 
@@ -268,7 +269,7 @@ def _apply_mastering_to_files(files: List[Path]) -> None:
 
     文件不存在或 ffmpeg 失败时记录警告并跳过，不影响整体导出。
     """
-    cfg = MasteringConfig(channels=2)
+    cfg = MasteringConfig(channels=2, loudness_preset="audiobook")
     for f in files:
         f = Path(f)
         if not f.exists():
@@ -279,6 +280,57 @@ def _apply_mastering_to_files(files: List[Path]) -> None:
             logger.info("mastered: %s", f)
         except Exception as e:  # pragma: no cover - defensive
             logger.warning("mastering 失败 (跳过): %s -> %s", f, e)
+
+
+def _resolve_bgm_path(
+    job: "ExportJob",
+    all_paragraphs: List[Dict[str, Any]],
+    output_dir: Path,
+) -> Optional[str]:
+    """
+    解析 BGM 路径，处理 "auto" 特殊值 (程序化音乐床生成).
+
+    - job.bgm_path == "auto": 从段落情绪时间线程序化生成音乐床
+      (v6 程序化 pad+心跳+人群+混响引擎收编, 详见 music_bed_generator.py)
+    - 其他非空值: 原样返回 (用户提供的 BGM 文件)
+    - 空/None: 返回 None (不做 BGM 混音)
+    """
+    if not job.bgm_path:
+        return None
+
+    if job.bgm_path != "auto":
+        return job.bgm_path
+
+    # --- "auto": 程序化音乐床生成 ---
+    try:
+        from .music_bed_generator import build_timeline_from_paragraphs, generate_music_bed
+
+        # 从段落构建情绪时间线 (start/end 由累计时长估算)
+        timeline = build_timeline_from_paragraphs(all_paragraphs)
+        if not timeline:
+            logger.warning("bgm_path='auto' 但无可用段落; 跳过程序化床生成")
+            return None
+
+        total_duration_s = timeline[-1].end_s if timeline else 0.0
+        if total_duration_s <= 0:
+            logger.warning("bgm_path='auto' 但总时长为 0; 跳过程序化床生成")
+            return None
+
+        # 尾声延伸 8.5s 让床浮起 (v6 同法)
+        total_duration_s += 8.5
+
+        bed_path = output_dir / f"music_bed_auto_{id(job)}.wav"
+        generated = generate_music_bed(
+            timeline=timeline,
+            total_duration_s=total_duration_s,
+            out_path=bed_path,
+        )
+        logger.info(f"程序化音乐床已生成 (bgm_path='auto'): {generated}")
+        return str(generated)
+    except Exception as e:
+        # 床生成失败不阻塞导出: 降级为无 BGM 导出
+        logger.warning(f"bgm_path='auto' 程序化音乐床生成失败 ({e}); 降级为无 BGM")
+        return None
 
 
 def export_project(
@@ -444,11 +496,17 @@ def export_project(
                         "text": para.text,
                         "sfx_tags": para.sfx_tags or [],
                         "duration_ms": seg.duration_ms if seg else 3000,
+                        # 情绪字段 (供程序化音乐床时间线构建)
+                        "emotion": getattr(para, "emotion", None),
+                        "emotion_intensity": getattr(para, "emotion_intensity", None),
                     }
                     all_paragraphs.append(para_data)
 
+            # BGM 解析: "auto" -> 程序化音乐床生成 (v6 收编)
+            bgm_path = _resolve_bgm_path(job, all_paragraphs, output_dir)
+
             # BGM mixing + SFX mixing
-            if job.bgm_path:
+            if bgm_path:
                 job.progress = ExportProgress.DUCKING
                 temp_audio = output_dir / "temp_speech_combined.wav"
                 # Concatenate all audio first
@@ -479,7 +537,7 @@ def export_project(
                 mix_full_pipeline(
                     speech_path=temp_audio,
                     output_path=mixed_path,
-                    bgm_path=job.bgm_path,
+                    bgm_path=bgm_path,
                     paragraphs=all_paragraphs,
                     config=job.mix_config,
                 )
@@ -526,6 +584,15 @@ def export_project(
             vtt_path = srt_path.with_suffix(".vtt")
             if vtt_path.exists():
                 job.output_paths["vtt"] = str(vtt_path)
+
+            # 🆕 同步生成可读文本版（去除时间戳、修正断词、段落重组）
+            try:
+                readable_path = output_dir / f"project_{project.id}_readable.txt"
+                clean_srt_to_readable_text(srt_path, readable_path, use_llm=False)
+                job.output_paths["readable_txt"] = str(readable_path)
+                logger.info(f"Generated readable text: {readable_path}")
+            except Exception as e:
+                logger.warning(f"Failed to generate readable text from SRT: {e}")
 
         # --- Zip bundle (if ALL or multiple formats) ---
         if ExportFormat.ALL in job.formats or len(job.formats) > 1 or ExportFormat.M4B_MP3 in job.formats:

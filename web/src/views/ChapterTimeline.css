@@ -1,8 +1,12 @@
+/* ── ChapterTimeline ───────────────────────────────────────── */
 .chapter-timeline {
   max-width: 960px;
 }
 
+/* ── Pipeline Progress ─────────────────────────────────────── */
 .pipeline-stage {
+  flex: 1;
+  min-width: 100px;
   position: relative;
 }
 .pipeline-stage:not(:last-child)::after {
@@ -22,6 +26,16 @@
 }
 
 .stage-indicator {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--color-border);
   transition: all 0.2s ease;
 }
 .pipeline-stage.completed .stage-indicator {
@@ -35,6 +49,24 @@
   animation: spin 1s linear infinite;
 }
 
+.stage-label {
+  font-size: 10px;
+  color: var(--color-text-secondary);
+  text-align: center;
+  white-space: nowrap;
+}
+.pipeline-stage.completed .stage-label,
+.pipeline-stage.active .stage-label {
+  color: var(--color-text);
+  font-weight: 500;
+}
+
+.stage-progress {
+  font-size: 10px;
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
 @keyframes pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.4); }
   50% { box-shadow: 0 0 0 8px rgba(79, 70, 229, 0); }
@@ -44,29 +76,201 @@
   to { transform: rotate(360deg); }
 }
 
-.pipeline-stage.completed .stage-label,
-.pipeline-stage.active .stage-label {
-  color: var(--color-text);
-  font-weight: 500;
+/* ── Progress Bar ──────────────────────────────────────────── */
+.progress-bar-track {
+  height: 8px;
+  background: var(--color-primary-soft);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-primary), var(--color-success));
+  border-radius: var(--radius-full);
+  transition: width 0.3s ease;
 }
 
+/* ── Waveform Section ──────────────────────────────────────── */
+.waveform-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.waveform-play-btn {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+}
+.time-display {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  min-width: 90px;
+}
+.zoom-controls {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.zoom-label {
+  font-size: 11px;
+  min-width: 50px;
+  text-align: center;
+}
+.waveform-container {
+  min-height: 80px;
+}
+
+/* ── Paragraph Card ────────────────────────────────────────── */
+.paragraph-card {
+  cursor: pointer;
+  padding: 16px;
+}
 .paragraph-card.selected {
   border-color: var(--color-primary);
   box-shadow: 0 0 0 2px var(--color-primary-alpha);
 }
 
+.para-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.para-num {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-primary);
+  min-width: 28px;
+}
+.para-role {
+  font-size: 11px;
+}
+.para-type-badge {
+  font-size: 10px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
 .status-dot.completed { background: var(--color-success); }
 .status-dot.pending { background: var(--color-warning); }
 .status-dot.error { background: var(--color-danger); }
+.status-dot.running { background: var(--color-primary); }
 
-/* WaveSurfer container */
-.waveform-container {
-  min-height: 80px;
+/* ── Text Sections ─────────────────────────────────────────── */
+.para-text-section {
+  margin-bottom: 4px;
+}
+.para-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--color-text);
+}
+.edited-text-block .para-text {
+  background: var(--color-success-soft);
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--color-success);
+}
+.original-text-block .para-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.text-badge {
+  font-size: 10px;
+  margin-bottom: 6px;
 }
 
-/* Responsive */
+/* ── Annotation Chips ──────────────────────────────────────── */
+.annotation-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.annotation-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+}
+.annotation-chip-icon {
+  margin-right: 3px;
+  flex-shrink: 0;
+}
+
+/* ── Quality Score ─────────────────────────────────────────── */
+.quality-score {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+}
+.quality-score-high {
+  background: var(--color-success-soft);
+  color: var(--color-success);
+}
+.quality-score-mid {
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+}
+.quality-score-low {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+/* ── Regenerate Button ─────────────────────────────────────── */
+.regenerate-btn {
+  font-size: 11px;
+  padding: 3px 8px;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.regenerate-btn:hover:not(:disabled) {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+.regenerate-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ── Alert ─────────────────────────────────────────────────── */
+.pipeline-error {
+  font-size: 13px;
+}
+.pipeline-idle-hint {
+  color: var(--color-text-muted);
+}
+
+/* ── Responsive: mobile vertical stacking ──────────────────── */
 @media (max-width: 767px) {
-  .pipeline-stages {
+  .chapter-timeline .pipeline-stages {
     gap: 8px;
   }
   .pipeline-stage {
@@ -75,29 +279,38 @@
   .stage-label {
     font-size: 9px;
   }
+
+  .waveform-toolbar {
+    gap: 6px;
+  }
+  .zoom-controls {
+    margin-left: 0;
+    margin-top: 4px;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .para-header {
+    gap: 6px;
+  }
+
+  .annotation-chips {
+    gap: 6px;
+  }
+
+  /* Stack the card header actions vertically on very small screens */
+  .paragraph-card .para-header {
+    flex-wrap: wrap;
+  }
 }
 
-/* Annotation chips */
-.annotation-chip {
-  display: inline-flex;
-  align-items: center;
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 99px;
-  white-space: nowrap;
-}
-
-.para-text-section {
-  margin-bottom: 4px;
-}
-
-.edited-text-block p {
-  background: #f0fdf4;
-  padding: 8px 10px;
-  border-radius: 6px;
-  border-left: 3px solid var(--color-success);
-}
-
-.original-text-block p {
-  /* keeps existing clamp styling */
+@media (max-width: 480px) {
+  .waveform-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .waveform-toolbar .time-display {
+    text-align: center;
+    min-width: auto;
+  }
 }

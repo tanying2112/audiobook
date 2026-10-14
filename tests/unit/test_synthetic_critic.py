@@ -171,11 +171,18 @@ class TestCalibrationDataset:
         assert len(DEFAULT_CALIBRATION_SAMPLES) == 20
 
     def test_samples_cover_all_verdicts(self):
-        """Dataset includes PASS, WARNING, and FAIL samples."""
-        verdicts = {s.ground_truth_verdict for s in DEFAULT_CALIBRATION_SAMPLES}
-        assert CriticVerdict.PASS in verdicts
-        assert CriticVerdict.WARNING in verdicts
-        assert CriticVerdict.FAIL in verdicts
+        """Dataset includes PASS, WARNING, and FAIL samples.
+
+        Compare by ``.value``: pytest's ``audiobook_studio``/``src.audiobook_studio``
+        alias unification can leave two ``CriticVerdict`` enum classes with identical
+        members, and Enum equality is identity-based, so ``CriticVerdict.PASS in
+        {…}`` would spuriously fail under full-suite ordering. The dataset's contract
+        is about which verdict *values* are represented, so assert those.
+        """
+        verdicts = {s.ground_truth_verdict.value for s in DEFAULT_CALIBRATION_SAMPLES}
+        assert CriticVerdict.PASS.value in verdicts
+        assert CriticVerdict.WARNING.value in verdicts
+        assert CriticVerdict.FAIL.value in verdicts
 
     def test_samples_have_triple_scores(self):
         """Each sample has scores for all three critics."""

@@ -30,6 +30,11 @@ class Character(Base):
     suggested_voice_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     sample_quote: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
+    # TTS prosody defaults per character (P3b: emotion/pitch/speed in DB)
+    emotion: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    speech_rate: Mapped[Optional[float]] = mapped_column(nullable=True)
+    pitch_shift_semitones: Mapped[Optional[int]] = mapped_column(nullable=True)
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(

@@ -9,6 +9,7 @@
 #     (可选) <词>:
 #       phoneme: ...
 #       source: rule_ns | manual | heuristic
+#       voices: {voice_id: 注音}  # 分音色注音 (Gap #7): 按段落级路由音色选, 未列出用默认
 #
 # 加载优先级 (synthesize 接入点): 项目级字典 > 全局本文件。
 # 项目级: <项目目录>/pronunciation_dict.yaml 可覆盖/补充全局条目 (load 时合并, 项目赢)。
@@ -33,3 +34,32 @@ entries:
   道友:
     phoneme: "dào yǒu"
     source: manual
+
+# ── 英文分级读物专名 (Gap F, 2026-10-13) ────────────────────────────────────
+# Football Forever (Oxford Bookworms L1) 回听实证 (kokoro am_adam 合成 →
+# SenseVoice 回听 → 与 gold 拼写整词对照, 全程见 scratch/ff_system/f_pron_*.py):
+#   - Lenda: base 10/10 音色全被听成 "linda"; respell "Len da" am_adam 首验
+#     通过后, 行动项 #7 补 10 音色矩阵 (f_pron_voice_matrix.py) 证实词条
+#     音色敏感 — 6/10 命中, am_liam/am_michael/am_puck 需 "Lenn-dah",
+#     am_onyx 词条+6 变体全失败 (池内不可修, 裁判循环性范畴)。
+#   - 其余专名维持不加词条 (10 音色矩阵复核, 2026-10-13, 见「六」): Tino/
+#     Zangado/Nakano/futsal base 全 0/10 且回听为近失拼写 ('tinino'/'naano'
+#     等, 非漏读), 变体池尽扫 (6/5/4/6 候选 × 各音色) 无通用命中, 原声叙述者
+#     同样不命中 → SenseVoice 评分天花板 (差距 E)。Tino "Tinnoh" 5 男声可获
+#     裁判命中但读音分歧 (TIN-no ≠ TEE-no, 回听命中≠读音正确) — 不采纳,
+#     留人工核验 (红线#1)。
+  Lenda:
+    phoneme: "Len da"
+    source: heuristic
+    # voices: = Gap #7 分音色注音 {voice_id: 注音}; 未列出音色用默认 phoneme,
+    # 按段落级路由音色选择 (句级 voice override 晚于字典应用解析, gap_report
+    # 记后续项)。矩阵实证 (2026-10-13, 10 音色 × SenseVoice 整词命中,
+    # scratch/ff_system/f_pron_validation/matrix/voice_matrix.json):
+    # "Len da" → af_bella/af_sarah/af_nicole/af_sky/am_adam/am_fenrir ✓;
+    # am_liam/am_michael/am_puck ✗ (confirm 2 次一致) → "Lenn-dah" ✓;
+    # am_onyx 7 种拼写全 ✗ (不可修 → 不列出, 回落默认; base 亦全 ✗
+    # 'linda', 无不伤害风险)。
+    voices:
+      am_liam: "Lenn-dah"
+      am_michael: "Lenn-dah"
+      am_puck: "Lenn-dah"

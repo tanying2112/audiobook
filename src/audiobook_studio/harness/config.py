@@ -228,6 +228,25 @@ class HarnessSettings(BaseSettings):
     PROMOTION_HUMAN_PREFERENCE_MIN: float = Field(default=1.0, alias="PROMOTION_HUMAN_PREFERENCE_MIN")
     """人工偏好分最低要求"""
 
+    # 音频客观指标门禁 (Batch 2.1)
+    AUDIO_MOS_MIN: float = Field(default=3.5, alias="HARNESS_AUDIO_MOS_MIN")
+    """DNSMOS 集成响度 MOS 最低阈值（默认 3.5）"""
+
+    AUDIO_WER_MAX: float = Field(default=0.15, alias="HARNESS_AUDIO_WER_MAX")
+    """faster-whisper WER 最高阈值（默标 15%）"""
+
+    AUDIO_SPEAKER_COSINE_MIN: float = Field(default=0.85, alias="HARNESS_AUDIO_SPEAKER_COSINE_MIN")
+    """ECAPA-TDNN speaker cosine 最低阈值（默认 0.85）"""
+
+    AUDIO_GATE_STAGES: List[str] = Field(
+        default=["edit_for_tts", "tts_routing", "synthesize", "audio_director"],
+        alias="HARNESS_AUDIO_GATE_STAGES",
+    )
+    """启用音频门禁的 stage 列表（仅产生音频的 stage 适用）"""
+
+    AUDIO_GATE_STRICT: bool = Field(default=False, alias="HARNESS_AUDIO_GATE_STRICT")
+    """严格模式：依赖缺失/无样本时 fail-closed（默认 False 诚实降级）"""
+
     PROMOTION_MIN_SAMPLES: int = Field(default=8, alias="PROMOTION_MIN_SAMPLES")
     """金丝雀最小样本数"""
 

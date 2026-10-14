@@ -112,11 +112,26 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Plugin loading failed (continuing without plugins): %s", e)
 
+    # Auto-start SOP background reflection thread (guarded by env var)
+    if os.getenv("AUDIOBOOK_SOP_AUTO_START", "false").lower() == "true":
+        from .pipeline.sop_reflection import start_sop_background_thread, stop_sop_background_thread
+
+        start_sop_background_thread(check_interval=30.0)
+        logger.info("[SOP] Auto-started background reflection thread")
+
     # Shutdown observability
     from .observability.metrics import shutdown_metrics
     from .observability.tracing import shutdown_tracing
 
     yield
+
+    # Stop SOP background thread on shutdown
+    if os.getenv("AUDIOBOOK_SOP_AUTO_START", "false").lower() == "true":
+        from .pipeline.sop_reflection import stop_sop_background_thread
+
+        stop_sop_background_thread()
+        logger.info("[SOP] Stopped background reflection thread")
+
     shutdown_tracing()
     shutdown_metrics()
 

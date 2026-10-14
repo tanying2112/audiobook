@@ -117,10 +117,13 @@ class JSONLStore:
             if record_hash in existing_hashes:
                 return False
 
-            # 原子写入
+            # 原子写入：tmp 必须携带「已有全部记录 + 新记录」，否则 replace 会
+            # 把累积文件清成只剩最后一条（此前的 append-only tmp 正是此 bug）。
             file_path.parent.mkdir(parents=True, exist_ok=True)
             tmp_path = Path(str(file_path) + ".tmp")
-            with open(tmp_path, "a", encoding="utf-8") as f:
+            with tmp_path.open("w", encoding="utf-8") as f:
+                if file_path.exists():
+                    f.write(file_path.read_text(encoding="utf-8"))
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
             os.replace(tmp_path, file_path)
 

@@ -160,7 +160,7 @@
           <div class="audio-card card">
             <h4>{{ t('translation.original_audio') }}</h4>
             <div class="audio-player flex flex-col gap-2">
-              <select v-model="selectedParagraph" class="form-control" style="max-width: 100%;">
+              <select v-model="selectedParagraph" class="form-control select-full">
                 <option v-for="p in paragraphs" :key="p.id" :value="p.id">
                   {{ t('translation.paragraph') }} {{ p.index }}
                 </option>

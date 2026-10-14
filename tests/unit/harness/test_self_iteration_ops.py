@@ -2,11 +2,11 @@
 
 from typing import Any, Dict
 
-from audiobook_studio.feedback.prompt_compiler import stage_to_prompt_dir
-from audiobook_studio.harness.dashboard import get_harness_dashboard
-from audiobook_studio.harness.golden import GoldenDatasetManager
-from audiobook_studio.harness.promotion_gate import PromotionGate, promote_candidate
-from audiobook_studio.harness.scheduler import HarnessScheduler
+from src.audiobook_studio.feedback.prompt_compiler import stage_to_prompt_dir
+from src.audiobook_studio.harness.dashboard import get_harness_dashboard
+from src.audiobook_studio.harness.golden import GoldenDatasetManager
+from src.audiobook_studio.harness.promotion_gate import PromotionGate, promote_candidate
+from src.audiobook_studio.harness.scheduler import HarnessScheduler
 from src.audiobook_studio.pipeline.sop_reflection import SOPBackgroundThread
 
 # ── 项1+项2：调度层把 use_learned 透传给 run_iteration_cycle ───────────────────
@@ -14,7 +14,7 @@ from src.audiobook_studio.pipeline.sop_reflection import SOPBackgroundThread
 
 def test_scheduler_forwards_use_learned_to_iteration(monkeypatch):
     """HarnessScheduler 的 use_learned 开关（含实例级与参数级覆盖）必须透传。"""
-    import audiobook_studio.harness.harness as harness_mod
+    import src.audiobook_studio.harness.harness as harness_mod
 
     captured = {}
 
@@ -39,6 +39,7 @@ def test_scheduler_forwards_use_learned_to_iteration(monkeypatch):
         human_preference_score=1.0,
         candidate_id=None,
         use_learned=False,
+        quality_judge=None,
     ):
         captured.setdefault("calls", []).append((stage, use_learned))
         return _FakeRep()
@@ -104,7 +105,7 @@ def test_promotion_gate_format_missing_file_fails(tmp_path):
 
 def test_promotion_gate_deploy_forwards_human_preference(tmp_path, monkeypatch):
     """promote_candidate 把 human_preference_score 如实透传给真引擎（feedback/deploy）。"""
-    import audiobook_studio.feedback.deploy as deploy_mod
+    import src.audiobook_studio.feedback.deploy as deploy_mod
 
     _write_candidate(tmp_path, "judge", 1)
 
@@ -168,7 +169,7 @@ def test_sop_use_learned_env_switch(monkeypatch):
 def test_learned_experiment_records_evidence(tmp_path, monkeypatch):
     """run_learned_experiment 离线（MockLM）跑通 GEPA 并落盘可回读的证据。"""
     monkeypatch.setenv("MOCK_LLM", "true")
-    from audiobook_studio.harness.learned_experiment import load_experiment_records, run_learned_experiment
+    from src.audiobook_studio.harness.learned_experiment import load_experiment_records, run_learned_experiment
 
     out = tmp_path / "exp.jsonl"
     records = run_learned_experiment(
@@ -198,8 +199,8 @@ def test_learned_experiment_records_evidence(tmp_path, monkeypatch):
 def test_sop_background_thread_starts_harness_worker(monkeypatch, tmp_path):
     """AUDIOBOOK_HARNESS_AUTONOMOUS=1 时，SOPBackgroundThread.start() 真正拉起
     harness 自主迭代 worker（独立后台线程），并按自身 interval 驱动 run_iteration_cycle。"""
-    import audiobook_studio.harness.harness as harness_mod
-    from audiobook_studio.harness.scheduler import HarnessScheduler
+    import src.audiobook_studio.harness.harness as harness_mod
+    from src.audiobook_studio.harness.scheduler import HarnessScheduler
     from src.audiobook_studio.pipeline.sop_reflection import (
         CorrectionCollector,
         ReflectionEngine,
@@ -230,6 +231,7 @@ def test_sop_background_thread_starts_harness_worker(monkeypatch, tmp_path):
         human_preference_score=1.0,
         candidate_id=None,
         use_learned=False,
+        quality_judge=None,
     ):
         captured.setdefault("calls", []).append(stage)
         return _FakeRep()
@@ -263,7 +265,7 @@ def test_sop_background_thread_starts_harness_worker(monkeypatch, tmp_path):
 
 def test_sop_background_thread_no_harness_worker_when_disabled(monkeypatch, tmp_path):
     """AUDIOBOOK_HARNESS_AUTONOMOUS 未开启时，start() 不应拉起 harness worker。"""
-    import audiobook_studio.harness.harness as harness_mod
+    import src.audiobook_studio.harness.harness as harness_mod
     from src.audiobook_studio.pipeline.sop_reflection import (
         CorrectionCollector,
         ReflectionEngine,

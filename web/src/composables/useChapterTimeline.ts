@@ -6,6 +6,7 @@ import { usePipelineProgress } from '../composables/usePipelineProgress'
 import { useI18n } from '../i18n'
 import type { PipelineStage } from '../types/pipeline'
 import { normalizeChapterPipeline } from '../utils/normalize'
+import { fetchParagraphDetail } from '../api'
 
 export function useChapterTimeline() {
   const route = useRoute()
@@ -99,6 +100,19 @@ export function useChapterTimeline() {
     const para = store.paragraphs.find((p) => p.id === paraId)
     if (!para) return
 
+    // Phase 5: Fetch full paragraph detail on demand
+    fetchParagraphDetail(projectId, chapterId, paraId)
+      .then((detail) => {
+        // Update the paragraph in store with full detail
+        const idx = store.paragraphs.findIndex((p) => p.id === paraId)
+        if (idx !== -1) {
+          store.paragraphs[idx] = { ...store.paragraphs[idx], ...detail }
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to fetch paragraph detail:', err)
+      })
+
     store.loadAudioSegments(paraId)
     store.loadQuality(paraId)
 
@@ -161,5 +175,6 @@ export function useChapterTimeline() {
     jumpToParagraph,
     goBack,
     hasAnnotations,
+    projectId,
   }
 }

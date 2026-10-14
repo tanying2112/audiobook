@@ -176,6 +176,8 @@ class LLMFeedbackAnalyzer:
                 tags.append("emotion_too_mild")
             elif "过度" in rationale or "过强" in rationale:
                 tags.append("emotion_too_strong")
+            elif "不匹配" in rationale or "mismatch" in rationale_lower:
+                tags.append("emotion_mismatch")
             else:
                 tags.append("emotion_wrong")
         if any(kw in rationale_lower for kw in ["角色", "说话人", "speaker"]):
@@ -184,6 +186,32 @@ class LLMFeedbackAnalyzer:
             tags.append("pause_missing")
         if any(kw in rationale_lower for kw in ["机器人", "机械", "不自然"]):
             tags.append("prosody_robotic")
+
+        # New patterns
+        if any(kw in rationale_lower for kw in ["格式", "format", "规范"]):
+            tags.append("format_issue")
+        if any(kw in rationale_lower for kw in ["风格", "style", "统一", "一致"]):
+            tags.append("style_issue")
+        if any(kw in rationale_lower for kw in ["发音", "读音", "pronunciation", "拼音"]):
+            tags.append("pronunciation_fix")
+        if any(kw in rationale_lower for kw in ["音质", "quality", "质量"]):
+            tags.append("quality_issue")
+        if any(kw in rationale_lower for kw in ["伪影", "artifact", "爆音", "电流", "金属音"]):
+            tags.append("audio_artifact")
+        if any(kw in rationale_lower for kw in ["语速", "speed", "过快", "过慢", "太快", "太慢"]):
+            tags.append("speech_rate_issue")
+        if any(kw in rationale_lower for kw in ["评分", "score", "低分", "过低"]):
+            tags.append("low_quality_score")
+        if any(kw in rationale_lower for kw in ["背景", "噪音", "noise", "底噪"]):
+            tags.append("background_noise")
+        if any(kw in rationale_lower for kw in ["不清", "模糊", "含糊", "unclear", "听不清"]):
+            tags.append("unclear_pronunciation")
+        if any(kw in rationale_lower for kw in ["过短", "太短", "片段", "chunk", "短小"]):
+            tags.append("chunk_too_short")
+        if any(kw in rationale_lower for kw in ["音色", "voice", "声纹", "一致性", "inconsist"]):
+            tags.append("voice_inconsistency")
+        if any(kw in rationale_lower for kw in ["截断", "truncat", "结尾", "ending", "切断", "未完"]):
+            tags.append("truncated_ending")
 
         return FeedbackAnalysis(
             pattern_tags=list(set(tags)),

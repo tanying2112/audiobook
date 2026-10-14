@@ -1,59 +1,105 @@
 <template>
-  <div class="golden-view">
-    <div class="header">
-      <h1>{{ t('golden.title') }}</h1>
+  <div class="page-container">
+    <div class="page-header">
       <div>
-        <el-button :loading="regressing" @click="onRunRegression">{{ t('golden.runRegression') }}</el-button>
-        <el-button type="primary" @click="contributeVisible = true">{{ t('golden.contribute') }}</el-button>
+        <h1>{{ t('golden.title') }}</h1>
+      </div>
+      <div class="header-actions">
+        <button class="btn btn-outline btn-sm" :disabled="regressing" @click="onRunRegression">
+          <span v-if="regressing" class="spinner"></span>
+          {{ t('golden.runRegression') }}
+        </button>
+        <button class="btn btn-primary btn-sm" @click="contributeVisible = true">
+          {{ t('golden.contribute') }}
+        </button>
       </div>
     </div>
 
-    <el-card class="section">
+    <div class="card section">
       <div class="filters">
-        <el-select v-model="stageFilter" :placeholder="t('golden.stage')" clearable style="width: 180px" @change="load">
-          <el-option v-for="s in stages" :key="s" :label="s" :value="s" />
-        </el-select>
+        <select v-model="stageFilter" class="form-control filter-select" @change="load">
+          <option value="">{{ t('golden.stage') }}</option>
+          <option v-for="s in stages" :key="s" :value="s">{{ s }}</option>
+        </select>
       </div>
-      <el-table :data="samples" v-loading="loading">
-        <el-table-column prop="id" label="ID" width="220" show-overflow-tooltip />
-        <el-table-column prop="stage" :label="t('golden.stage')" width="120" />
-        <el-table-column prop="status" :label="t('golden.status')" width="120">
-          <template #default="{ row }">
-            <el-tag :type="row.status === 'approved' ? 'success' : row.status === 'rejected' ? 'danger' : 'info'">
-              {{ row.status || 'pending' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="created_at" :label="t('golden.createdAt')" width="180" />
-        <el-table-column :label="t('common.actions')" width="200">
-          <template #default="{ row }">
-            <el-button size="small" type="success" plain @click="onApprove(row)">{{ t('golden.approve') }}</el-button>
-            <el-button size="small" type="danger" plain @click="onReject(row)">{{ t('golden.reject') }}</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-      <el-empty v-if="!loading && samples.length === 0" :description="t('golden.empty')" />
-    </el-card>
 
-    <el-dialog v-model="contributeVisible" :title="t('golden.contribute')" width="640px">
-      <el-form label-width="100px">
-        <el-form-item :label="t('golden.stage')">
-          <el-select v-model="form.stage" style="width: 100%">
-            <el-option v-for="s in stages" :key="s" :label="s" :value="s" />
-          </el-select>
-        </el-form-item>
-        <el-form-item :label="t('golden.input')">
-          <el-input v-model="form.input" type="textarea" :rows="5" placeholder="JSON" />
-        </el-form-item>
-        <el-form-item :label="t('golden.expected')">
-          <el-input v-model="form.expected" type="textarea" :rows="5" placeholder="JSON" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="contributeVisible = false">{{ t('common.cancel') }}</el-button>
-        <el-button type="primary" :loading="submitting" @click="onContribute">{{ t('common.submit') }}</el-button>
-      </template>
-    </el-dialog>
+      <div class="table-responsive">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>{{ t('golden.stage') }}</th>
+              <th>{{ t('golden.status') }}</th>
+              <th>{{ t('golden.createdAt') }}</th>
+              <th>{{ t('common.actions') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in samples" :key="row.id">
+              <td class="cell-id">{{ row.id }}</td>
+              <td>{{ row.stage }}</td>
+              <td>
+                <span
+                  class="badge"
+                  :class="row.status === 'approved' ? 'badge-success' : row.status === 'rejected' ? 'badge-danger' : 'badge-muted'"
+                >
+                  {{ row.status || 'pending' }}
+                </span>
+              </td>
+              <td>{{ row.created_at }}</td>
+              <td class="cell-actions">
+                <button class="btn btn-sm btn-action-success" @click="onApprove(row)">
+                  {{ t('golden.approve') }}
+                </button>
+                <button class="btn btn-sm btn-action-danger" @click="onReject(row)">
+                  {{ t('golden.reject') }}
+                </button>
+              </td>
+            </tr>
+            <tr v-if="!loading && samples.length === 0">
+              <td colspan="5" class="empty-cell">{{ t('golden.empty') }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div v-if="loading" class="loading-state">
+        <div class="spinner"></div>
+      </div>
+    </div>
+
+    <!-- Contribute dialog -->
+    <div v-if="contributeVisible" class="dialog-overlay" @click.self="contributeVisible = false">
+      <div class="dialog" role="dialog" aria-modal="true" :aria-label="t('golden.contribute')">
+        <div class="dialog-header">
+          <h2>{{ t('golden.contribute') }}</h2>
+          <button class="dialog-close" @click="contributeVisible = false" aria-label="Close">&times;</button>
+        </div>
+        <div class="dialog-body">
+          <div class="form-group">
+            <label>{{ t('golden.stage') }}</label>
+            <select v-model="form.stage" class="form-control">
+              <option v-for="s in stages" :key="s" :value="s">{{ s }}</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>{{ t('golden.input') }}</label>
+            <textarea v-model="form.input" class="form-control" rows="5" placeholder="JSON"></textarea>
+          </div>
+          <div class="form-group">
+            <label>{{ t('golden.expected') }}</label>
+            <textarea v-model="form.expected" class="form-control" rows="5" placeholder="JSON"></textarea>
+          </div>
+        </div>
+        <div class="dialog-footer">
+          <button class="btn btn-outline btn-sm" @click="contributeVisible = false">{{ t('common.cancel') }}</button>
+          <button class="btn btn-primary btn-sm" :disabled="submitting" @click="onContribute">
+            <span v-if="submitting" class="spinner"></span>
+            {{ t('common.submit') }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -136,8 +182,30 @@ onMounted(load)
 </script>
 
 <style scoped>
-.golden-view { padding: 24px; }
-.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-.section { margin-bottom: 16px; }
 .filters { margin-bottom: 12px; }
+.filter-select { width: 200px; max-width: 100%; }
+.cell-id { font-family: var(--font-mono); font-size: 13px; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cell-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.empty-cell { text-align: center; color: var(--color-text-muted); padding: 32px 12px; }
+.btn-action-success { color: var(--color-success); }
+.btn-action-success:hover { background: var(--color-success-soft); }
+.btn-action-danger { color: var(--color-danger); }
+.btn-action-danger:hover { background: var(--color-danger-soft); }
+
+/* Dialog */
+.dialog-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px; }
+.dialog { background: var(--color-surface); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); width: 100%; max-width: 640px; max-height: calc(100vh - 32px); overflow-y: auto; }
+.dialog-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--color-border); }
+.dialog-header h2 { margin: 0; font-size: 17px; font-weight: 600; }
+.dialog-close { background: none; border: none; font-size: 22px; color: var(--color-text-muted); cursor: pointer; padding: 0 4px; line-height: 1; }
+.dialog-close:hover { color: var(--color-text); }
+.dialog-body { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+.dialog-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--color-border); }
+
+@media (max-width: 767px) {
+  .page-header { flex-direction: column; align-items: stretch; }
+  .header-actions { justify-content: flex-end; }
+  .filter-select { width: 100%; }
+  .dialog { margin: 0; border-radius: var(--radius); }
+}
 </style>

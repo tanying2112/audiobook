@@ -956,3 +956,119 @@ async def list_cloned_voices():
                 }
             )
     return {"cloned_voices": cloned_voices, "count": len(cloned_voices)}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Batch 2.4: 参考音频分析 → Kokoro 近似克隆参数建议
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class ReferenceAnalysisProfile(BaseModel):
+    """参考音频声学画像 (纯 numpy 分析, 无重型依赖)."""
+
+    f0_median_hz: Optional[float] = Field(None, description="F0 中位数 (Hz), 静音/噪声样本为 None")
+    f0_mean_hz: Optional[float] = Field(None, description="F0 均值 (Hz)")
+    syllable_rate: Optional[float] = Field(None, description="音节速率 (音节/秒)")
+    spectral_centroid_hz: Optional[float] = Field(None, description="频谱质心 (Hz, 音色明暗)")
+    duration_s: float = Field(0.0, description="样本时长 (秒)")
+    voiced_ratio: float = Field(0.0, description="有声帧占比 (0-1)")
+    sample_rate: int = Field(0, description="解码后采样率 (0 = 解码失败)")
+    confidence: float = Field(0.0, description="分析置信度 (0-1, 受时长/voiced 占比影响)")
+
+
+class AnalyzeReferenceResponse(BaseModel):
+    """分析响应: 画像 + Kokoro 近似克隆建议参数."""
+
+    success: bool = Field(..., description="音频是否成功解码并完成分析")
+    profile: ReferenceAnalysisProfile = Field(..., description="声学画像")
+    suggested_blend: str = Field("", description="建议 Kokoro blend 音色, e.g. 'am_puck*0.6+am_liam*0.4'")
+    suggested_pitch_st: float = Field(0.0, description="建议合成后 pitch 移位 (半音, clamp ±6, ffmpeg 带式)")
+    suggested_speed: float = Field(1.0, description="建议 speed (音节速率比, clamp 0.7-1.3)")
+    suggestion_confidence: float = Field(0.0, description="参数建议置信度 (0-1)")
+    gender_guess: str = Field("unknown", description="有效性别判定 (gender_hint 覆盖后)")
+    brightness: str = Field("neutral", description="音色明暗: dark/neutral/bright")
+    warnings: List[str] = Field(default_factory=list, description="分析警告 (解码失败/样本过短/pitch 顶 clamp 等)")
+
+
+@router.post("/voices/analyze-reference", response_model=AnalyzeReferenceResponse)
+async def analyze_reference_voice(
+    file: UploadFile = File(..., description="参考音频 (WAV/MP3, 建议 ≥3s 清晰单人语音)"),
+    language: str = Form(default="zh", description="目标语言 (zh/en) — 决定音色池与音节速率基准"),
+    gender_hint: str = Form(default="", description="可选 male/female — 165-200Hz 重叠区 F0 推断不可靠, 已知说话人性别时传入"),
+):
+    """
+    Analyze a reference audio sample and suggest Kokoro approximate-clone params.
+
+    Batch 2.4: 纯声学分析 (自相关 F0 / 频谱质心 / 能量包络音节速率), **不合成
+    任何语音、不克隆声纹** — 返回最匹配的预设 blend 音色与 pitch_st/speed 建议,
+    供 /api/tts/voices/clone 的 kokoro_zeroshot 引擎 (本地 CPU 近似克隆) 或
+    手工选声参考。短样本/静音样本诚实降级: 对应指标为 None、warnings 说明原因,
+    绝不虚构数值。
+    """
+    allowed_types = {"audio/wav", "audio/wave", "audio/x-wav", "audio/mpeg", "audio/mp3"}
+    if file.content_type not in allowed_types:
+        raise DomainError(
+            message=f"Unsupported audio format: {file.content_type}. Use WAV or MP3.",
+            error_code="VALIDATION_ERROR",
+            stage="tts",
+            context={"content_type": file.content_type, "allowed_types": list(allowed_types)},
+        )
+
+    hint = (gender_hint or "").strip().lower()
+    if hint and hint not in ("male", "female"):
+        raise DomainError(
+            message=f"gender_hint 须为 male/female, 收到: {gender_hint!r}",
+            error_code="VALIDATION_ERROR",
+            stage="tts",
+            context={"field": "gender_hint"},
+        )
+
+    suffix = Path(file.filename or "ref.wav").suffix or ".wav"
+    file.file.seek(0)  # spooled buffer 可能已在 EOF (同 clone 端点教训)
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        shutil.copyfileobj(file.file, tmp)
+        tmp_path = Path(tmp.name)
+
+    try:
+        from ..tts.reference_analysis import (
+            analyze_reference as _run_analysis,
+            suggest_kokoro_params,
+        )
+
+        profile = _run_analysis(tmp_path)
+        # 先跑建议 (gender_hint 覆盖会向 profile.warnings 追加说明), 再读 warnings
+        suggestion = suggest_kokoro_params(profile, language, gender_hint=hint or None)
+
+        return AnalyzeReferenceResponse(
+            success=profile.sample_rate > 0,
+            profile=ReferenceAnalysisProfile(
+                f0_median_hz=profile.f0_median_hz,
+                f0_mean_hz=profile.f0_mean_hz,
+                syllable_rate=profile.syllable_rate,
+                spectral_centroid_hz=profile.spectral_centroid_hz,
+                duration_s=round(profile.duration_s, 2),
+                voiced_ratio=round(profile.voiced_ratio, 3),
+                sample_rate=profile.sample_rate,
+                confidence=profile.confidence,
+            ),
+            suggested_blend=suggestion.blend_voice,
+            suggested_pitch_st=suggestion.pitch_st,
+            suggested_speed=suggestion.speed,
+            suggestion_confidence=suggestion.confidence,
+            gender_guess=suggestion.gender_guess,
+            brightness=suggestion.brightness,
+            warnings=list(profile.warnings),
+        )
+    except DomainError:
+        raise
+    except Exception as e:
+        logger.error(f"Reference analysis failed: {e}")
+        raise DomainError(
+            message=f"参考音频分析失败: {str(e)}",
+            error_code="INTERNAL_ERROR",
+            stage="tts",
+            original_error=e,
+        ) from e
+    finally:
+        if tmp_path.exists():
+            tmp_path.unlink()

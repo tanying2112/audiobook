@@ -1,0 +1,60 @@
+{
+  "claims": [
+    {
+      "claim": "PROJECT_STATUS.md records a global test suite with \"425 failed\" in multiple sections (v0.2.0 milestone, Sprint G, SSOT declaration), but an authoritative later baseline document (docs/baseline-full-suite-2026-08-31.md, git tag baseline/full-suite-green-2026-08-31, commit 5fdf34d) records 7784 passed / 143 skipped / 0 failed as of 2026-08-31, directly contradicting the 425-failure figure.",
+      "confidence": "high",
+      "evidence": "PROJECT_STATUS.md lines 16-17, 67-68, 199-200 cite \"全局测试集存在 425 failed\" and \"全量测试集 425 failed \u26a0\ufe0f\". docs/baseline-full-suite-2026-08-31.md lines 9-19 records \"passed: 7784, skipped: 143, failed: 0, errors: 0\" with command `.venv/bin/python -m pytest -p no:randomly -q` and states this is the green baseline for git tag baseline/full-suite-green-2026-08-31.",
+      "source_locator": "/Users/guwj/Documents/audiobook/PROJECT_STATUS.md:16-17,67-68,199-200 and /Users/guwj/Documents/audiobook/docs/baseline-full-suite-2026-08-31.md:9-19",
+      "source_title": "PROJECT_STATUS.md and baseline-full-suite-2026-08-31.md",
+      "source_type": "repository"
+    },
+    {
+      "claim": "Six skip markers exist in tests/unit/pipeline across four files, all with reason \"Test isolation issue - flaky in full suite\"; no skip markers found in tests/unit/feedback.",
+      "confidence": "high",
+      "evidence": "grep found pytest.mark.skip at tests/unit/pipeline/test_stage_registry_coverage.py:663,847,863; test_synthesize.py:699; test_segment_coverage.py:377,420. All show identical reason string. grep for skip markers in tests/unit/feedback returned zero matches.",
+      "source_locator": "/Users/guwj/Documents/audiobook/tests/unit/pipeline/test_stage_registry_coverage.py:663,847,863 /Users/guwj/Documents/audiobook/tests/unit/pipeline/test_synthesize.py:699 /Users/guwj/Documents/audiobook/tests/unit/pipeline/test_segment_coverage.py:377,420",
+      "source_title": "test_stage_registry_coverage.py, test_synthesize.py, test_segment_coverage.py",
+      "source_type": "repository"
+    },
+    {
+      "claim": "Both test directories heavily use mocks: tests/unit/pipeline/test_stage_registry_coverage.py uses MagicMock/AsyncMock/fakes for all pipeline stages and persistence; tests/unit/feedback/test_critics_mock.py is explicitly \"Mock-backed coverage tests\" with a MockRouter class; tests/unit/feedback/test_integration_phaseB.py uses MagicMock for DB/collector boundaries.",
+      "confidence": "high",
+      "evidence": "test_stage_registry_coverage.py lines 13, 54, 74, 188-237 monkeypatches all 7 pipeline stages + persistence writers with fakes/MagicMock. test_critics_mock.py lines 1-7, 21, 53, 64 defines MockRouter and uses it in 30+ test cases. test_integration_phaseB.py line 1 states \"mocking DB/collector boundaries\" and lines 5, 66, 118-119, 164 use MagicMock.",
+      "source_locator": "/Users/guwj/Documents/audiobook/tests/unit/pipeline/test_stage_registry_coverage.py:13,54,74,188-237 /Users/guwj/Documents/audiobook/tests/unit/feedback/test_critics_mock.py:1-7,21,53,64 /Users/guwj/Documents/audiobook/tests/unit/feedback/test_integration_phaseB.py:1,5,66,118-119,164",
+      "source_title": "test_stage_registry_coverage.py, test_critics_mock.py, test_integration_phaseB.py",
+      "source_type": "repository"
+    },
+    {
+      "claim": "coverage.xml (timestamp ~2026-08-31) reports line-rate 0.8552 (85.52%, 29938/35008 lines) for src/, which contradicts PROJECT_STATUS.md's claimed \"权威基线 77.60%\" (8313/10713 lines). The baseline document explicitly states no authoritative line coverage % can be produced due to native extension segfaults during full-suite --cov runs.",
+      "confidence": "high",
+      "evidence": "coverage.xml line 3: line-rate=\"0.8552\" lines-valid=\"35008\" lines-covered=\"29938\". PROJECT_STATUS.md line 278-279 claims \"权威基线 77.60%\u00ef\u00bc\u200b\u00ef\u00bc\u200b(8313/10713 \u884c)\". docs/baseline-full-suite-2026-08-31.md lines 24-31 states \"\u672c\u62a5\u544a\u4e0d\u63d0\u4f9b\u7cbe\u786e\u884c\u8986\u76d6\u7387\u767e\u5206\u6bd4...\u5bf9\u5168\u91cf\u5957\u8d5b\u8ddf --cov=src \u4f1a\u5728\u539f\u751f C \u6269\u5c55\u4e0a segfault \u5d31\u6e83\uff0c\u8986\u76d6\u7387\u5de5\u5177\u65e0\u6cd5\u5b8c\u6210\".",
+      "source_locator": "/Users/guwj/Documents/audiobook/coverage.xml:3 /Users/guwj/Documents/audiobook/PROJECT_STATUS.md:278-279 /Users/guwj/Documents/audiobook/docs/baseline-full-suite-2026-08-31.md:24-31",
+      "source_title": "coverage.xml, PROJECT_STATUS.md, baseline-full-suite-2026-08-31.md",
+      "source_type": "repository"
+    },
+    {
+      "claim": "Three mutually inconsistent coverage figures exist across repo documents: PROJECT_STATUS.md claims 77.60%, COVERAGE_ACTION_PLAN.md claims 77.92% (comprehensive) / 75.39% (line) / 88.45% (branch), coverage.xml artifact shows 85.52% line-rate.",
+      "confidence": "high",
+      "evidence": "PROJECT_STATUS.md line 279: \"权威基线 77.60%\". COVERAGE_ACTION_PLAN.md lines 6-9: \"综合覆盖率: 77.92%\u2026 行覆盖率: 75.39%\u2026 分支覆盖率: 88.45%\". coverage.xml line 3: line-rate=\"0.8552\" (85.52%). All three documents reference src/ coverage but report different numerators/denominators and methodologies.",
+      "source_locator": "/Users/guwj/Documents/audiobook/PROJECT_STATUS.md:279 /Users/guwj/Documents/audiobook/COVERAGE_ACTION_PLAN.md:6-9 /Users/guwj/Documents/audiobook/coverage.xml:3",
+      "source_title": "PROJECT_STATUS.md, COVERAGE_ACTION_PLAN.md, coverage.xml",
+      "source_type": "repository"
+    },
+    {
+      "claim": "Frontend build script is defined as \"vue-tsc -b && vite build\" (web/package.json:9), but no evidence of recent successful production build exists; frontend.log only shows dev server (vite) runs, and dist/ directory contains assets without verifiable build logs.",
+      "confidence": "medium",
+      "evidence": "web/package.json line 9: \"build\": \"vue-tsc -b && vite build\". web/frontend.log lines 3,6,10-17 show only \"vite\" dev server with HMR updates, no \"vue-tsc\" or production build output. /Users/guwj/Documents/audiobook/web/dist/ contains built assets but no timestamped build logs to confirm current pass/fail status.",
+      "source_locator": "/Users/guwj/Documents/audiobook/web/package.json:9 /Users/guwj/Documents/audiobook/web/frontend.log:3,6,10-17",
+      "source_title": "package.json, frontend.log",
+      "source_type": "repository"
+    }
+  ],
+  "uncertainties": [
+    "Cannot execute pytest or frontend build commands (read-only tool constraint); current test pass/fail status and build success are unverified as of this investigation.",
+    "The coverage.xml timestamp (1787850369561 ms \u2248 2026-08-27) aligns with baseline doc date (2026-08-31) but exact generation context is unknown.",
+    "The \"425 failed\" in PROJECT_STATUS.md may have been accurate at time of writing (2026-07-20 era) but is contradicted by the later authoritative baseline (2026-08-31).",
+    "Whether the skip markers in pipeline tests mask real failures vs. being legitimate flaky-test quarantines cannot be determined without running the full suite.",
+    "The extent to which mocks in feedback tests mask integration failures vs. providing necessary unit isolation cannot be assessed without executing tests with and without mocks.",
+    "No recent CI/CD pipeline logs (GitHub Actions, etc.) were found in the workspace to corroborate the baseline's 0-failed claim."
+  ]
+}

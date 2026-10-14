@@ -1,13 +1,10 @@
-/* Form control visual adjustments for this view */
+/* ── TranslationView scoped tokens ────────────────────────────── */
+
 .project-display {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 14px;
-  background: var(--color-card-bg);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  color: var(--color-text);
+  min-height: 44px;
 }
 
 .chapter-range {
@@ -20,12 +17,13 @@
   gap: 8px;
   font-weight: 400;
   cursor: pointer;
+  min-height: 44px;
 }
 
 .chapter-checkboxes {
   gap: 8px;
   padding: 12px;
-  background: var(--color-card-bg);
+  background: var(--color-bg-tertiary);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   max-height: 220px;
@@ -39,9 +37,10 @@
   font-weight: 400;
   cursor: pointer;
   font-size: 14px;
-  min-height: 44px; /* touch-friendly */
+  min-height: 44px;
 }
 
+/* ── Progress ──────────────────────────────────────────────────── */
 .progress-header {
   display: flex;
   align-items: center;
@@ -71,6 +70,7 @@
   color: var(--color-text);
 }
 
+/* ── Pipeline stages ───────────────────────────────────────────── */
 .stage-list {
   display: flex;
   flex-direction: column;
@@ -84,9 +84,9 @@
   gap: 12px;
   padding: 12px 16px;
   border-radius: var(--radius);
-  background: var(--color-card-bg);
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
-  transition: all 0.2s;
+  transition: all var(--transition-fast);
   min-height: 44px;
 }
 
@@ -107,6 +107,7 @@
   font-weight: 600;
 }
 
+/* ── Results ───────────────────────────────────────────────────── */
 .result-summary {
   gap: 16px;
   margin-bottom: 20px;
@@ -117,15 +118,9 @@
   min-width: 140px;
   text-align: center;
   padding: 16px;
-  background: var(--color-card-bg);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
 }
 
-.stat-value {
-  display: block;
-  font-size: 1.75rem;
-  font-weight: 700;
+.stat .stat-value {
   color: var(--color-primary);
 }
 
@@ -144,7 +139,8 @@
 
 .comparison-section h3 {
   margin: 0 0 8px;
-  font-size: 1rem;
+  font-size: 16px;
+  font-weight: 600;
 }
 
 .hint {
@@ -159,14 +155,12 @@
 
 .audio-card {
   padding: 16px;
-  background: var(--color-card-bg);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
 }
 
 .audio-card h4 {
   margin: 0 0 12px;
   font-size: 15px;
+  font-weight: 600;
 }
 
 .audio-player {
@@ -175,10 +169,12 @@
   gap: 10px;
 }
 
-.actions {
-  display: flex;
-  gap: 10px;
-  margin-top: 20px;
-  justify-content: flex-end;
-  flex-wrap: wrap;
+.select-full {
+  max-width: 100%;
+}
+
+@media (max-width: 767px) {
+  .audio-comparison {
+    grid-template-columns: 1fr;
+  }
 }

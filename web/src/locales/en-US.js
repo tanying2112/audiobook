@@ -1907,5 +1907,10 @@ export default {
     includeCover: 'Include cover image',
     maxCharsPerLine: 'Max characters per subtitle line',
     startExport: 'Start Export',
+    exporting: 'Exporting',
+    success: 'Export successful',
+    failed: 'Export failed',
+    status: 'Export status',
+    download: 'Download',
   },
 }

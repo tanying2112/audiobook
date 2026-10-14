@@ -10,6 +10,7 @@ Audio Quality Metrics - P0.2 免费CPU硬门禁三件套
 """
 
 import logging
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -189,8 +190,33 @@ def _load_whisper_model(model_size: str = "base", device: str = "cpu", compute_t
         return None
 
 
-def compute_wer(wav_path: str, reference_text: str, language: str = "zh") -> Optional[float]:
-    """Compute Word Error Rate using faster-whisper ASR."""
+def compute_wer(
+    wav_path: str,
+    reference_text: str,
+    language: str = "zh",
+    isolate_vocals: bool = False,
+) -> Optional[float]:
+    """Compute Word Error Rate using faster-whisper ASR.
+
+    Args:
+        wav_path: 待评测音频 (带音乐床的参考音频请设 isolate_vocals=True)。
+        reference_text: 参考文本。
+        language: ASR 语言 (zh/en/...)。
+        isolate_vocals: True 时先做立体声 mid/side STFT 软掩蔽人声分离再转写
+            (升级点 #1: 带床参考音频实测召回 68.5%→72.8%, 详见
+            quality/vocal_isolation.py)。默认 False 不改历史行为。
+    """
+    if isolate_vocals:
+        from .vocal_isolation import isolate_vocals_file
+
+        with tempfile.TemporaryDirectory(prefix="vocalsep_") as td:
+            masked = isolate_vocals_file(wav_path, Path(td) / "vocals.wav")
+            if masked is not None:
+                wav_path = str(masked)
+            else:
+                logger.warning(
+                    "[AudioMetrics] vocal isolation failed; WER on unmasked audio"
+                )
     if not _whisper_available:
         logger.debug("[AudioMetrics] faster-whisper unavailable, returning None")
         return None
@@ -322,8 +348,18 @@ def check_audio_quality(
     mos_threshold: float = 3.5,
     wer_threshold: float = 0.15,
     speaker_cosine_threshold: float = 0.85,
+    isolate_vocals: bool = False,
 ) -> AudioQualityReport:
-    """Run all three quality metrics and return unified report."""
+    """Run all three quality metrics and return unified report.
+
+    Args:
+        isolate_vocals: 差距 E 记录 (2026-10-13) — 评测带音乐床的参考音频
+            (原声有声书等) 时设 True: 先 mid/side STFT 软掩蔽人声分离再转写,
+            WER 召回 68.5%→72.8%。SenseVoice-small 在掩蔽后仍有 ~27% 固有
+            漏听 (床居中间奏, 识别器极限) — 更深提升需 demucs 级分离或更大
+            ASR 模型, 本地 CPU 条件下性价比低, 诚实记录不追。合成产物
+            (无床) 评测保持 False (历史默认)。
+    """
     report = AudioQualityReport(
         mos_threshold=mos_threshold,
         wer_threshold=wer_threshold,
@@ -333,7 +369,7 @@ def check_audio_quality(
     report.mos = predict_mos(wav_path)
 
     if reference_text:
-        report.wer = compute_wer(wav_path, reference_text, language)
+        report.wer = compute_wer(wav_path, reference_text, language, isolate_vocals=isolate_vocals)
 
     if reference_wav:
         report.speaker_cosine = voice_cosine(reference_wav, wav_path)

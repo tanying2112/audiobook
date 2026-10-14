@@ -11,6 +11,7 @@ Exports convenience functions for each pipeline stage:
 """
 
 from .analyze_structure import AnalyzeStructurePipeline, analyze_structure
+from .audio_director import AudioDirectorPipeline, audio_director
 from .annotate_paragraph import AnnotateParagraphPipeline, annotate_paragraph
 from .audio_finalize import AudioFinalizer, finalize_audio
 from .audio_postprocess import AudioPostProcessor
@@ -42,6 +43,7 @@ from .sop_reflection import (
 )
 from .stage_registry import StageRegistry
 from .synthesize import SynthesizePipeline, synthesize_paragraphs
+from .text_clean import TextCleanPipeline, clean_text
 
 __all__ = [
     # Convenience functions
@@ -49,19 +51,23 @@ __all__ = [
     "analyze_structure",
     "annotate_paragraph",
     "edit_for_tts",
+    "audio_director",
     "quality_check",
     "synthesize_paragraphs",
     "finalize_audio",
     "run_stage",
     "run_pipeline",
+    "clean_text",
     # Pipeline classes
     "ExtractPipeline",
     "AnalyzeStructurePipeline",
     "AnnotateParagraphPipeline",
     "EditForTtsPipeline",
+    "AudioDirectorPipeline",
     "QualityCheckPipeline",
     "SynthesizePipeline",
     "AudioFinalizer",
+    "TextCleanPipeline",
     # Orchestration components
     "CheckpointManager",
     "AudioPostProcessor",

@@ -50,7 +50,7 @@ def _routing(**overrides):
 def test_quality_check_run_calls_golden_feedback(monkeypatch):
     # spy 取代真实写盘函数，避免污染仓库 data/golden
     spy = MagicMock(return_value=1)
-    monkeypatch.setattr("audiobook_studio.feedback.loop.quality_judgments_to_golden", spy)
+    monkeypatch.setattr("src.audiobook_studio.feedback.loop.quality_judgments_to_golden", spy)
     monkeypatch.setenv("AUDIOBOOK_GOLDEN_FEEDBACK", "0")  # 关闭全局开关，改用显式参数
 
     import tempfile
@@ -82,7 +82,7 @@ def test_quality_check_run_calls_golden_feedback(monkeypatch):
 
 def test_quality_check_run_golden_feedback_off_by_default(monkeypatch):
     spy = MagicMock(return_value=0)
-    monkeypatch.setattr("audiobook_studio.feedback.loop.quality_judgments_to_golden", spy)
+    monkeypatch.setattr("src.audiobook_studio.feedback.loop.quality_judgments_to_golden", spy)
     ann = _annotation()
     routing = _routing()
     pipeline = QualityCheckPipeline(mock_mode=True)

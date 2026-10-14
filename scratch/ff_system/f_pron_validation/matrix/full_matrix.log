@@ -1,0 +1,206 @@
+[fm] 矩阵: 4 词 × 10 音色; state=resume
+19:55:36 - LiteLLM:WARNING: get_model_cost_map.py:300 - LiteLLM: model cost map fetch attempt 1/3 failed (ConnectError fetching https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json: [Errno 54] Connection reset by peer); retrying in 2.3s
+19:55:36 - LiteLLM:WARNING: get_model_cost_map.py:655 - LiteLLM: Failed to fetch remote model cost map from https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json: ConnectError fetching https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json: [Errno 54] Connection reset by peer. Falling back to local backup.
+19:55:39 - LiteLLM:WARNING: get_model_cost_map.py:300 - LiteLLM: model cost map fetch attempt 2/3 failed (ConnectError fetching https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json: [Errno 54] Connection reset by peer); retrying in 4.8s
+19:55:44 - LiteLLM:WARNING: get_model_cost_map.py:576 - LiteLLM: Failed to fetch remote model cost map from https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json after 3 attempts; keeping local backup
+[transformers] Disabling PyTorch because PyTorch >= 2.5 is required but found 2.2.2
+[transformers] PyTorch was not found. Models won't be available and only tokenizers, configuration and file/data utilities can be used.
+warning: The `fitz` API is deprecated and will be removed in future. Use `import pymupdf` instead.
+[fm] Tino     base    af_bella   ✗ 'my friends call me tinino and i play football'
+[fm] Tino     respell af_bella   ✗ 'my friends call me tinino and i play football'
+[fm] Tino     base    af_sarah   ✗ 'my friends call me tinino and i play football'
+[fm] Tino     respell af_sarah   ✗ 'my friends call me tinino and i play football'
+[fm] Tino     base    af_nicole  ✗ 'my friends call me tinino and i play football'
+[fm] Tino     respell af_nicole  ✗ 'my friends call me tinino and i play football'
+[fm] Tino     base    af_sky     ✗ 'my friends call me tinino and i play football'
+[fm] Tino     respell af_sky     ✗ 'my friends call me tinino and i play football'
+[fm] Tino     base    am_adam    ✗ 'my friends call me tinino and i play football'
+[fm] Tino     respell am_adam    ✗ 'my friends call me tinno and i play football'
+[fm] Tino     base    am_onyx    ✗ 'my friends call me tinino and i play football'
+[fm] Tino     respell am_onyx    ✗ 'my friends call me tinino and i play football'
+[fm] Tino     base    am_liam    ✗ 'my friends call me tinino and i play football'
+[fm] Tino     respell am_liam    ✗ 'my friends call me tinino and i play football'
+[fm] Tino     base    am_michael ✗ 'my friends call me tinino and i play football'
+[fm] Tino     respell am_michael ✗ 'my friends call me teenno and i play football'
+[fm] Tino     base    am_puck    ✗ 'my friends call me tinino and i play football'
+[fm] Tino     respell am_puck    ✗ 'my friends call me tinino and i play football'
+[fm] Tino     base    am_fenrir  ✗ 'my friends call me tinino and i play football'
+[fm] Tino     respell am_fenrir  ✗ 'my friends call me tinino and i play football'
+[fm] Zangado  base    af_bella   ✗ 'they call him zanggato angry in portuguese'
+[fm] Zangado  respell af_bella   ✗ 'they call him zanggato angry in portuguese'
+[fm] Zangado  base    af_sarah   ✗ 'they call him zangato angry in portuguese'
+[fm] Zangado  respell af_sarah   ✓ 'they call him zangado angry in portuguese'
+[fm] Zangado  base    af_nicole  ✗ 'they call him sanggato angry in portuguese'
+[fm] Zangado  respell af_nicole  ✗ 'they call him sanggado angry in portuguese'
+[fm] Zangado  base    af_sky     ✗ 'they call him zengado angry in portuguese'
+[fm] Zangado  respell af_sky     ✗ 'they call him zanggado angry in portuguese'
+[fm] Zangado  base    am_adam    ✗ 'they call him zanggado angry in portuguese'
+[fm] Zangado  respell am_adam    ✗ 'they call him zanarddo angry in portuguese'
+[fm] Zangado  base    am_onyx    ✗ 'they call him zanggado angry in portuguese'
+[fm] Zangado  respell am_onyx    ✗ 'they call him zangarddo angry in portuguese'
+[fm] Zangado  base    am_liam    ✗ 'they call him zanggado angry in portuguese'
+[fm] Zangado  respell am_liam    ✗ 'they call him zanggado angry in portuguese'
+[fm] Zangado  base    am_michael ✗ 'they call him zanggado angry in portuguese'
+[fm] Zangado  respell am_michael ✗ 'they call him zangarddo angry in portuguese'
+[fm] Zangado  base    am_puck    ✗ 'they call him zanggado angry in portuguese'
+[fm] Zangado  respell am_puck    ✗ 'they call him zanggado angry in portuguese'
+[fm] Zangado  base    am_fenrir  ✗ 'they call him zenggado angry in portuguese'
+[fm] Zangado  respell am_fenrir  ✗ 'they call him zangarddo angry in portuguese'
+[fm] Nakano   base    af_bella   ✗ 'naano are you ready asks the coach'
+[fm] Nakano   respell af_bella   ✗ 'nakao are you ready asks the coach'
+[fm] Nakano   base    af_sarah   ✗ 'neano are you ready asks the coach'
+[fm] Nakano   respell af_sarah   ✗ 'nakao are you ready ask the coach'
+[fm] Nakano   base    af_nicole  ✗ 'naano are you ready asks the coach'
+[fm] Nakano   respell af_nicole  ✗ 'nakao are you ready asks the coach'
+[fm] Nakano   base    af_sky     ✗ 'naano are you ready asks the coach'
+[fm] Nakano   respell af_sky     ✗ 'nakao are you ready asks the coach'
+[fm] Nakano   base    am_adam    ✗ 'naano are you ready asks the coach'
+[fm] Nakano   respell am_adam    ✗ 'nakao are you ready asks the coach'
+[fm] Nakano   base    am_onyx    ✗ 'nakao are you ready asks the coach'
+[fm] Nakano   respell am_onyx    ✗ 'nakao are you ready asks the coach'
+[fm] Nakano   base    am_liam    ✗ 'naano are you ready asks the coach'
+[fm] Nakano   respell am_liam    ✗ 'nakao are you ready asks the coach'
+[fm] Nakano   base    am_michael ✗ 'naano are you ready asks the coach'
+[fm] Nakano   respell am_michael ✗ 'nakao are you ready asks the coach'
+[fm] Nakano   base    am_puck    ✗ 'naano are you ready asks the coach'
+[fm] Nakano   respell am_puck    ✗ 'nakao are you ready asks the coach'
+[fm] Nakano   base    am_fenrir  ✗ 'naano are you ready asks the coach'
+[fm] Nakano   respell am_fenrir  ✗ 'nakao are you ready asks the coach'
+[fm] futsal   base    af_bella   ✗ 'we played futzsel when we were children'
+[fm] futsal   respell af_bella   ✗ 'we played foots when we were children'
+[fm] futsal   base    af_sarah   ✗ 'we played futzsel when we were children'
+[fm] futsal   respell af_sarah   ✗ 'we played foot cell when we were children'
+[fm] futsal   base    af_nicole  ✗ 'we played futzsel when we were children'
+[fm] futsal   respell af_nicole  ✗ 'we played footal when we were children'
+[fm] futsal   base    af_sky     ✗ 'we played futzel when we were children'
+[fm] futsal   respell af_sky     ✗ 'we played footsal when we were children'
+[fm] futsal   base    am_adam    ✗ 'we played futzsel when we were children'
+[fm] futsal   respell am_adam    ✗ 'we played foot sal when we were children'
+[fm] futsal   base    am_onyx    ✗ 'we played futzsel when we were children'
+[fm] futsal   respell am_onyx    ✗ 'we played foot so when we were children'
+[fm] futsal   base    am_liam    ✗ 'we played futzsel when we were children'
+[fm] futsal   respell am_liam    ✗ 'we played footal when we were children'
+[fm] futsal   base    am_michael ✗ 'we played futzsel when we were children'
+[fm] futsal   respell am_michael ✗ 'we played footal when we were children'
+[fm] futsal   base    am_puck    ✗ 'we played futzsel when we were children'
+[fm] futsal   respell am_puck    ✗ 'we played footal when we were children'
+[fm] futsal   base    am_fenrir  ✗ 'we played futzsel when we were children'
+[fm] futsal   respell am_fenrir  ✗ 'we played footal when we were children'
+[fm] Tino     变体搜索 af_bella   Tee no       ✗
+[fm] Tino     变体搜索 af_bella   Tee noh      ✗
+[fm] Tino     变体搜索 af_bella   Teeno        ✗
+[fm] Tino     变体搜索 af_bella   Tea no       ✗
+[fm] Tino     变体搜索 af_bella   Tinnoh       ✗
+[fm] Tino     变体搜索 af_bella   Tin oh       ✗
+[fm] Tino     变体搜索 af_sarah   Tee no       ✗
+[fm] Tino     变体搜索 af_sarah   Tee noh      ✗
+[fm] Tino     变体搜索 af_sarah   Teeno        ✗
+[fm] Tino     变体搜索 af_sarah   Tea no       ✗
+[fm] Tino     变体搜索 af_sarah   Tinnoh       ✗
+[fm] Tino     变体搜索 af_sarah   Tin oh       ✗
+[fm] Tino     变体搜索 af_nicole  Tee no       ✗
+[fm] Tino     变体搜索 af_nicole  Tee noh      ✗
+[fm] Tino     变体搜索 af_nicole  Teeno        ✗
+[fm] Tino     变体搜索 af_nicole  Tea no       ✗
+[fm] Tino     变体搜索 af_nicole  Tinnoh       ✗
+[fm] Tino     变体搜索 af_nicole  Tin oh       ✗
+[fm] Tino     变体搜索 af_sky     Tee no       ✗
+[fm] Tino     变体搜索 af_sky     Tee noh      ✗
+[fm] Tino     变体搜索 af_sky     Teeno        ✗
+[fm] Tino     变体搜索 af_sky     Tea no       ✗
+[fm] Tino     变体搜索 af_sky     Tinnoh       ✗
+[fm] Tino     变体搜索 af_sky     Tin oh       ✗
+[fm] Tino     变体搜索 am_adam    Tee no       ✗
+[fm] Tino     变体搜索 am_adam    Tee noh      ✗
+[fm] Tino     变体搜索 am_adam    Teeno        ✗
+[fm] Tino     变体搜索 am_adam    Tea no       ✗
+[fm] Tino     变体搜索 am_adam    Tinnoh       ✗
+[fm] Tino     变体搜索 am_adam    Tin oh       ✗
+[fm] Tino     变体搜索 am_onyx    Tee no       ✗
+[fm] Tino     变体搜索 am_onyx    Tee noh      ✗
+[fm] Tino     变体搜索 am_onyx    Teeno        ✗
+[fm] Tino     变体搜索 am_onyx    Tea no       ✗
+[fm] Tino     变体搜索 am_onyx    Tinnoh       ✓
+[fm] Tino     变体搜索 am_liam    Tee no       ✗
+[fm] Tino     变体搜索 am_liam    Tee noh      ✗
+[fm] Tino     变体搜索 am_liam    Teeno        ✗
+[fm] Tino     变体搜索 am_liam    Tea no       ✗
+[fm] Tino     变体搜索 am_liam    Tinnoh       ✓
+[fm] Tino     变体搜索 am_michael Tee no       ✗
+[fm] Tino     变体搜索 am_michael Tee noh      ✗
+[fm] Tino     变体搜索 am_michael Teeno        ✗
+[fm] Tino     变体搜索 am_michael Tea no       ✗
+[fm] Tino     变体搜索 am_michael Tinnoh       ✓
+[fm] Tino     变体搜索 am_puck    Tee no       ✗
+[fm] Tino     变体搜索 am_puck    Tee noh      ✗
+[fm] Tino     变体搜索 am_puck    Teeno        ✗
+[fm] Tino     变体搜索 am_puck    Tea no       ✗
+[fm] Tino     变体搜索 am_puck    Tinnoh       ✓
+[fm] Tino     变体搜索 am_fenrir  Tee no       ✗
+[fm] Tino     变体搜索 am_fenrir  Tee noh      ✗
+[fm] Tino     变体搜索 am_fenrir  Teeno        ✗
+[fm] Tino     变体搜索 am_fenrir  Tea no       ✗
+[fm] Tino     变体搜索 am_fenrir  Tinnoh       ✓
+[fm] Zangado  变体搜索 af_bella   Zan-gah-doo  ✗
+[fm] Zangado  变体搜索 af_bella   Zangadoh     ✗
+[fm] Zangado  变体搜索 af_bella   Zan Gado     ✗
+[fm] Zangado  变体搜索 af_bella   Zangahdoh    ✗
+[fm] Zangado  变体搜索 af_bella   Zan-gar-doh  ✗
+[fm] Zangado  变体搜索 af_nicole  Zan-gah-doo  ✗
+[fm] Zangado  变体搜索 af_nicole  Zangadoh     ✗
+[fm] Zangado  变体搜索 af_nicole  Zan Gado     ✗
+[fm] Zangado  变体搜索 af_nicole  Zangahdoh    ✗
+[fm] Zangado  变体搜索 af_nicole  Zan-gar-doh  ✗
+[fm] Zangado  变体搜索 af_sky     Zan-gah-doo  ✗
+[fm] Zangado  变体搜索 af_sky     Zangadoh     ✗
+[fm] Zangado  变体搜索 af_sky     Zan Gado     ✗
+[fm] Zangado  变体搜索 af_sky     Zangahdoh    ✗
+[fm] Zangado  变体搜索 af_sky     Zan-gar-doh  ✗
+[fm] Zangado  变体搜索 am_adam    Zan-gah-doo  ✗
+[fm] Zangado  变体搜索 am_adam    Zangadoh     ✗
+[fm] Zangado  变体搜索 am_adam    Zan Gado     ✗
+[fm] Zangado  变体搜索 am_adam    Zangahdoh    ✗
+[fm] Zangado  变体搜索 am_adam    Zan-gar-doh  ✗
+[fm] Zangado  变体搜索 am_onyx    Zan-gah-doo  ✗
+[fm] Zangado  变体搜索 am_onyx    Zangadoh     ✗
+[fm] Zangado  变体搜索 am_onyx    Zan Gado     ✗
+[fm] Zangado  变体搜索 am_onyx    Zangahdoh    ✗
+[fm] Zangado  变体搜索 am_onyx    Zan-gar-doh  ✗
+[fm] Zangado  变体搜索 am_liam    Zan-gah-doo  ✗
+[fm] Zangado  变体搜索 am_liam    Zangadoh     ✗
+[fm] Zangado  变体搜索 am_liam    Zan Gado     ✗
+[fm] Zangado  变体搜索 am_liam    Zangahdoh    ✗
+[fm] Zangado  变体搜索 am_liam    Zan-gar-doh  ✗
+[fm] Zangado  变体搜索 am_michael Zan-gah-doo  ✗
+[fm] Zangado  变体搜索 am_michael Zangadoh     ✗
+[fm] Zangado  变体搜索 am_michael Zan Gado     ✗
+[fm] Zangado  变体搜索 am_michael Zangahdoh    ✗
+[fm] Zangado  变体搜索 am_michael Zan-gar-doh  ✗
+[fm] Zangado  变体搜索 am_puck    Zan-gah-doo  ✗
+[fm] Zangado  变体搜索 am_puck    Zangadoh     ✗
+[fm] Zangado  变体搜索 am_puck    Zan Gado     ✗
+[fm] Zangado  变体搜索 am_puck    Zangahdoh    ✗
+[fm] Zangado  变体搜索 am_puck    Zan-gar-doh  ✗
+[fm] Zangado  变体搜索 am_fenrir  Zan-gah-doo  ✗
+[fm] stage2 预算耗尽 (96)
+[fm] Tino     补全 af_bella   Tinnoh       ✗
+[fm] Tino     补全 af_sarah   Tinnoh       ✗
+[fm] Tino     补全 af_nicole  Tinnoh       ✗
+[fm] Tino     补全 af_sky     Tinnoh       ✗
+[fm] Tino     补全 am_adam    Tinnoh       ✗
+[fm] summary Tino     分支 C: pass=0/10 winners=5 universal=None no_harm=[]
+[fm] summary Zangado  分支 C: pass=1/10 winners=0 universal=None no_harm=[]
+[fm] summary Nakano   分支 C: pass=0/10 winners=0 universal=None no_harm=[]
+[fm] summary futsal   分支 C: pass=0/10 winners=0 universal=None no_harm=[]
+[fm] 
+[fm] word       cond     bella  sarah nicole    sky   adam   onyx   liam michae   puck fenrir
+[fm] Tino       base      ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗  
+[fm] Tino       respell   ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗  
+[fm]            winner   onyx→Tinnoh liam→Tinnoh michae→Tinnoh puck→Tinnoh fenrir→Tinnoh
+[fm] Zangado    base      ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗  
+[fm] Zangado    respell   ✗     ✓     ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗  
+[fm] Nakano     base      ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗  
+[fm] Nakano     respell   ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗  
+[fm] futsal     base      ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗  
+[fm] futsal     respell   ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗     ✗  
+[fm] 完成 → /Users/guwj/Documents/audiobook/scratch/ff_system/f_pron_validation/matrix/voice_matrix.json

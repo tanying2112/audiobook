@@ -203,7 +203,7 @@ class EdgeTTSPort(RemoteTTSPort):
         """Health check for the port."""
         engine = await self._get_engine()
         return {
-            "status": "healthy" if engine.is_available() else "unhealthy",
+            "status": "healthy" if engine.is_available else "unhealthy",
             "engine": "edge",
             "queue_size": len(self._tasks),
             "max_concurrent": self._semaphore._value,

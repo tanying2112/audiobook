@@ -11,8 +11,11 @@ S2-5 — 母带后处理链路 (Mastering post-processing chain)
      使用 ``silenceremove`` 自动去除首尾/中段静音段。
 
   3. 响度归一化 (loudness normalization)
-     EBU R128 ``loudnorm``，目标 I=-16 LUFS / TP=-1.5 dBTP / LRA=11 LU
-     (与任务验收一致)。默认采用两遍 (two-pass) 以获得精确目标响度。
+     EBU R128 ``loudnorm``。默认沿用验收目标 I=-16 LUFS / TP=-1.5 dBTP /
+     LRA=11 LU;有声书分发设 ``loudness_preset="audiobook"`` 切到
+     -23 LUFS / TP -3 / LRA 7 (EBU R128 广播级有声书标准; 同稿原声
+     《Football Forever》Dominoes 实测 -22.7 LUFS / TP -3.8, 2026-10-09)。
+     默认采用两遍 (two-pass) 以获得精确目标响度。
 
 验收：
   - 导出 M4B/MP3 通过 loudnorm 校验 (``input_i ≈ -16``)
@@ -29,6 +32,8 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Optional
+
+from ..utils.loudness import resolve_loudness, aresample_filter
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +68,10 @@ class MasteringConfig:
     loudness_i: float = DEFAULT_LOUDNESS_I
     loudness_tp: float = DEFAULT_LOUDNESS_TP
     loudness_lra: float = DEFAULT_LOUDNESS_LRA
+    # 命名响度档 (2026-10-09): 设值时覆写上面三项。有声书分发建议
+    # "audiobook" (EBU R128 -23 LUFS/TP -3/LRA 7, 同稿原声实测 -22.7 LUFS);
+    # None=沿用旧 -16 常量 (任务验收口径不变)。单一事实源 utils/loudness.py。
+    loudness_preset: Optional[str] = None
 
     # 输出规格
     sample_rate: int = 44100
@@ -81,6 +90,17 @@ class MasteringConfig:
 # ---------------------------------------------------------------------------
 
 
+def resolve_master_loudness(cfg: MasteringConfig) -> tuple:
+    """解析 MasteringConfig 的响度目标为 (i, lra, tp)。
+
+    loudness_preset 设值时覆写显式 loudness_* (见 utils/loudness.py);
+    None 时沿用旧常量, 任务验收口径 (-16) 不变。
+    """
+    if cfg.loudness_preset:
+        return resolve_loudness(cfg.loudness_preset)
+    return cfg.loudness_i, cfg.loudness_lra, cfg.loudness_tp
+
+
 def build_master_filtergraph(cfg: MasteringConfig, measured: Optional[Dict[str, float]] = None) -> str:
     """构建 ffmpeg ``-af`` 滤镜图字符串。
 
@@ -91,6 +111,7 @@ def build_master_filtergraph(cfg: MasteringConfig, measured: Optional[Dict[str, 
                   为空则使用单遍 loudnorm。
     """
     parts: list[str] = []
+    li, llra, ltp = resolve_master_loudness(cfg)
 
     if cfg.enable_noisereduce:
         parts.append(f"afftdn=nr={cfg.noisereduce_nr}:nf={cfg.noisereduce_nf}")
@@ -111,14 +132,26 @@ def build_master_filtergraph(cfg: MasteringConfig, measured: Optional[Dict[str, 
             # 两遍法：使用第一遍测得参数精确应用
             parts.append(
                 "loudnorm="
-                f"I={cfg.loudness_i}:TP={cfg.loudness_tp}:LRA={cfg.loudness_lra}:"
+                f"I={li}:TP={ltp}:LRA={llra}:"
                 f"measured_I={measured['input_i']}:measured_TP={measured['input_tp']}:"
                 f"measured_LRA={measured['input_lra']}:measured_thresh={measured['input_thresh']}:"
                 f"offset={measured['target_offset']}:linear=true:print_format=summary"
             )
         else:
             # 单遍法 (近似)
-            parts.append(f"loudnorm=I={cfg.loudness_i}:TP={cfg.loudness_tp}:LRA={cfg.loudness_lra}")
+            parts.append(f"loudnorm=I={li}:TP={ltp}:LRA={llra}")
+
+        # v6 链: loudnorm 后串 TP 限幅器; level=disabled 防自动 makeup gain
+        tp_limit = 10 ** (ltp / 20.0)
+        parts.append(
+            f"alimiter=limit={tp_limit:.4f}:attack=5:release=100:level=disabled"
+        )
+
+    # soxr 探测重采样 (v6 链): 有 soxr 用之, 无则默认 swr。
+    # 仅在链非空时收尾 — 全部关闭时保持空滤镜图 → master_audio 走纯拷贝
+    # 捷径 (既有契约, 见 test_build_master_filtergraph_toggle)。
+    if parts:
+        parts.append(aresample_filter(cfg.sample_rate))
 
     return ",".join(parts)
 
@@ -260,7 +293,7 @@ def master_audio(
 
     measured: Dict[str, float] = {}
     if cfg.enable_loudnorm and cfg.two_pass_loudnorm:
-        measured = measure_loudness(input_path, cfg.ffmpeg_bin, cfg.loudness_i)
+        measured = measure_loudness(input_path, cfg.ffmpeg_bin, resolve_master_loudness(cfg)[0])
 
     fg = build_master_filtergraph(cfg, measured=measured or None)
     codec, bitrate = _codec_for_path(output_path)
@@ -271,8 +304,6 @@ def master_audio(
         str(input_path),
         "-af",
         fg,
-        "-ar",
-        str(cfg.sample_rate),
         "-ac",
         str(cfg.channels),
         "-c:a",
@@ -286,7 +317,7 @@ def master_audio(
 
     output_loudness: Dict[str, float] = {}
     if proc.returncode == 0 and output_path.exists():
-        output_loudness = measure_loudness(output_path, cfg.ffmpeg_bin, cfg.loudness_i)
+        output_loudness = measure_loudness(output_path, cfg.ffmpeg_bin, resolve_master_loudness(cfg)[0])
 
     return {
         "input_path": str(input_path),

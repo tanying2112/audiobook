@@ -86,10 +86,25 @@ class TtsRoutingInput(BaseModel):
     enable_cloning: bool = Field(default=False, description="启用零样本克隆 (需 sample_quote)")
     # v0.5 新增: RAG 检索上下文 (用于韵律/声音一致性)
     rag_context: Optional[str] = Field(default=None, description="RAG 检索上下文，用于韵律/声音一致性")
+    # v6 新增: 逐句三轴导演覆盖 (sentence_overrides)
+    # 每项: {"idx": 0, "gain_db": 4.0, "speed": 0.86, "pitch_st": 1.0,
+    #        "voice_id": "am_onyx+am_fenrir*0.55", "pause_after_ms": 350}
+    sentence_overrides: Optional[list[dict]] = Field(default=None, description="逐句韵律覆盖数组")
     # 人工终审覆盖 (Manual Review Gate)：客户在合成前逐段强制指定的
     # voice/engine，优先于角色绑定与能力路由 (NULL=自动决策)
     manual_voice_id: Optional[str] = Field(default=None, description="人工覆盖音色 ID (终审门)")
     manual_engine: Optional[EngineChoice] = Field(default=None, description="人工覆盖引擎 (终审门)")
+    # 目标语言 (ISO 639-1/BCP-47, 来自 BookAnalysisOutput.book_meta.language,
+    # 由 build_routing_input 从 chapter.analyzed_json 注入)。引擎能力路由的语言键;
+    # None → 回退 zh-CN (历史默认)。
+    # 升级点 #2: 此前路由误用 paragraph_annotation.emotion (14 枚举标签) 当
+    # 语言码, 英文书 priority_by_lang en:1 永不命中, 语言路由形同虚设。
+    language: Optional[str] = Field(default=None, description="目标语言 (ISO 639-1/BCP-47, 来自 BookMeta.language)")
+    # Gap D fix (2026-10-12): 书籍难度等级 (来自 BookMeta.difficulty, build_routing_input
+    # 从 chapter.analyzed_json 注入)。A = 分级读物/学习者级别 → 段落级语速按
+    # DIFFICULTY_RATE_SCALE 放慢 (Oxford Bookworms L1 实测 115 wpm_p vs 系统 200
+    # wpm_p; BookMeta.difficulty 一直在数据里但从未传导到合成参数)。None → 不缩放。
+    difficulty: Optional[str] = Field(default=None, description="书籍难度等级 A/B/C/D (来自 BookMeta.difficulty; A=分级读物→语速缩放)")
     contract_version: int = Field(default=1, description="契约版本号，用于追踪 schema 变更")
 
 

@@ -10,7 +10,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, status
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -51,6 +51,10 @@ class CharacterBase(BaseModel):
     age_range: Optional[str] = None
     suggested_voice_id: Optional[str] = None
     sample_quote: Optional[str] = None
+    # P3b: per-character TTS prosody defaults
+    emotion: Optional[str] = None
+    speech_rate: Optional[float] = None
+    pitch_shift_semitones: Optional[int] = None
 
 
 class CharacterCreate(CharacterBase):
@@ -64,6 +68,24 @@ class CharacterUpdate(BaseModel):
     age_range: Optional[str] = None
     suggested_voice_id: Optional[str] = None
     sample_quote: Optional[str] = None
+    # P3b
+    emotion: Optional[str] = None
+    speech_rate: Optional[float] = None
+    pitch_shift_semitones: Optional[int] = None
+
+    @field_validator("speech_rate")
+    @classmethod
+    def _validate_speech_rate(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and not (0.5 <= v <= 2.0):
+            raise ValueError("speech_rate must be between 0.5 and 2.0")
+        return v
+
+    @field_validator("pitch_shift_semitones")
+    @classmethod
+    def _validate_pitch_shift(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and not (-12 <= v <= 12):
+            raise ValueError("pitch_shift_semitones must be between -12 and 12")
+        return v
 
 
 class CharacterResponse(CharacterBase):

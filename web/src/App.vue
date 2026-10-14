@@ -97,7 +97,7 @@ function closeSidebar() {
   left: 0;
   right: 0;
   height: 56px;
-  background: var(--color-card-bg);
+  background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
   z-index: 30;
   padding: 0 16px;
@@ -134,7 +134,7 @@ function closeSidebar() {
 .sidebar {
   width: 220px;
   flex-shrink: 0;
-  background: var(--color-sidebar-bg);
+  background: var(--color-sidebar);
   color: #e2e8f0;
   display: flex;
   flex-direction: column;

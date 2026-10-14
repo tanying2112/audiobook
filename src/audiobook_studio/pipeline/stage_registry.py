@@ -26,16 +26,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 # Import schema classes used in stage handlers
+from ..schemas import AudioDirectorInput, AudioDirectorOutput
 from ..schemas.book import BookAnalysisInput
 
 # Import pipeline classes
 from .analyze_structure import AnalyzeStructurePipeline
 from .annotate_paragraph import AnnotateParagraphPipeline
+from .audio_director import AudioDirectorPipeline
 from .audio_postprocess import AudioPostProcessor
 from .edit_for_tts import EditForTtsPipeline
 from .extract import ExtractPipeline
 from .quality_check import QualityCheckPipeline
-from .synthesize import SynthesizePipeline
+from .synthesize import SynthesizePipeline, build_routing_input
+from .text_clean import TextCleanPipeline
 
 logger = logging.getLogger(__name__)
 
@@ -191,8 +194,63 @@ def _plugin_stage_handler_class(factory: Callable[..., Any]) -> Type[StageHandle
 
 # ── Built-in Stage Handlers ──────────────────────────────────────────────────
 
-
 from ..schemas import ExtractionInput
+from ..schemas.text_clean import TextCleanInput, TextCleanResult
+
+
+class TextCleanStage(StageHandler):
+    """Text Clean stage: clean SRT subtitle text to readable format.
+
+    Runs after synthesize/export, converts SRT to readable text with:
+    - Timestamp/sequence removal
+    - Broken word merging (cross-line splits)
+    - Punctuation/spacing fixes
+    - Name normalization
+    - Speaker-based paragraph regrouping
+    - Optional LLM polish
+    """
+
+    async def run(self, **kwargs: Any) -> Any:
+        srt_path = kwargs.get("srt_path")
+        use_llm = kwargs.get("use_llm", False)
+        project_id = kwargs.get("project_id", 0)
+        chapter_index = kwargs.get("chapter_index", 1)
+
+        if not srt_path:
+            raise ValueError("text_clean requires srt_path")
+
+        from pathlib import Path
+
+        srt_path = Path(srt_path)
+        if not srt_path.exists():
+            raise FileNotFoundError(f"SRT file not found: {srt_path}")
+
+        output_path = srt_path.with_suffix("_readable.txt")
+
+        logger.info(f"TextCleanStage: cleaning {srt_path} -> {output_path}")
+
+        pipeline = TextCleanPipeline(mock_mode=kwargs.get("mock_mode", False))
+        result = pipeline.run(srt_path=str(srt_path))
+
+        # Emit progress
+        try:
+            import asyncio
+
+            loop = asyncio.get_running_loop()
+            loop.create_task(
+                emit_stage_progress(
+                    stage="text_clean",
+                    project_id=project_id,
+                    chapter_index=chapter_index,
+                    current=1,
+                    total=1,
+                    message="Text cleaning complete",
+                )
+            )
+        except RuntimeError:
+            pass
+
+        return result
 
 
 class ExtractStage(StageHandler):
@@ -585,6 +643,108 @@ from dataclasses import asdict
 from ..pipeline.progress_emitter import emit_stage_enter, emit_stage_exit, emit_stage_progress
 
 
+class AudioDirectorStage(StageHandler):
+    """Audio director stage: LLM 逐句演绎建议 (edit 后、合成前的增强层).
+
+    人工优先: apersist 仅在 Paragraph.sentence_overrides 为空时落库;
+    人工经 ReviewEditPanel 编辑后字段非空即人工领地, 导演不覆盖。
+    导演失败/降级不阻断管线 (AudioDirectorPipeline 内部诚实降级为空建议)。
+    """
+
+    async def run(self, **kwargs: Any) -> Any:
+        para = kwargs.get("paragraph")
+
+        # 优先取 edit 后文本 (本 stage 排在 edit 之后); 兜底原始文本
+        if para:
+            paragraph_text = para.edited_text or para.text
+        else:
+            paragraph_text = kwargs.get("paragraph_text", "")
+
+        if not (paragraph_text or "").strip():
+            # 空段落: 无可导演内容, 诚实返回空建议 (不阻断)
+            return AudioDirectorOutput(
+                sentence_overrides=[], rationale="空段落", confidence=0.0
+            )
+
+        # 与合成侧同源切句, 保证 idx 对齐 (SynthesizeStage 消费同一切分)
+        from .synthesize import _split_sentences, _find_voice_binding, list_engine_voices
+
+        sentences = _split_sentences(paragraph_text)
+
+        # Gap G fix (2026-10-12): 导演 voice_id 契约 — 注入 language + 引擎合法
+        # 音色表 + 段落当前音色。此前三样全缺, 导演把语义角色名 ("coach"/"lenda")
+        # 当 voice_id 输出, 合成引擎音色表里不存在 → 崩。
+        language = "zh"
+        difficulty: Optional[str] = None  # Gap D: BookMeta.difficulty → 导演语速校准
+        paragraph_voice_id: Optional[str] = None
+        chapter = kwargs.get("chapter")
+        if chapter and getattr(chapter, "analyzed_json", None):
+            import json as _json
+
+            raw = chapter.analyzed_json
+            if isinstance(raw, str):
+                try:
+                    raw = _json.loads(raw)
+                except (ValueError, TypeError):
+                    raw = {}
+            bm = raw.get("book_meta") or {}
+            language = bm.get("language") or "zh"
+            difficulty = (bm.get("difficulty") or "").strip() or None
+            cvm_raw = raw.get("character_voice_map") or []
+            from ..schemas.book import CharacterVoiceBinding
+
+            cvm = [CharacterVoiceBinding(**c) for c in cvm_raw if isinstance(c, dict)]
+            binding = _find_voice_binding(
+                cvm, (para.speaker_canonical_name if para else "_narrator_") or "_narrator_"
+            )
+            paragraph_voice_id = binding.suggested_voice_id if binding else None
+        available_voices = list_engine_voices(language, "kokoro")
+
+        input_data = AudioDirectorInput(
+            paragraph_text=paragraph_text,
+            sentences=sentences,
+            speaker_name=(para.speaker_canonical_name or "_narrator_") if para else "_narrator_",
+            emotion=(para.emotion or "neutral") if para else "neutral",
+            emotion_intensity=(para.emotion_intensity or 0.5) if para else 0.5,
+            is_dialogue=(para.is_dialogue or False) if para else False,
+            language=language,
+            voice_id=paragraph_voice_id,
+            available_voices=available_voices,
+            difficulty=difficulty,
+        )
+        pipeline = AudioDirectorPipeline()
+        return pipeline.run(input_data)
+
+    def persist(
+        self,
+        db: Session,
+        project_id: int,
+        chapter: Optional[Any],
+        paragraph: Optional[Any],
+        result: Any,
+        chapter_index: Optional[int] = None,
+        paragraph_index: Optional[int] = None,
+    ) -> None:
+        # ``write_audio_director`` is async (see persistence.py); live
+        # persistence runs via ``apersist`` below.
+        pass
+
+    async def apersist(
+        self,
+        db: AsyncSession,
+        project_id: int,
+        chapter: Optional[Any],
+        paragraph: Optional[Any],
+        result: Any,
+        chapter_index: Optional[int] = None,
+        paragraph_index: Optional[int] = None,
+    ) -> None:
+        if paragraph:
+            from .persistence import write_audio_director
+
+            await write_audio_director(db, paragraph, result)
+
+
 class AudioPostprocessStage(StageHandler):
     """Audio postprocess stage: apply audio processing params."""
 
@@ -876,10 +1036,6 @@ class ReviewStage(StageHandler):
         pass
 
 
-from ..schemas.book import CharacterVoiceBinding  # noqa: E303
-from ..schemas.tts_routing import TtsRoutingInput
-
-
 class SynthesizeStage(StageHandler):
     """Synthesize stage: convert text to audio."""
 
@@ -887,74 +1043,12 @@ class SynthesizeStage(StageHandler):
         para = kwargs.get("paragraph")
         chapter = kwargs.get("chapter")
 
-        # Build paragraph_annotation from paragraph DB record
-        paragraph_annotation = None
-        if para:
-            paragraph_annotation = ParagraphAnnotation(
-                paragraph_index=para.index,
-                speaker_canonical_name=para.speaker_canonical_name or "_narrator_",
-                is_dialogue=para.is_dialogue or False,
-                emotion=para.emotion or "neutral",
-                emotion_intensity=para.emotion_intensity or 0.5,
-                speech_rate=para.speech_rate or 1.0,
-                pitch_shift_semitones=para.pitch_shift_semitones or 0,
-                pause_before_ms=para.pause_before_ms or 300,
-                pause_after_ms=para.pause_after_ms or 500,
-                confidence=para.confidence or 0.9,
-                difficulty="B",
-                needs_sfx=para.needs_sfx or False,
-                sfx_tags=para.sfx_tags or [],
-            )
-
-        # TtsRoutingInput.paragraph_annotation is non-Optional on the schema;
-        # synthesize a minimal default when no paragraph DB record was resolved
-        # so the contract stays satisfied (mirrors AnnotateStage's skip-stub).
-        if paragraph_annotation is None:
-            paragraph_annotation = ParagraphAnnotation(
-                paragraph_index=0,
-                speaker_canonical_name="_narrator_",
-                is_dialogue=False,
-                emotion="neutral",
-                emotion_intensity=0.0,
-                confidence=0.0,
-                notes="Skipped: no paragraph record for synthesis",
-            )
-
-        # Build voice_map from chapter's analyzed_json
-        voice_map: list[CharacterVoiceBinding] = []
-        if chapter and chapter.analyzed_json:
-            import json
-
-            raw = chapter.analyzed_json
-            if isinstance(raw, str):
-                raw = json.loads(raw)
-            voice_map = [CharacterVoiceBinding(**c) for c in raw.get("character_voice_map", [])]
-
-        if not voice_map:
-            voice_map = [
-                CharacterVoiceBinding(
-                    canonical_name="_narrator_",
-                    aliases=[],
-                    gender="neutral",
-                    age_range="adult",
-                    suggested_voice_id="zh-CN-XiaoxiaoNeural",
-                    sample_quote="旁白样本",
-                )
-            ]
-
-        # TTS 必须读 edit 阶段的产出：edited_text 非空 → 用编辑后文本；
-        # edited_text == "" → 编辑阶段有意清空（封面/扉页/插图说明等不可朗读
-        # 内容），传空串由 SynthesizePipeline 跳过该段；edited_text is NULL →
-        # 该段未经过编辑，回退原始文本。此前直接用 para.text 导致 OCR 噪声、
-        # 断词、插图 JSON 全部进了 TTS（2026-09-05 导出 SRT 实测）。
-        if para and para.edited_text is not None:
-            text = para.edited_text
-        else:
-            text = para.text if para else ""
-
-        # 编辑阶段有意清空（""）的段落（封面/插图说明/章节标题等不可朗读内容）
-        # 以及空白段，TtsRoutingInput 要求 text ≥1 字符，直接跳过不合成。
-        if not text or not text.strip():
+        # 共享输入构造 (与人工终审门的路由预览同一份代码，防止两处漂移)：
+        # 标注 or-回退、voice_map 回退、edited_text 规则、空文本跳过均在
+        # build_routing_input 内实现。空文本（含 edited_text=="" 的有意清空段）
+        # 返回 None → 跳过合成。
+        input_data = build_routing_input(para, chapter, kwargs.get("project_id"))
+        if input_data is None:
             logger.info(
                 "Synthesize skipped paragraph %s (empty/whitespace text, project=%s)",
                 para.index if para else "?",
@@ -962,19 +1056,6 @@ class SynthesizeStage(StageHandler):
             )
             return []
 
-        input_data = TtsRoutingInput(
-            paragraph_annotation=paragraph_annotation,
-            text=text,
-            character_voice_map=voice_map,
-            book_id=str(kwargs.get("project_id", "")),
-            chapter_index=chapter.index if chapter else 1,
-            paragraph_index=para.index if para else 0,
-            cumulative_cost_usd=0.0,
-            cost_limit_per_book=20.0,
-            cost_limit_per_chapter=5.0,
-            prefer_local=False,
-            contract_version=1,
-        )
         pipeline = SynthesizePipeline()
         result = pipeline.run([input_data])
         # 兼容同步/异步两种 run() 实现（及测试替身）：协程则等待，否则原样返回
@@ -1089,9 +1170,7 @@ class QualityStage(StageHandler):
                 # auto_run/orchestrator 传入的是 AsyncSession（此前 db.query
                 # 只对同步 Session 有效，导致音频路径恒为空、质检在无音频上
                 # 空跑）。异步分支正确取回 segment。
-                seg_res = await db.execute(
-                    _select(AudioSegment).filter(AudioSegment.id == para.audio_segment_id)
-                )
+                seg_res = await db.execute(_select(AudioSegment).filter(AudioSegment.id == para.audio_segment_id))
                 seg = seg_res.scalar_one_or_none()
             elif db is not None:
                 seg = db.query(AudioSegment).filter(AudioSegment.id == para.audio_segment_id).first()
@@ -1310,9 +1389,11 @@ StageRegistry.register("segment", SegmentStage)
 StageRegistry.register("analyze", AnalyzeStage)
 StageRegistry.register("annotate", AnnotateStage)
 StageRegistry.register("edit", EditStage)
+StageRegistry.register("audio_director", AudioDirectorStage)
 StageRegistry.register("audio_postprocess", AudioPostprocessStage)
 StageRegistry.register("review", ReviewStage)
 StageRegistry.register("synthesize", SynthesizeStage)
 StageRegistry.register("quality", QualityStage)
 StageRegistry.register("translate", TranslateStage)
+StageRegistry.register("text_clean", TextCleanStage)
 from ..schemas.paragraph import ParagraphAnnotationInput

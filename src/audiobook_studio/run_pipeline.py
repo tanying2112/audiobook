@@ -258,6 +258,15 @@ BOOK_CONFIG: dict = {
         "language": "zh",
         "num_mock_chapters": 3,
     },
+    "Football Forever": {
+        "title": "Football Forever",
+        "author": "Andrea Sarto",
+        "genre": "Graded Reader",
+        "era": "现代",
+        "difficulty": "A",
+        "language": "en",
+        "num_mock_chapters": 1,
+    },
 }
 
 # ── Helper Functions ────────────────────────────────────────────────────────

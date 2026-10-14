@@ -1,6 +1,6 @@
 # 架构图解
 
-本文档详细解析 Audiobook Studio 的三档变速架构设计。
+本文档详细解析 Audiobook Studio 的四档变速架构设计。
 
 ## 系统架构图
 
@@ -50,7 +50,9 @@
 
 ---
 
-## 三档变速架构 (3-Tier Hardware Profiles)
+## 四档变速架构 (4-Tier Hardware Profiles)
+
+> 四档：potato（纯本地 CPU）| offline（完全离线兜底，零档）| cloud_hybrid（默认：免费云 API + 本地 TTS）| pro_studio（显卡 + 重型模型）。
 
 ### 🥔 土豆模式 (Potato Mode)
 

@@ -15,13 +15,17 @@
 # 分析要求
 
 ## 1. pattern_tags（模式标签）
-- 可以使用已知标签：dialogue_attribution, emotion_too_mild, emotion_too_strong,
+- **必须仅使用以下预定义标签之一**：
+  dialogue_attribution, emotion_too_mild, emotion_too_strong,
   emotion_wrong, speaker_wrong, text_colloquial, text_formal, pause_missing,
   pause_too_long, sfx_missing, sfx_wrong, clipping, silence, low_volume,
   duration_mismatch, prosody_robotic, prosody_flat, chapter_split_wrong,
-  character_missing, summary_incomplete
-- **也可以创建新标签**：如果发现已知标签无法描述的问题，用 snake_case 创建新标签
-  （如：narrator_pacing_inconsistent, context_awareness_missing）
+  character_missing, summary_incomplete,
+  format_issue, style_issue, emotion_mismatch, pronunciation_fix,
+  quality_issue, audio_artifact, speech_rate_issue, low_quality_score,
+  background_noise, unclear_pronunciation, chunk_too_short,
+  voice_inconsistency, truncated_ending
+- **禁止创建新标签**：只能从上述列表中选择
 
 ## 2. semantic_summary（语义摘要）
 1-2 句话概括修改的核心原因。不要复述差异，要解释**为什么**需要修改。

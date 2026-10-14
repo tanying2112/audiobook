@@ -130,10 +130,11 @@ class TestAudioFinalizer:
             fade_out_ms=1000,
             fade_shape="sin",
         )
-        filter_str = finalizer._build_fade_filter(params)
-        assert "afade=t=in:st=0:d=1.0:sin" in filter_str
-        assert "afade=t=out" in filter_str
-        assert "d=1.0" in filter_str
+        # P3a 修复后: :curve= 语法 + "sin"→qsin 映射 + 淡出真实起点 (时长-淡出)
+        filter_str = finalizer._build_fade_filter(params, duration_ms=3000)
+        assert "afade=t=in:st=0:d=1.0:curve=qsin" in filter_str
+        assert "afade=t=out:st=2.000:d=1.0:curve=qsin" in filter_str
+        assert "PLACEHOLDER" not in filter_str
 
     def test_finalize_mock_success(self):
         """Test successful finalize in mock mode."""

@@ -137,7 +137,7 @@ async function handleRegister() {
         <div v-if="error" class="alert alert-error">{{ error }}</div>
 
         <button type="submit" class="btn btn-primary btn-lg btn-block" :disabled="loading">
-          <span v-if="loading" class="spinner" style="border-color: rgba(255,255,255,.35); border-top-color: #fff"></span>
+          <span v-if="loading" class="spinner"></span>
           <span>{{ loading ? t('auth.register_in_progress') : t('auth.register') }}</span>
         </button>
       </form>
@@ -150,6 +150,11 @@ async function handleRegister() {
 </template>
 
 <style scoped>
+/* ── Dark mode: override hardcoded white card background ──── */
+:global(html.dark) .auth-card {
+  background: var(--color-surface);
+}
+
 .password-field {
   position: relative;
 }

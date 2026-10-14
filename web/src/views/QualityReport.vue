@@ -1,3 +1,101 @@
+<template>
+  <div class="page-container quality-report">
+    <header class="page-header">
+      <button class="btn btn-ghost touch-target" @click="goBack" aria-label="Back">
+        <Icon icon="mdi:arrow-left" width="18" height="18" />
+        <span class="hidden-mobile">{{ t('common.back') }}</span>
+      </button>
+      <h1>{{ t('quality_report.title') }}</h1>
+    </header>
+
+    <!-- Summary Cards using stat-value -->
+    <section class="summary-grid section">
+      <div class="card summary-card summary-card-primary">
+        <span class="stat-value">{{ stats.total }}</span>
+        <span class="summary-label text-muted">{{ t('quality_report.total_chapters') }}</span>
+      </div>
+      <div class="card summary-card">
+        <span class="stat-value text-success">{{ stats.completed }}</span>
+        <span class="summary-label text-muted">{{ t('quality_report.completed') }}</span>
+      </div>
+      <div class="card summary-card">
+        <span class="stat-value text-warning">{{ stats.pending }}</span>
+        <span class="summary-label text-muted">{{ t('quality_report.pending') }}</span>
+      </div>
+      <div class="card summary-card">
+        <span class="stat-value text-danger">{{ stats.error }}</span>
+        <span class="summary-label text-muted">{{ t('quality_report.error') }}</span>
+      </div>
+    </section>
+
+    <!-- Completion Progress Bar -->
+    <section class="card section">
+      <div class="completion-header">
+        <span class="font-medium">{{ t('quality_report.overall_completion') }}</span>
+        <span class="completion-pct text-primary font-bold">{{ stats.completionRate }}%</span>
+      </div>
+      <div class="completion-track">
+        <div class="completion-fill" :style="{ width: stats.completionRate + '%' }"></div>
+      </div>
+    </section>
+
+    <!-- Filter using el-select -->
+    <section class="filter-bar section">
+      <el-select
+        v-model="filterStatus"
+        size="default"
+        class="filter-select"
+        aria-label="Filter by status"
+      >
+        <el-option value="all" :label="t('common.all')" />
+        <el-option value="completed" :label="t('quality_report.completed')" />
+        <el-option value="pending" :label="t('quality_report.pending')" />
+        <el-option value="error" :label="t('quality_report.error')" />
+      </el-select>
+    </section>
+
+    <!-- Chapter Quality List -->
+    <section class="chapter-quality-list">
+      <div v-if="filteredChapters.length === 0" class="empty-state">
+        <Icon icon="mdi:file-chart-outline" width="48" height="48" class="empty-icon" />
+        <p>{{ t('common.no_data') }}</p>
+      </div>
+      <div v-else class="quality-list">
+        <div
+          v-for="ch in filteredChapters"
+          :key="ch.id"
+          class="card quality-row"
+        >
+          <div class="quality-row-info">
+            <Icon
+              :icon="statusIcon(ch.status || 'pending')"
+              :class="['status-icon', ch.status || 'pending']"
+              width="20"
+              height="20"
+              aria-hidden="true"
+            />
+            <span class="quality-row-title font-medium">
+              {{ ch.title || t('chapter_timeline.chapter_fallback', { id: ch.chapter_number || ch.id }) }}
+            </span>
+          </div>
+          <div class="quality-row-actions">
+            <span class="status-badge" :class="badgeClass(ch.status || 'pending')">
+              {{ formatStatus(ch.status || 'pending') }}
+            </span>
+            <button
+              class="btn btn-ghost btn-sm touch-target"
+              :aria-label="t('quality_report.view_details')"
+              @click="router.push(`/projects/${projectId}/chapters/${ch.id}`)"
+            >
+              <Icon icon="mdi:chevron-right" width="16" height="16" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</template>
+
 <script setup lang="ts">
 import { onMounted, ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -35,13 +133,22 @@ function goBack() {
   router.push(`/projects/${projectId}`)
 }
 
-function getStatusBadgeClass(status: string): string {
+function statusIcon(status: string): string {
   const map: Record<string, string> = {
-    completed: 'badge-success',
-    pending: 'badge-warning',
-    error: 'badge-danger',
+    completed: 'mdi:check-circle',
+    error: 'mdi:alert-circle',
+    pending: 'mdi:clock-outline',
   }
-  return map[status?.toLowerCase()] || 'badge-muted'
+  return map[status?.toLowerCase()] || 'mdi:clock-outline'
+}
+
+function badgeClass(status: string): string {
+  const map: Record<string, string> = {
+    completed: 'status-badge-success',
+    pending: 'status-badge-warning',
+    error: 'status-badge-danger',
+  }
+  return map[status?.toLowerCase()] || 'status-badge-muted'
 }
 
 function formatStatus(status: string): string {
@@ -49,121 +156,155 @@ function formatStatus(status: string): string {
 }
 </script>
 
-<template>
-  <div class="page-container quality-report">
-    <header class="page-header">
-      <button class="btn btn-ghost touch-target" @click="goBack">
-        <Icon icon="mdi:arrow-left" width="18" height="18" />
-        <span class="hidden-mobile">{{ t('common.back') }}</span>
-      </button>
-      <h1>{{ t('quality_report.title') }}</h1>
-    </header>
-
-    <section class="summary-cards grid grid-auto-fill gap-4 section">
-      <div class="card card-hover" style="border-color: var(--color-primary); background: var(--color-primary-soft);">
-        <span class="summary-value font-bold" style="font-size: 28px; color: var(--color-primary);">{{ stats.total }}</span>
-        <span class="summary-label text-muted">{{ t('quality_report.total_chapters') }}</span>
-      </div>
-      <div class="card card-hover">
-        <span class="summary-value font-bold text-success" style="font-size: 28px;">{{ stats.completed }}</span>
-        <span class="summary-label text-muted">{{ t('quality_report.completed') }}</span>
-      </div>
-      <div class="card card-hover">
-        <span class="summary-value font-bold text-warning" style="font-size: 28px;">{{ stats.pending }}</span>
-        <span class="summary-label text-muted">{{ t('quality_report.pending') }}</span>
-      </div>
-      <div class="card card-hover">
-        <span class="summary-value font-bold text-danger" style="font-size: 28px;">{{ stats.error }}</span>
-        <span class="summary-label text-muted">{{ t('quality_report.error') }}</span>
-      </div>
-    </section>
-
-    <section class="completion-bar-section card card-hover section">
-      <div class="completion-header flex justify-between mb-4">
-        <span class="font-medium">{{ t('quality_report.overall_completion') }}</span>
-        <span class="completion-pct text-primary font-bold" style="font-variant-numeric: tabular-nums;">{{ stats.completionRate }}%</span>
-      </div>
-      <div class="completion-track" style="height: 8px; background: var(--color-border); border-radius: 99px; overflow: hidden;">
-        <div class="completion-fill" :style="{ width: stats.completionRate + '%' }" style="height: 100%; background: linear-gradient(90deg, var(--color-primary), var(--color-success)); border-radius: 99px; transition: width 0.3s;"></div>
-      </div>
-    </section>
-
-    <section class="filter-bar section">
-      <div class="flex gap-2 flex-wrap">
-        <button
-          v-for="opt in [['all', 'common.all'], ['completed', 'quality_report.completed'], ['pending', 'quality_report.pending'], ['error', 'quality_report.error']]"
-          :key="opt[0]"
-          class="btn btn-outline btn-sm"
-          :class="{ 'btn-primary': filterStatus === opt[0] }"
-          @click="filterStatus = opt[0]"
-        >{{ t(opt[1]) }}</button>
-      </div>
-    </section>
-
-    <section class="chapter-quality-list">
-      <div v-if="filteredChapters.length === 0" class="empty-state">
-        <Icon icon="mdi:file-chart-outline" width="48" height="48" style="opacity: 0.4" />
-        <p>{{ t('common.no_data') }}</p>
-      </div>
-      <div v-else class="grid gap-3">
-        <div
-          v-for="ch in filteredChapters"
-          :key="ch.id"
-          class="card card-hover quality-row flex items-center justify-between"
-        >
-          <div class="quality-row-info flex items-center gap-3">
-            <Icon
-              :icon="ch.status === 'completed' ? 'mdi:check-circle' : ch.status === 'error' ? 'mdi:alert-circle' : 'mdi:clock-outline'"
-              :class="['status-icon', ch.status || 'pending', { 'text-success': ch.status === 'completed', 'text-danger': ch.status === 'error', 'text-warning': ch.status === 'pending' }]"
-              width="20"
-              height="20"
-            />
-            <span class="quality-row-title font-medium">{{ ch.title || t('chapter_timeline.chapter_fallback', { id: ch.chapter_number || ch.id }) }}</span>
-          </div>
-          <div class="quality-row-meta flex items-center gap-2">
-            <span :class="getStatusBadgeClass(ch.status || 'pending')">{{ formatStatus(ch.status || 'pending') }}</span>
-            <button
-              class="btn btn-ghost btn-sm touch-target"
-              @click="router.push(`/projects/${projectId}/chapters/${ch.id}`)"
-            >
-              {{ t('quality_report.view_details') }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </section>
-  </div>
-</template>
-
 <style scoped>
 .quality-report {
   max-width: 960px;
 }
 
-.summary-value {
-  display: block;
-  line-height: 1.2;
+/* Summary grid */
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 16px;
+}
+.summary-card {
+  text-align: center;
+  padding: 20px 16px;
+}
+.summary-card-primary {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
 }
 .summary-label {
   display: block;
-  margin-top: 4px;
+  margin-top: 6px;
+  font-size: 0.88rem;
 }
 
+/* Completion bar */
+.completion-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.completion-pct {
+  font-variant-numeric: tabular-nums;
+}
+.completion-track {
+  height: 8px;
+  background: var(--color-border);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+.completion-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-primary), var(--color-success));
+  border-radius: var(--radius-full);
+  transition: width 0.3s;
+}
+
+/* Filter */
+.filter-select {
+  width: 200px;
+}
+
+/* Empty state */
+.empty-icon {
+  opacity: 0.4;
+  color: var(--color-text-muted);
+}
+
+/* Quality list */
+.quality-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.quality-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  transition: border-color var(--transition);
+}
+.quality-row:hover {
+  border-color: var(--color-border-strong);
+}
+.quality-row-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+.quality-row-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.quality-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Status icons */
 .status-icon.completed { color: var(--color-success); }
 .status-icon.error { color: var(--color-danger); }
 .status-icon.pending { color: var(--color-warning); }
 
-.quality-row {
-  padding: 12px 16px;
+/* Status badges (scoped to this component) */
+.status-badge-success {
+  background: var(--color-success-soft);
+  color: var(--color-success);
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.status-badge-warning {
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.status-badge-danger {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.status-badge-muted {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
+  font-size: 0.78rem;
+  font-weight: 600;
 }
 
+/* Mobile */
 @media (max-width: 767px) {
-  .grid-auto-fill {
-    grid-template-columns: 1fr;
+  .summary-grid {
+    grid-template-columns: 1fr 1fr;
   }
-  .filter-bar .btn {
-    flex: 1;
-    justify-content: center;
+  .filter-select {
+    width: 100%;
+  }
+  .quality-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .quality-row-actions {
+    width: 100%;
+    justify-content: space-between;
   }
 }
 </style>

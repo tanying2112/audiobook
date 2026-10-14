@@ -5,6 +5,7 @@ PostgreSQL 通过 DATABASE_URL 环境变量配置，开发环境默认 SQLite。
 """
 
 import os
+from pathlib import Path
 from typing import Any, AsyncGenerator, Optional
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -45,7 +46,12 @@ def get_async_engine() -> AsyncEngine:
     """Get or create the async SQLAlchemy engine."""
     global _engine
     if _engine is None:
-        database_url = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///data/audiobook.db")
+        # Default must match database.py's canonical src/data/audiobook.db —
+        # a cwd-relative default would silently fork a second DB at the repo root.
+        database_url = os.getenv(
+            "DATABASE_URL",
+            f"sqlite+aiosqlite:///{Path(__file__).resolve().parent.parent / 'data' / 'audiobook.db'}",
+        )
 
         # Convert sync SQLite URL to async
         if database_url.startswith("sqlite:///"):

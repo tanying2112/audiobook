@@ -2,7 +2,8 @@
 Export module for audiobook_studio.
 
 Provides M4B encapsulation with chapter markers, SRT/VTT subtitle generation,
-MP3 ID3v2.4 tagging, audio ducking (BGM mixing), and batch export orchestration.
+MP3 ID3v2.4 tagging, audio ducking (BGM mixing), programmatic music bed generation,
+and batch export orchestration.
 """
 
 from .audio_ducking import DuckingSegment, MixConfig, detect_speech_segments, mix_with_ducking
@@ -17,6 +18,12 @@ from .mp3 import (
     read_id3_tags,
     write_chapters_only,
     write_id3_tags,
+)
+from .music_bed_generator import (
+    EmotionSegment,
+    build_timeline_from_paragraphs,
+    emotion_to_progression,
+    generate_music_bed,
 )
 from .srt import SubtitleConfig, SubtitleEntry, build_subtitle_entries_from_paragraphs, generate_srt
 
@@ -50,6 +57,11 @@ __all__ = [
     "master_audio",
     "measure_loudness",
     "verify_mastering",
+    # Music Bed Generator (v6 程序化音乐床收编)
+    "EmotionSegment",
+    "build_timeline_from_paragraphs",
+    "emotion_to_progression",
+    "generate_music_bed",
     # Batch Export
     "ExportFormat",
     "ExportJob",

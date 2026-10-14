@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from ..models import AudioSegment as AudioSegmentModel
 from ..models import Chapter, Paragraph, Quality, TTSEdit
 from ..schemas import (
+    AudioDirectorOutput,
     AudioPostProcessParams,
     BookAnalysisOutput,
     ExtractionResult,
@@ -226,6 +227,60 @@ def write_annotate_sync(
     _refresh(db, para)
     logger.info("DB write [annotate]: Paragraph %d (id=%s)", paragraph_index, para.id)
     return para
+
+
+def write_audio_director_sync(
+    db: Session,
+    para: Paragraph,
+    result: AudioDirectorOutput,
+) -> bool:
+    """Write LLM audio-director suggestions to Paragraph.sentence_overrides.
+
+    人工优先: 已有人工 override (ReviewEditPanel 编辑产物) 时跳过 —— 该字段
+    非空即人工领地; 空建议 (mock/fallback/单句段落) 同样不写, 避免清空既有值。
+    """
+    if para.sentence_overrides:
+        logger.info(
+            "DB write [audio_director]: Paragraph %d 已有人工 overrides, 跳过导演落库",
+            para.index,
+        )
+        return False
+    if not result.sentence_overrides:
+        return False
+    para.sentence_overrides = [
+        o.model_dump(exclude_none=True) for o in result.sentence_overrides
+    ]
+    _commit(db)
+    logger.info(
+        "DB write [audio_director]: Paragraph %d <- %d 条演绎建议",
+        para.index, len(para.sentence_overrides),
+    )
+    return True
+
+
+async def write_audio_director(
+    db: Union[Session, AsyncSession],
+    para: Paragraph,
+    result: AudioDirectorOutput,
+) -> bool:
+    """Async variant of ``write_audio_director_sync``."""
+    if para.sentence_overrides:
+        logger.info(
+            "DB write [audio_director]: Paragraph %d 已有人工 overrides, 跳过导演落库",
+            para.index,
+        )
+        return False
+    if not result.sentence_overrides:
+        return False
+    para.sentence_overrides = [
+        o.model_dump(exclude_none=True) for o in result.sentence_overrides
+    ]
+    await _acommit(db)
+    logger.info(
+        "DB write [audio_director]: Paragraph %d <- %d 条演绎建议",
+        para.index, len(para.sentence_overrides),
+    )
+    return True
 
 
 def write_edit_sync(

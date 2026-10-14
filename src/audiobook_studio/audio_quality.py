@@ -170,8 +170,15 @@ class QualityReport:
 # ── Async check functions ────────────────────────────────────────────────────
 
 
-async def _check_silence_async(file_path: Path) -> Dict[str, Any]:
-    """Check for excessive silence in audio segment (async version)."""
+async def _check_silence_async(file_path: Path, declared_pause_ms: int = 0) -> Dict[str, Any]:
+    """Check for excessive silence in audio segment (async version).
+
+    Args:
+        file_path: Audio file to check.
+        declared_pause_ms: Director-declared pause budget (sum of pauses intentionally
+            inserted between sentences). These are legitimate pauses, not quality issues.
+            Subtracted from detected silence before computing ratio.
+    """
     result = {
         "silence_detected": False,
         "silence_ratio": 0.0,
@@ -193,7 +200,11 @@ async def _check_silence_async(file_path: Path) -> Dict[str, Any]:
         )
 
         total_silence_ms = sum(end - start for start, end in silence_regions)
-        silence_ratio = total_silence_ms / duration_ms
+
+        # Gap C fix: subtract director-declared pause budget (legitimate pauses)
+        # Only undeclared silence counts toward quality gate.
+        undeclared_silence_ms = max(0, total_silence_ms - declared_pause_ms)
+        silence_ratio = undeclared_silence_ms / duration_ms
 
         result["silence_regions"] = [
             {"start_ms": start, "end_ms": end, "duration_ms": end - start} for start, end in silence_regions
@@ -202,7 +213,9 @@ async def _check_silence_async(file_path: Path) -> Dict[str, Any]:
         result["silence_detected"] = silence_ratio > MAX_SILENCE_RATIO
 
         logger.debug(
-            f"Silence check {file_path.name}: ratio={silence_ratio:.2%}, " f"detected={result['silence_detected']}"
+            f"Silence check {file_path.name}: total={total_silence_ms}ms declared={declared_pause_ms}ms "
+            f"undeclared={undeclared_silence_ms}ms ratio={silence_ratio:.2%} "
+            f"detected={result['silence_detected']}"
         )
 
     except Exception as e:
@@ -422,6 +435,7 @@ async def _check_segment_async(
     book_id: str = "",
     suite: Any = None,
     registered_speakers: Optional[set] = None,
+    declared_pause_ms: int = 0,
 ) -> SegmentQualityResult:
     """Run all quality checks on a single audio segment (async version).
 
@@ -437,6 +451,9 @@ async def _check_segment_async(
         suite: 复用的 QualityCheckSuite (跨段 §36 缓存生效)。None (默认) 时 _run_hard_metrics_async 惰性新建。
         registered_speakers: 调用方持有的已注册 §36 缓存键集合 (跨段共享)。首次命中角色时
             register_speaker 写入缓存 + 加入本集合, 后续段命中即跳过注册 (避免重复 extract)。
+        declared_pause_ms: Gap C fix — 导演声明的句间停顿预算 (synthesize 侧实际插入的
+            总停顿毫秒)。质检门静音比例只统计未声明静音: declared pauses 是演绎意图,
+            不算违规 (p0/p4 dramatic 停顿误伤三振的根因)。
     """
     result = SegmentQualityResult(
         segment_id=segment_id,
@@ -452,7 +469,7 @@ async def _check_segment_async(
         result.duration_ms = 0
 
     # Run all checks
-    silence_result = await _check_silence_async(file_path)
+    silence_result = await _check_silence_async(file_path, declared_pause_ms=declared_pause_ms)
     result.silence_detected = silence_result["silence_detected"]
     result.silence_ratio = silence_result["silence_ratio"]
     result.silence_regions = silence_result["silence_regions"]
@@ -558,7 +575,7 @@ async def _check_segment_async(
 # ── Sync wrappers for backward compatibility ────────────────────────────────
 
 
-def check_silence(file_path: Path) -> Dict[str, Any]:
+def check_silence(file_path: Path, declared_pause_ms: int = 0) -> Dict[str, Any]:
     """Sync wrapper for silence check."""
     try:
         loop = asyncio.get_running_loop()
@@ -571,10 +588,10 @@ def check_silence(file_path: Path) -> Dict[str, Any]:
         import concurrent.futures
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(asyncio.run, _check_silence_async(file_path))
+            future = executor.submit(asyncio.run, _check_silence_async(file_path, declared_pause_ms))
             return future.result()
     else:
-        return asyncio.run(_check_silence_async(file_path))
+        return asyncio.run(_check_silence_async(file_path, declared_pause_ms))
 
 
 def check_corruption(file_path: Path) -> Dict[str, Any]:
@@ -637,6 +654,7 @@ async def check_all_segments(
     retry_callback=None,
     reference_texts: Optional[List[str]] = None,
     speaker_map: Optional[Dict[str, str]] = None,
+    pause_budget_map: Optional[Dict[str, int]] = None,
 ) -> QualityReport:
     """Check quality of all segments with auto-retry on failure (async version).
 
@@ -652,10 +670,9 @@ async def check_all_segments(
         speaker_map: P2.13 segment_id -> speaker_canonical_name (由 synthesize.run 透传).
             驱动 VoiceAnchor 参考音频注入 + §36 嵌入缓存 + 漂移门。None (默认, 向后兼容)
             时 speaker_sim 恒无参考 (与改造前等价, 诚实 skip)。
-
-    Returns:
-        QualityReport with results for all segments. Segments still failing after
-        max_retries are marked needs_manual_review (P0.2 DoD #5) rather than silently passed.
+        pause_budget_map: Gap C fix — segment_id -> 总声明停顿预算毫秒 (synthesize 侧计算,
+            句间实际插入的 pause 之和)。质检门静音比例扣除此预算: dramatic/paragraph
+            等导演声明停顿不计违规。无此参数时回退原逻辑(全量静音算违规)。
     """
     from datetime import datetime, timezone
 
@@ -679,6 +696,7 @@ async def check_all_segments(
     for idx, (file_path, segment_id) in enumerate(zip(segment_files, segment_ids, strict=False)):
         ref_text = reference_texts[idx] if reference_texts and idx < len(reference_texts) else ""
         speaker = speaker_map.get(segment_id) if speaker_map else None
+        declared_pause_ms = pause_budget_map.get(segment_id, 0) if pause_budget_map else 0
 
         if not file_path.exists():
             logger.warning(f"Segment file not found: {file_path}")
@@ -707,6 +725,7 @@ async def check_all_segments(
             book_id=project_id,
             suite=shared_suite,
             registered_speakers=registered_speakers,
+            declared_pause_ms=declared_pause_ms,
         )
 
         # Retry on failure (P0.2 DoD #5: capped, then manual review — never infinite)
@@ -734,6 +753,7 @@ async def check_all_segments(
                         book_id=project_id,
                         suite=shared_suite,
                         registered_speakers=registered_speakers,
+                        declared_pause_ms=declared_pause_ms,
                     )
                     logger.info(f"Retry {attempt} for {segment_id}: {'passed' if result.passed else 'failed'}")
                 else:

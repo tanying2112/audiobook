@@ -2,7 +2,7 @@
 import { onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Icon } from '@iconify/vue'
-import { useI18n } from '../i18n'
+import { useI18n, getLocale } from '../i18n'
 import { useAuthStore } from '../stores/auth'
 import { useContextStore } from '../stores/context'
 import LocaleSwitcher from './LocaleSwitcher.vue'
@@ -25,34 +25,61 @@ const emit = defineEmits<{
   close: []
 }>()
 
+// ── All navigation items (13+ entries) ──────────────────────────
 const navItems = computed(() => [
-  { label: 'nav.projects', icon: 'mdi:bookshelf', route: '/' },
-  { label: 'nav.project_management', icon: 'mdi:book-open-variant', route: '/projects', pattern: '/projects/' },
-  { label: 'nav.feedback_entry', icon: 'mdi:comment-edit-outline', route: '/feedback' },
-  { label: 'nav.harness_console', icon: 'mdi:tune-variant', route: '/harness' },
-  { label: 'nav.promotions', icon: 'mdi:rocket-launch-outline', route: '/evolution/promotions' },
-  { label: 'nav.golden_data', icon: 'mdi:database-star-outline', route: '/evolution/golden' },
-  { label: 'nav.sop_rules', icon: 'mdi:book-cog-outline', route: '/evolution/sop' },
-  { label: 'nav.feedback_insights', icon: 'mdi:comment-quote-outline', route: '/evolution/feedback' },
-  { label: 'nav.admin_panel', icon: 'mdi:shield-account-outline', route: '/admin' },
-  { label: 'nav.monitoring', icon: 'mdi:chart-line', route: '/monitoring' },
-  { label: 'nav.provider_management', icon: 'mdi:server', route: '/providers' },
-  { label: 'nav.model_market', icon: 'mdi:puzzle', route: '/model-market' },
-  { label: 'nav.waveform_demo', icon: 'mdi:waveform', route: '/waveform-demo' },
-  // Dashboard route dynamically generated with actual projectId from context store
-  { label: 'nav.dashboard', icon: 'mdi:chart-pie', route: contextStore.projectId ? `/projects/${contextStore.projectId}/dashboard` : '' },
+  { label: 'nav.projects', icon: 'mdi:bookshelf', route: '/', group: 'workspace' },
+  { label: 'nav.project_management', icon: 'mdi:book-open-variant', route: '/projects', group: 'workspace', pattern: '/projects/' },
+  { label: 'nav.feedback_entry', icon: 'mdi:comment-edit-outline', route: '/feedback', group: 'workspace' },
+  { label: 'nav.harness_console', icon: 'mdi:tune-variant', route: '/harness', group: 'system' },
+  { label: 'nav.promotions', icon: 'mdi:rocket-launch-outline', route: '/evolution/promotions', group: 'evolution' },
+  { label: 'nav.golden_data', icon: 'mdi:database-star-outline', route: '/evolution/golden', group: 'evolution' },
+  { label: 'nav.sop_rules', icon: 'mdi:book-cog-outline', route: '/evolution/sop', group: 'evolution' },
+  { label: 'nav.feedback_insights', icon: 'mdi:comment-quote-outline', route: '/evolution/feedback', group: 'evolution' },
+  { label: 'nav.admin_panel', icon: 'mdi:shield-account-outline', route: '/admin', group: 'system' },
+  { label: 'nav.monitoring', icon: 'mdi:chart-line', route: '/monitoring', group: 'system' },
+  { label: 'nav.provider_management', icon: 'mdi:server', route: '/providers', group: 'system' },
+  { label: 'nav.model_market', icon: 'mdi:puzzle', route: '/model-market', group: 'system' },
+  { label: 'nav.waveform_demo', icon: 'mdi:waveform', route: '/waveform-demo', group: 'system' },
+  {
+    label: 'nav.dashboard',
+    icon: 'mdi:chart-pie',
+    route: contextStore.projectId ? `/projects/${contextStore.projectId}/dashboard` : '',
+    group: 'project',
+  },
 ])
+
+// ── Grouped navigation items ──────────────────────────────────────
+interface NavGroup {
+  id: string
+  label: string
+  items: typeof navItems.value
+}
+
+const groups = computed<NavGroup[]>(() => {
+  const items = navItems.value
+  const groupOrder = ['workspace', 'project', 'evolution', 'system']
+  const isZh = getLocale().startsWith('zh')
+  const groupLabels: Record<string, string> = isZh
+    ? { workspace: '工作区', project: '当前项目', evolution: '进化中心', system: '系统' }
+    : { workspace: 'Workspace', project: 'Current Project', evolution: 'Evolution Center', system: 'System' }
+  return groupOrder
+    .map((id) => ({
+      id,
+      label: groupLabels[id] || id,
+      items: items.filter((item) => item.group === id),
+    }))
+    .filter((g) => g.items.length > 0)
+})
 
 function isActive(path: string): boolean {
   if (!path) return false
   if (path === '/') return route.path === '/'
-  // '/projects'（项目管理）与 '/'（项目列表）是不同页面，精确匹配避免误高亮
   if (path === '/projects') return route.path === '/projects'
   return route.path.startsWith(path)
 }
 
 function handleNavClick(itemRoute: string) {
-  if (!itemRoute) return // 无目标路由（如未选项目时的仪表板）则不跳转
+  if (!itemRoute) return
   router.push(itemRoute)
   emit('close')
 }
@@ -69,21 +96,27 @@ function handleLogout() {
       <Icon icon="mdi:microphone" width="28" height="28" />
       <span class="sidebar-title">{{ t('sidebar.title') }}</span>
     </div>
+
     <nav class="sidebar-nav" :aria-label="t('common.main_nav')">
-      <button
-        v-for="item in navItems"
-        :key="item.label"
-        :class="['nav-btn', { active: isActive(item.route || ''), disabled: !item.route }]"
-        :disabled="!item.route"
-        @click="handleNavClick(item.route)"
-      >
-        <Icon :icon="item.icon" width="20" height="20" />
-        <span>{{ t(item.label) }}</span>
-      </button>
+      <template v-for="(group, gi) in groups" :key="group.id">
+        <div v-if="gi > 0" class="nav-divider" aria-hidden="true"></div>
+        <span class="nav-group-label">{{ group.label }}</span>
+        <button
+          v-for="item in group.items"
+          :key="item.label"
+          :class="['nav-item', { active: isActive(item.route || ''), disabled: !item.route }]"
+          :disabled="!item.route"
+          :aria-label="t(item.label)"
+          @click="handleNavClick(item.route)"
+        >
+          <Icon :icon="item.icon" width="20" height="20" />
+          <span>{{ t(item.label) }}</span>
+        </button>
+      </template>
     </nav>
+
     <div class="sidebar-footer">
       <LocaleSwitcher />
-      <!-- 主题切换 -->
       <button class="theme-btn" :title="getThemeLabel(themeMode, t)" @click="cycleTheme" :aria-label="getThemeLabel(themeMode, t)">
         <Icon :icon="isDark ? 'mdi:weather-night' : (themeMode === 'auto' ? 'mdi:monitor-shimmer' : 'mdi:weather-sunny')" width="18" height="18" />
       </button>
@@ -106,7 +139,7 @@ function handleLogout() {
 <style scoped>
 .sidebar {
   width: 100%;
-  background: var(--color-sidebar-bg, #0f172a);
+  background: var(--color-sidebar);
   color: #e2e8f0;
   display: flex;
   flex-direction: column;
@@ -114,18 +147,23 @@ function handleLogout() {
   height: 100%;
   overflow-y: auto;
 }
+
 .sidebar-header {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 0 16px 20px;
-  border-bottom: 1px solid #334155;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
   margin-bottom: 12px;
 }
+
 .sidebar-title {
   font-weight: 600;
   font-size: 16px;
 }
+
+/* ── Navigation ──────────────────────────────────────── */
+
 .sidebar-nav {
   flex: 1;
   display: flex;
@@ -133,47 +171,80 @@ function handleLogout() {
   gap: 2px;
   padding: 0 8px;
 }
-.nav-btn {
+
+/* Group label (section header) */
+.nav-group-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.35);
+  padding: 12px 14px 4px;
+  user-select: none;
+}
+
+/* Divider line between groups */
+.nav-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 6px 14px;
+}
+
+/* Individual nav item button */
+.nav-item {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 14px;
+  padding: 10px 14px;
   border: none;
-  border-radius: 8px;
+  border-left: 3px solid transparent;
+  border-radius: 0 var(--radius) var(--radius) 0;
   background: transparent;
   color: #cbd5e1;
   font-size: 14px;
   cursor: pointer;
   text-align: left;
-  transition: background 0.15s, color 0.15s;
-  min-height: 44px; /* touch-friendly */
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+  min-height: 40px;
+  width: 100%;
 }
-.nav-btn:hover {
-  background: #334155;
+
+.nav-item:hover {
+  background: rgba(255, 255, 255, 0.08);
   color: #f1f5f9;
 }
-.nav-btn.disabled,
-.nav-btn:disabled {
-  opacity: 0.45;
+
+.nav-item.active {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  border-left-color: var(--color-primary);
+}
+
+.nav-item.disabled,
+.nav-item:disabled {
+  opacity: 0.4;
   cursor: not-allowed;
 }
-.nav-btn.disabled:hover,
-.nav-btn:disabled:hover {
+
+.nav-item.disabled:hover,
+.nav-item:disabled:hover {
   background: transparent;
   color: #cbd5e1;
+  border-left-color: transparent;
 }
-.nav-btn.active {
-  background: var(--color-primary);
-  color: #fff;
-}
+
+/* ── Footer (locale / theme / user / logout) ──────────── */
+
 .sidebar-footer {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 12px 16px 0;
-  border-top: 1px solid #334155;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
   margin-top: 12px;
 }
+
 .user-info {
   display: flex;
   align-items: center;
@@ -181,10 +252,11 @@ function handleLogout() {
   flex: 1;
   min-width: 0;
 }
+
 .user-avatar {
   width: 32px;
   height: 32px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   background: var(--color-primary);
   color: #fff;
   display: flex;
@@ -194,11 +266,13 @@ function handleLogout() {
   font-weight: 600;
   flex-shrink: 0;
 }
+
 .user-meta {
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
+
 .user-name {
   font-size: 13px;
   color: #e2e8f0;
@@ -206,10 +280,12 @@ function handleLogout() {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
 .user-role {
   font-size: 11px;
   color: #94a3b8;
 }
+
 .logout-btn {
   display: flex;
   align-items: center;
@@ -217,15 +293,16 @@ function handleLogout() {
   width: 36px;
   height: 36px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: transparent;
   color: #94a3b8;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: background var(--transition-fast), color var(--transition-fast);
   flex-shrink: 0;
 }
+
 .logout-btn:hover {
-  background: #334155;
+  background: rgba(255, 255, 255, 0.08);
   color: #f87171;
 }
 
@@ -236,15 +313,16 @@ function handleLogout() {
   width: 36px;
   height: 36px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: transparent;
   color: #94a3b8;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: background var(--transition-fast), color var(--transition-fast);
   flex-shrink: 0;
 }
+
 .theme-btn:hover {
-  background: #334155;
+  background: rgba(255, 255, 255, 0.08);
   color: var(--color-primary);
 }
 </style>

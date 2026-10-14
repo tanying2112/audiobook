@@ -4,7 +4,7 @@
   display: flex;
   flex-direction: column;
   background: #000;
-  color: #fff;
+  color: var(--color-text);
   overflow: hidden;
 }
 
@@ -58,7 +58,7 @@
   text-align: center;
   z-index: 10;
   pointer-events: none;
-  transition: opacity 0.3s ease;
+  transition: opacity var(--transition);
 }
 
 .subtitle-text {
@@ -68,15 +68,15 @@
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
   background: linear-gradient(135deg, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.4));
   padding: 1rem 2rem;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.1);
   animation: subtitleFadeIn 0.3s ease;
 }
 
 .subtitle-text.highlight {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.8), rgba(79, 70, 229, 0.6));
-  border-color: rgba(99, 102, 241, 0.5);
+  background: linear-gradient(135deg, var(--color-primary-alpha), rgba(79, 70, 229, 0.6));
+  border-color: var(--color-primary);
 }
 
 @keyframes subtitleFadeIn {
@@ -98,8 +98,8 @@
   border-radius: 50%;
   background-size: cover;
   background-position: center;
-  border: 2px solid #6366f1;
-  box-shadow: 0 0 20px rgba(99, 102, 241, 0.5);
+  border: 2px solid var(--color-primary);
+  box-shadow: 0 0 20px var(--color-primary-alpha);
 }
 
 .avatar-initial {
@@ -110,14 +110,14 @@
   height: 100%;
   font-weight: 600;
   font-size: 1.2rem;
-  color: #fff;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: var(--color-surface);
+  background: linear-gradient(135deg, var(--color-primary), #8b5cf6);
   border-radius: 50%;
 }
 
 .speaker-name {
   font-size: 0.9rem;
-  color: #cbd5e1;
+  color: var(--color-text-muted);
   font-weight: 500;
 }
 
@@ -125,7 +125,7 @@
   position: absolute;
   inset: -4px;
   border-radius: 50%;
-  border: 2px solid #6366f1;
+  border: 2px solid var(--color-primary);
   animation: speakingPulse 1.5s ease-out infinite;
 }
 
@@ -156,7 +156,7 @@
 .sidebar-header h3 {
   margin: 0;
   font-size: 1rem;
-  color: #94a3b8;
+  color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -172,9 +172,9 @@
   align-items: center;
   gap: 0.75rem;
   padding: 0.75rem;
-  border-radius: 8px;
+  border-radius: var(--radius);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--transition);
 }
 
 .avatar-item:hover {
@@ -182,11 +182,11 @@
 }
 
 .avatar-item.active {
-  background: rgba(99, 102, 241, 0.2);
+  background: var(--color-primary-alpha);
 }
 
 .avatar-item.speaking .avatar-circle {
-  box-shadow: 0 0 20px rgba(99, 102, 241, 0.8);
+  box-shadow: 0 0 20px var(--color-primary-alpha);
 }
 
 .avatar-circle {
@@ -198,16 +198,16 @@
   position: relative;
   flex-shrink: 0;
   border: 2px solid transparent;
-  transition: all 0.3s ease;
+  transition: all var(--transition);
 }
 
 .avatar-item.active .avatar-circle {
-  border-color: #6366f1;
+  border-color: var(--color-primary);
 }
 
 .avatar-name {
   font-size: 0.9rem;
-  color: #e2e8f0;
+  color: var(--color-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -233,7 +233,7 @@
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #6366f1, #8b5cf6);
+  background: linear-gradient(90deg, var(--color-primary), #8b5cf6);
   border-radius: 2px;
   transition: width 0.1s linear;
 }
@@ -244,7 +244,7 @@
   gap: 0.5rem;
   margin-top: 0.5rem;
   font-size: 0.75rem;
-  color: #94a3b8;
+  color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -260,21 +260,21 @@
 }
 
 .auto-badge {
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
-  color: #fff;
+  background: linear-gradient(135deg, var(--color-primary), #8b5cf6);
+  color: var(--color-surface);
   padding: 0.35rem 0.75rem;
-  border-radius: 20px;
+  border-radius: var(--radius-full);
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4);
+  box-shadow: 0 4px 20px var(--color-primary-alpha);
   animation: autoPulse 2s ease-in-out infinite;
 }
 
 @keyframes autoPulse {
-  0%, 100% { box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4); }
-  50% { box-shadow: 0 4px 30px rgba(99, 102, 241, 0.6); }
+  0%, 100% { box-shadow: 0 4px 20px var(--color-primary-alpha); }
+  50% { box-shadow: 0 4px 30px var(--color-primary-alpha); }
 }
 
 .auto-controls {
@@ -282,7 +282,7 @@
   gap: 0.5rem;
   opacity: 0;
   transform: translateX(20px);
-  transition: all 0.3s ease;
+  transition: all var(--transition);
 }
 
 .auto-indicator:hover .auto-controls,
@@ -297,18 +297,18 @@
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.7);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #fff;
+  color: var(--color-surface);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   backdrop-filter: blur(10px);
-  transition: all 0.2s ease;
+  transition: all var(--transition-fast);
 }
 
 .auto-btn:hover {
-  background: rgba(99, 102, 241, 0.8);
-  border-color: #6366f1;
+  background: var(--color-primary);
+  border-color: var(--color-primary);
   transform: scale(1.1);
 }
 
@@ -329,7 +329,7 @@
   width: 48px;
   height: 48px;
   border: 3px solid rgba(255, 255, 255, 0.1);
-  border-top-color: #6366f1;
+  border-top-color: var(--color-primary);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -339,24 +339,24 @@
 }
 
 .error-icon {
-  color: #ef4444;
+  color: var(--color-danger);
 }
 
 .error-overlay p {
-  color: #fca5a5;
+  color: var(--color-danger-light-5, #fca5a5);
   font-size: 1.1rem;
 }
 
 .retry-btn {
   padding: 0.75rem 1.5rem;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
-  color: #fff;
+  background: linear-gradient(135deg, var(--color-primary), #8b5cf6);
+  color: var(--color-surface);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius);
   font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
-  transition: transform 0.2s ease;
+  transition: transform var(--transition-fast);
 }
 
 .retry-btn:hover {
@@ -390,17 +390,17 @@
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #fff;
+  color: var(--color-surface);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--transition-fast);
 }
 
 .control-btn:hover:not(:disabled) {
-  background: rgba(99, 102, 241, 0.8);
-  border-color: #6366f1;
+  background: var(--color-primary);
+  border-color: var(--color-primary);
   transform: scale(1.1);
 }
 
@@ -412,12 +412,12 @@
 .play-btn {
   width: 56px;
   height: 56px;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  background: linear-gradient(135deg, var(--color-primary), #8b5cf6);
   border-color: transparent;
 }
 
 .play-btn:hover:not(:disabled) {
-  box-shadow: 0 0 30px rgba(99, 102, 241, 0.5);
+  box-shadow: 0 0 30px var(--color-primary-alpha);
 }
 
 .speed-control,
@@ -429,22 +429,22 @@
 
 .speed-control label {
   font-size: 0.85rem;
-  color: #94a3b8;
+  color: var(--color-text-muted);
 }
 
 .speed-select {
   padding: 0.35rem 0.75rem;
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 6px;
-  color: #fff;
+  border-radius: var(--radius-sm);
+  color: var(--color-surface);
   font-size: 0.85rem;
   cursor: pointer;
 }
 
 .volume-slider {
   width: 100px;
-  accent-color: #6366f1;
+  accent-color: var(--color-primary);
 }
 
 .fullscreen-control .control-btn {
@@ -466,7 +466,7 @@
 
 .chapter-select label {
   font-size: 0.85rem;
-  color: #94a3b8;
+  color: var(--color-text-muted);
 }
 
 .chapter-select select {
@@ -475,19 +475,19 @@
   padding: 0.5rem 1rem;
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 6px;
-  color: #fff;
+  border-radius: var(--radius-sm);
+  color: var(--color-surface);
   font-size: 0.9rem;
   cursor: pointer;
 }
 
 .chapter-select select option {
   background: #0f0f23;
-  color: #fff;
+  color: var(--color-surface);
 }
 
 /* Responsive */
-@media (max-width: 768px) {
+@media (max-width: 767px) {
   .avatars-sidebar {
     width: 160px;
   }

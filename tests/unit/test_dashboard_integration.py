@@ -245,7 +245,9 @@ class TestDashboardFrontend:
     """Frontend component imports and data bindings."""
 
     def test_dashboard_vue_imports_echarts(self):
-        content = Path("web/src/views/DashboardView.vue").read_text()
+        # ECharts is lazy-loaded inside the useDashboard composable; the view
+        # delegates chart rendering to it (frontend redesign).
+        content = Path("web/src/composables/useDashboard.ts").read_text()
         assert "echarts" in content.lower()
 
     def test_dashboard_vue_has_cost_pie(self):
@@ -274,10 +276,11 @@ class TestDashboardFrontend:
 
     def test_dashboard_vue_has_project_selector(self):
         content = Path("web/src/views/DashboardView.vue").read_text()
-        assert "project-select" in content or "projectId" in content
+        assert "selectedProjectId" in content or "project-select" in content
 
     def test_dashboard_vue_imports_api_functions(self):
-        content = Path("web/src/views/DashboardView.vue").read_text()
+        # API calls moved into the useDashboard composable; the view consumes it.
+        content = Path("web/src/composables/useDashboard.ts").read_text()
         assert "fetchProjectMetrics" in content
         assert "fetchMetricsHistory" in content
 

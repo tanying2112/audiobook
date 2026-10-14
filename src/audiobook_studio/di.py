@@ -22,6 +22,25 @@ T = TypeVar("T")
 _request_container: ContextVar[Optional["DIContainer"]] = ContextVar("_request_container", default=None)
 
 
+def _interface_id(cls: Any) -> Optional[str]:
+    """Normalize an interface class to a fully-qualified identity for matching.
+
+    The test suite loads the package under both ``audiobook_studio`` and
+    ``src.audiobook_studio``, which yields two class objects with identical
+    fully-qualified names (modulo the ``src.`` prefix). Those two objects
+    represent the SAME interface, so container lookups must resolve regardless
+    of which identity performed the registration. Exact (identity) matching is
+    still tried first; this is only a fallback and is a no-op in production,
+    where the two names never coexist.
+    """
+    if not isinstance(cls, type):
+        return None
+    mod = cls.__module__ or ""
+    if mod.startswith("src."):
+        mod = mod[len("src.") :]
+    return f"{mod}.{cls.__qualname__}"
+
+
 class DIContainer:
     """Thread-safe dependency injection container with singleton and factory support.
 
@@ -78,19 +97,23 @@ class DIContainer:
         """Get an instance, creating via factory if needed."""
         # Check request-scoped override first
         request_override = _request_container.get()
-        if request_override and interface in request_override._singletons:
-            return cast(T, request_override._singletons[interface])
+        if request_override:
+            key = request_override._find_key(interface, request_override._singletons)
+            if key is not None:
+                return cast(T, request_override._singletons[key])
 
         with self._lock:
             # Check local singletons
-            if interface in self._singletons:
-                return cast(T, self._singletons[interface])
+            key = self._find_key(interface, self._singletons)
+            if key is not None:
+                return cast(T, self._singletons[key])
 
             # Check local factories
-            if interface in self._factories:
-                instance = self._factories[interface]()
-                self._singletons[interface] = instance
-                del self._factories[interface]
+            key = self._find_key(interface, self._factories)
+            if key is not None:
+                instance = self._factories[key]()
+                self._singletons[key] = instance
+                del self._factories[key]
                 return cast(T, instance)
 
         # Delegate to parent
@@ -103,6 +126,21 @@ class DIContainer:
             f"or ensure container is initialized via initialize_defaults()."
         )
 
+    def _find_key(self, interface: Type[Any], registry: Dict[Type[Any], Any]) -> Optional[Type[Any]]:
+        """Return the registered key matching ``interface`` (identity first, then FQN).
+
+        See :func:`_interface_id` for why the FQN fallback exists.
+        """
+        if interface in registry:
+            return interface
+        target = _interface_id(interface)
+        if target is None:
+            return None
+        for key in registry:
+            if _interface_id(key) == target:
+                return key
+        return None
+
     def get_or_none(self, interface: Type[T]) -> Optional[T]:
         """Get instance or return None if not registered."""
         try:
@@ -113,7 +151,10 @@ class DIContainer:
     def has(self, interface: Type[Any]) -> bool:
         """Check if interface is registered (locally or in parent)."""
         with self._lock:
-            if interface in self._singletons or interface in self._factories:
+            if (
+                self._find_key(interface, self._singletons) is not None
+                or self._find_key(interface, self._factories) is not None
+            ):
                 return True
         if self._parent:
             return self._parent.has(interface)
@@ -122,11 +163,13 @@ class DIContainer:
     def unregister(self, interface: Type[Any]) -> bool:
         """Remove a registration. Returns True if was registered."""
         with self._lock:
-            if interface in self._singletons:
-                del self._singletons[interface]
+            key = self._find_key(interface, self._singletons)
+            if key is not None:
+                del self._singletons[key]
                 return True
-            if interface in self._factories:
-                del self._factories[interface]
+            key = self._find_key(interface, self._factories)
+            if key is not None:
+                del self._factories[key]
                 return True
         return False
 

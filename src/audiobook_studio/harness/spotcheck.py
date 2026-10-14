@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -92,6 +93,34 @@ def human_preference_score_for(
         return float(default)
     mean = sum(float(r["score"]) for r in recs) / len(recs)
     return mean
+
+
+# 人工门严格模式：无抽检记录时 fail-closed（默认 false 维持既有默认策略，
+# 生产语义不变；设置 SELF_ITERATION_HUMAN_GATE_STRICT=true 即拒绝人工缺位的晋升）。
+HUMAN_GATE_STRICT_ENV = "SELF_ITERATION_HUMAN_GATE_STRICT"
+
+
+def human_gate_strict() -> bool:
+    """人工门严格模式开关（环境变量驱动，默认关闭）。"""
+    return os.getenv(HUMAN_GATE_STRICT_ENV, "false").lower() not in ("false", "0", "no")
+
+
+def resolve_human_default() -> float:
+    """人工门默认分：严格模式 0.0（fail-closed），默认策略 1.0（放行）。"""
+    return 0.0 if human_gate_strict() else 1.0
+
+
+def human_spotcheck_summary(
+    stage: str,
+    since: Optional[str] = None,
+    path: Path = SPOTCHECK_PATH,
+) -> Dict[str, Any]:
+    """人工门数据源画像：真实抽检记录数/均分 vs 默认策略（出处可审计）。"""
+    recs = load_spot_checks(stage=stage, since=since, path=path)
+    if recs:
+        mean = sum(float(r["score"]) for r in recs) / len(recs)
+        return {"n_records": len(recs), "mean": mean, "source": "records"}
+    return {"n_records": 0, "mean": None, "source": "default_policy"}
 
 
 def reset_spot_checks(path: Path = SPOTCHECK_PATH) -> None:

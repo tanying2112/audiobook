@@ -91,9 +91,9 @@ function addCharacter() {
 function editCharacter(c: Character) {
   formName.value = c.canonical_name || ''
   formVoice.value = c.suggested_voice_id || ''
-  formEmotion.value = 'neutral'
-  formPitch.value = 0
-  formSpeed.value = 1.0
+  formEmotion.value = c.emotion || 'neutral'
+  formPitch.value = c.pitch_shift_semitones ?? 0
+  formSpeed.value = c.speech_rate ?? 1.0
   editingChar.value = c
   showEditor.value = true
 }
@@ -103,6 +103,9 @@ async function saveCharacter() {
   const payload = {
     canonical_name: formName.value.trim(),
     suggested_voice_id: formVoice.value || undefined,
+    emotion: formEmotion.value || undefined,
+    speech_rate: formSpeed.value,
+    pitch_shift_semitones: formPitch.value,
   } as any
 
   try {

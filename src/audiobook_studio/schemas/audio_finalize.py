@@ -37,6 +37,18 @@ class AudioFinalizeParams(BaseModel):
     loudnorm_target_lra: LoudnormTargetLRA = Field(default=7.0, description="目标响度范围 (LU)")
     loudnorm_target_tp: LoudnormTargetTP = Field(default=-2.0, description="目标真峰值")
 
+    # 命名响度档 (2026-10-09): 设值时覆写上面三个目标;单一事实源 utils/loudness.py。
+    # audiobook = I -23 / TP -3 (EBU R128 有声书标准, 同稿原声实测 -22.7 LUFS / TP -3.8)
+    loudness_preset: Optional[Literal["audiobook", "podcast", "streaming"]] = Field(
+        default=None,
+        description="命名响度档;设值时覆写 loudnorm_target_* (None=沿用显式目标值)",
+    )
+    # 两遍线性 loudnorm: 先测量输入综合响度再 linear 纯增益, 章节级无动态响度泵动
+    loudnorm_two_pass: bool = Field(
+        default=True,
+        description="两遍线性 loudnorm;True=先 ebur128 测量, 失败自动回退单遍动态",
+    )
+
     # Fade in/out
     apply_fade: bool = Field(default=True, description="是否应用淡入淡出")
     fade_in_ms: FadeDuration = Field(default=500, description="淡入时长 (毫秒)")
@@ -79,6 +91,7 @@ class AudioFinalizeResult(BaseModel):
 
     # Processing info
     loudnorm_applied: bool = Field(default=False)
+    preset_applied: Optional[str] = Field(default=None, description="实际生效的命名响度档")
     fade_applied: bool = Field(default=False)
     sfx_applied: bool = Field(default=False)
     metadata_embedded: bool = Field(default=False)

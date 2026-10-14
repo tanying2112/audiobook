@@ -110,6 +110,8 @@ class ParagraphOut(BaseModel):
     # 人工终审覆盖：客户在合成前逐段强制指定的 voice/engine（NULL=自动决策）
     manual_voice_id: Optional[str] = None
     manual_engine: Optional[str] = None
+    # v6 逐句三轴导演：逐句韵律覆盖数组（终审面板编辑/回显）
+    sentence_overrides: Optional[list] = None
     status: str = "pending"
     content_rating: Optional[str] = None
     # Phase 5: Extended fields

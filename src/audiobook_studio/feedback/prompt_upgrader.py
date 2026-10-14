@@ -6,6 +6,7 @@ E3 — 提示词自动版本升级引擎
 """
 
 import logging
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
@@ -72,6 +73,59 @@ PATTERN_PROMPT_FIXES: Dict[str, str] = {
         "适当增加正式感，避免过于随意的表达。例如对话外的叙述部分使用标准书面语，"
         "减少'嘛'、'呗'、'啦'等语气词的过度使用。"
     ),
+    "format_issue": (
+        "注意输出格式的规范性。必须严格遵守 JSON Schema 定义，"
+        "字段名称、类型、嵌套结构完全一致。不要添加额外字段或省略必填字段。"
+    ),
+    "style_issue": (
+        "保持文本风格的统一性。同一作品内用词、语气、格式需前后一致。"
+        "避免在同一章节中混用不同风格的表达。"
+    ),
+    "emotion_mismatch": (
+        "情感标注必须与上下文情节匹配。根据剧情冲突、角色关系、事件严重性推断情感。"
+        "不要仅凭对话字面意思判断，要结合完整语境。"
+    ),
+    "pronunciation_fix": (
+        "注意生僻字、多音字的正确读音标注。使用拼音或 IPA 标注特殊读音。"
+        "人名、地名、专有名词需额外标注读音。"
+    ),
+    "quality_issue": (
+        "合成音频需满足质量基线：无削波、无异常静音、音量适中、时长匹配。"
+        "生成前检查文本长度与预估时长是否合理。"
+    ),
+    "audio_artifact": (
+        "避免音频伪影：爆音、电流声、金属音、重影。"
+        "如检测到伪影，需在 prompt 中强调清晰度优先。"
+    ),
+    "speech_rate_issue": (
+        "语速需自然适中。叙述部分约 200-240 字/分钟，对话部分根据情感调整。"
+        "避免过快导致吞字或过慢显得拖沓。"
+    ),
+    "low_quality_score": (
+        "综合质量评分偏低时，需从韵律、情感、清晰度、完整性多维度排查。"
+        "在 prompt 中增加质量自检步骤。"
+    ),
+    "background_noise": (
+        "合成音频不应包含背景噪音。如环境音需添加，请使用显式 [sfx:] 标记。"
+        "纯语音合成需保证底噪极低。"
+    ),
+    "unclear_pronunciation": (
+        "发音必须清晰可辨。多音字、歧义词需在文本预处理阶段消歧。"
+        "连读、弱读处理要符合自然语流。"
+    ),
+    "chunk_too_short": (
+        "音频片段过短会导致听感破碎。单段合成建议不少于 500 字符。"
+        "短文本需合并合成或调整分段策略。"
+    ),
+    "voice_inconsistency": (
+        "同一角色全书音色必须一致。建立角色声纹档案，合成时复用。"
+        "不同场景、情感下保持声纹核心特征不变。"
+    ),
+    "truncated_ending": (
+        "合成音频不得截断结尾。需完整播放至句号、问号、感叹号等终止符。"
+        "检测到截断时自动重试并延长最大生成长度。"
+    ),
+
 }
 
 
@@ -149,6 +203,11 @@ def _write_new_version(
 
     new_version = version + 1
     new_path = prompt_dir / f"v{new_version}.j2"
+
+    # 规范化空白：累积的模式修复块会引入 3+ 连续空行 / 末尾多空行，恰好触发
+    # 晋升门 Gate1（格式合规率）的「连续空行」「末尾空行」机械检查 ——
+    # 语义无关的排版缺陷，写入前统一收敛为最多一个空行。
+    content = re.sub(r"\n{3,}", "\n\n", content.rstrip()) + "\n"
 
     # Write the new version
     new_path.write_text(content, encoding="utf-8")
@@ -240,8 +299,25 @@ def batch_upgrade(
         if stage:
             stage_patterns.setdefault(stage, []).append(pattern)
 
+    # 反馈记录的 stage 是 pipeline 名（edit/annotate/...），stage_instructions 按它归集；
+    # stage_patterns 的键是 prompt 目录名（edit_for_tts/...）—— 反查后再取指令。
+    _prompt_dir_to_pipeline = {
+        "edit_for_tts": "edit",
+        "annotate_paragraph": "annotate",
+        "quality_judge": "quality",
+        "analyze_structure": "analyze",
+        "extract": "extract",
+        "translate": "translate",
+    }
+
     for stage, patterns in stage_patterns.items():
-        new_path = upgrade_prompt(stage, patterns)
+        instructions = (getattr(analysis_result, "stage_instructions", None) or {}).get(
+            _prompt_dir_to_pipeline.get(stage, stage), []
+        )
+        # 每轮最多 3 条 LLM 指令进入候选：prompt 无界膨胀会稀释注意力，
+        # 且 Gate3 会实证检验其净效果（劣化即拒），保持小步快跑。
+        extra = [f"{stage}: {instr}" if not instr.startswith(stage) else instr for instr in instructions[:3]]
+        new_path = upgrade_prompt(stage, patterns, additional_fixes=extra or None)
         if new_path:
             results[stage] = new_path
 
@@ -263,6 +339,10 @@ def _map_pattern_to_stage(pattern: str) -> Optional[str]:
         "sfx_wrong",
         "text_colloquial",
         "text_formal",
+        "style_issue",
+        "pronunciation_fix",
+        "speech_rate_issue",
+        "unclear_pronunciation",
     ):
         return "edit_for_tts"
     # Quality patterns
@@ -273,13 +353,21 @@ def _map_pattern_to_stage(pattern: str) -> Optional[str]:
         "duration_mismatch",
         "prosody_robotic",
         "prosody_flat",
+        "quality_issue",
+        "audio_artifact",
+        "low_quality_score",
+        "background_noise",
+        "chunk_too_short",
+        "voice_inconsistency",
+        "truncated_ending",
     ):
         return "quality_judge"
     # Structure patterns
-    if pattern in ("chapter_split_wrong", "character_missing", "summary_incomplete"):
+    if pattern in ("chapter_split_wrong", "character_missing", "summary_incomplete", "format_issue"):
         return "analyze_structure"
     # Annotation patterns
-    if pattern in ("emotion_too_mild", "emotion_too_strong", "emotion_wrong"):
+    if pattern in ("emotion_too_mild", "emotion_too_strong", "emotion_wrong", "emotion_mismatch"):
         return "annotate_paragraph"
 
     return None
+

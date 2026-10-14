@@ -452,7 +452,7 @@ class TestGoldenDatasetTtsRouting:
 
         assert isinstance(decision, TtsRoutingDecision)
         assert decision.segment_id == "test_book_ch1_p0"
-        assert decision.engine_choice in ["kokoro", "edge", "human_clone"]
+        assert decision.engine_choice in ["piper", "kokoro", "edge", "human_clone"]
         assert decision.voice_id
         assert decision.reasoning
         assert decision.estimated_cost_usd >= 0

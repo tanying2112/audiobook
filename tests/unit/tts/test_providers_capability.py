@@ -32,7 +32,7 @@ def test_license_matrix_honest():
 
 
 def test_priority_map_preserved():
-    assert pc.provider_priority_map() == {"piper": 0, "kokoro": 1, "edge_tts": 2}
+    assert pc.provider_priority_map() == {"piper": 0, "edge_tts": 1, "kokoro": 2}
 
 
 def test_select_default_no_gpu(monkeypatch):

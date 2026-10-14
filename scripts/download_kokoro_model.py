@@ -18,7 +18,6 @@ import urllib.request
 from pathlib import Path
 from typing import Optional
 
-
 # Model file definitions with SHA256 checksums from Hugging Face hexgrad/Kokoro-82M
 MODEL_FILES = [
     {
@@ -38,10 +37,10 @@ MODEL_FILES = [
 # Fallback URLs
 FALLBACK_URLS = {
     "kokoro-v1.0.onnx": [
-        "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files/kokoro-v1.0.onnx",
+        "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/kokoro-v1.0.onnx",
     ],
     "voices-v1.0.bin": [
-        "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files/voices-v1.0.bin",
+        "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/voices-v1.0.bin",
     ],
 }
 
@@ -124,7 +123,9 @@ def download_with_progress(
                         bar_length = 40
                         filled = int(bar_length * downloaded / total_size)
                         bar = "█" * filled + "░" * (bar_length - filled)
-                        sys.stdout.write(f"\r  [{bar}] {percent:.1f}% ({downloaded / 1024 / 1024:.1f}/{total_size / 1024 / 1024:.1f} MB)")
+                        sys.stdout.write(
+                            f"\r  [{bar}] {percent:.1f}% ({downloaded / 1024 / 1024:.1f}/{total_size / 1024 / 1024:.1f} MB)"
+                        )
                         sys.stdout.flush()
 
             print()  # Newline after progress bar

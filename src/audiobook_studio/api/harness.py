@@ -217,8 +217,10 @@ def get_iteration_loop(project_id: int) -> Optional[SelfIterationLoop]:
                 project_id=project_id,
                 min_feedback_count=10,
                 check_interval_seconds=300,
-                enable_auto_trigger=False,  # Don't auto-start from API
+                enable_auto_trigger=True,  # Enable auto-trigger for autonomous iteration
+                auto_deploy=True,  # Enable auto-deploy to production prompts
             )
+            loop.start()  # Start the loop for autonomous iteration
             _iteration_loops[project_id] = loop
         except Exception as e:
             logger.error(f"Failed to create SelfIterationLoop for project {project_id}: {e}")

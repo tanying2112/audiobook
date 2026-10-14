@@ -23,10 +23,11 @@ from src.audiobook_studio.audio_quality import (
 
 class _Metric:
     def __init__(
-        self, success=True, mos_ovr=None, wer=None, similarity=None, error=None, is_same_speaker=True, threshold=0.8
+        self, success=True, mos_ovr=None, mos=None, wer=None, similarity=None, error=None, is_same_speaker=True, threshold=0.8
     ):
         self.success = success
         self.mos_ovr = mos_ovr
+        self.mos = mos  # P2.13 UTMOS 轴 (生产读 result.mos)
         self.wer = wer
         self.similarity = similarity
         self.error = error
@@ -35,8 +36,9 @@ class _Metric:
 
 
 class _QCResult:
-    def __init__(self, dnsmos=None, wer=None, speaker_sim=None, passed=True, overall_message=""):
+    def __init__(self, dnsmos=None, utmos=None, wer=None, speaker_sim=None, passed=True, overall_message=""):
         self.dnsmos = dnsmos
+        self.utmos = utmos  # P2.13 加的 UTMOS 指标轴
         self.wer = wer
         self.speaker_sim = speaker_sim
         self.passed = passed
@@ -44,6 +46,9 @@ class _QCResult:
 
 
 class _Suite:
+    def __init__(self, config=None):  # 生产签名: QualityCheckSuite(config=硬件档)
+        self.config = config
+
     def check_all(self, **kwargs):
         return _fake_quality_mod._current
 
@@ -340,11 +345,13 @@ async def test_hard_metrics_quality_unavailable():
 async def test_hard_metrics_all_ran(fake_quality):
     fake_quality._current = _QCResult(
         dnsmos=_Metric(success=True, mos_ovr=4.1),
+        utmos=_Metric(success=True, mos=4.2),  # P2.13 UTMOS 轴 (全跑判定须四轴齐)
         wer=_Metric(success=True, wer=0.02),
         speaker_sim=_Metric(success=True, similarity=0.95),
     )
     res = await aq._run_hard_metrics_async(Path("/x.wav"), reference_text="hi")
     assert res["mos"] == 4.1
+    assert res["utmos"] == 4.2
     assert res["wer"] == 0.02
     assert res["voice_cosine"] == 0.95
     assert res["status"] == "all-ran"

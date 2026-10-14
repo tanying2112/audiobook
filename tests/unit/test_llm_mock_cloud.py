@@ -569,7 +569,7 @@ class TestRouterCallSuccess:
 
         return router, provider
 
-    @patch("src.audiobook_studio.llm.router.create_client")
+    @patch("src.audiobook_studio.llm.client.create_client")
     def test_call_success_returns_result(self, mock_create_client):
         """Router.call() returns LLMCallResult when provider succeeds."""
         from src.audiobook_studio.di import reset_app_container
@@ -669,7 +669,7 @@ class TestRouterCallFallback:
 
         return router, provider
 
-    @patch("src.audiobook_studio.llm.router.create_client")
+    @patch("src.audiobook_studio.llm.client.create_client")
     def test_all_providers_fail_triggers_fallback_judge(self, mock_create_client):
         """All providers fail → heuristic fallback returns QualityJudgment."""
         from src.audiobook_studio.di import reset_app_container
@@ -695,7 +695,7 @@ class TestRouterCallFallback:
         assert result.schema_compliance is False
         reset_app_container()
 
-    @patch("src.audiobook_studio.llm.router.create_client")
+    @patch("src.audiobook_studio.llm.client.create_client")
     def test_all_providers_fail_fallback_annotate(self, mock_create_client):
         """All providers fail → heuristic fallback returns ParagraphAnnotation."""
         from src.audiobook_studio.di import reset_app_container
@@ -718,7 +718,7 @@ class TestRouterCallFallback:
         assert result.model == "heuristic_fallback"
         reset_app_container()
 
-    @patch("src.audiobook_studio.llm.router.create_client")
+    @patch("src.audiobook_studio.llm.client.create_client")
     def test_all_providers_fail_fallback_edit(self, mock_create_client):
         """All providers fail → heuristic fallback returns TtsEditOutput."""
         from src.audiobook_studio.di import reset_app_container
@@ -741,7 +741,7 @@ class TestRouterCallFallback:
         assert result.model == "heuristic_fallback"
         reset_app_container()
 
-    @patch("src.audiobook_studio.llm.router.create_client")
+    @patch("src.audiobook_studio.llm.client.create_client")
     def test_all_providers_fail_fallback_analyze(self, mock_create_client):
         """All providers fail → heuristic fallback returns BookAnalysisOutput."""
         from src.audiobook_studio.di import reset_app_container
@@ -764,7 +764,7 @@ class TestRouterCallFallback:
         assert result.model == "heuristic_fallback"
         reset_app_container()
 
-    @patch("src.audiobook_studio.llm.router.create_client")
+    @patch("src.audiobook_studio.llm.client.create_client")
     def test_all_providers_fail_fallback_unknown_stage(self, mock_create_client):
         """All providers fail + no segment_id → heuristic fallback uses 'unknown'."""
         from src.audiobook_studio.di import reset_app_container
@@ -836,7 +836,7 @@ class TestRouterCallCircuitBreaker:
             router = LLMRouter(mock_mode=False)
         return router, provider
 
-    @patch("src.audiobook_studio.llm.router.create_client")
+    @patch("src.audiobook_studio.llm.client.create_client")
     def test_provider_failure_records_circuit_breaker(self, mock_create_client):
         """When provider fails, circuit breaker records the failure."""
         from src.audiobook_studio.di import reset_app_container
@@ -875,7 +875,7 @@ class TestRouterCallCircuitBreaker:
         assert cb.failure_count > initial_count
         reset_app_container()
 
-    @patch("src.audiobook_studio.llm.router.create_client")
+    @patch("src.audiobook_studio.llm.client.create_client")
     def test_provider_failure_records_quota(self, mock_create_client):
         """When provider fails, quota registry records the failure."""
         from src.audiobook_studio.di import reset_app_container

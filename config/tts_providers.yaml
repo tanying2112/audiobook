@@ -1,11 +1,15 @@
 # TTS Provider Registry (S2-4, extended P0)
 #
-# Piper is the preferred LOCAL engine (priority 0). Kokoro is the fallback
-# local engine (priority 1). Edge-TTS (free cloud) is the last-resort fallback
-# (priority 2). Lower priority number == higher precedence.
+# Priority ordering by language (lower number = higher priority):
+# - Chinese: Piper (0) > Kokoro (1) > Edge (2)
+# - English: Edge (0) > Kokoro (1) > Piper (2) — Edge TTS has superior English neural voices
 #
 # P0 capability model: each provider now also declares `capabilities`
 # (cloning / emotion / languages / min_compute) and `license` (P2.11 honesty).
+# 升级点 #2: providers 另声明 `local` (true=本地离线引擎) —
+# select_engine(prefer_local=True) 在有本地引擎可服务目标语言时仅选本地
+# 引擎 (piper/kokoro); 云端 edge 仅在显式 prefer_local=False 或无本地匹配时用
+# (edge 免费端点在本环境 403 不可达, 若不区分本地/云端, 英文书合成整体失败)。
 # `select_engine()` in providers_config.py uses these to pick an engine by what
 # it can actually do and whether the host can run it (CPU vs GPU).
 #
@@ -20,7 +24,14 @@ providers:
   - name: piper
     engine: piper
     priority: 0
+    # Language-specific priority overrides (lower = higher priority)
+    # English: 2 (Piper English voices are lower quality than Edge)
+    # Chinese: 0 (Piper has excellent Chinese voices)
+    priority_by_lang:
+      en: 2
+      zh: 0
     enabled: true
+    local: true                    # 本地离线引擎 (升级点 #2)
     default_voice: zh_CN-huayan-medium
     auto_download: true          # fetch zh_CN-huayan-medium.onnx on first use
     model_dir: models/piper
@@ -36,26 +47,19 @@ providers:
       name: "Piper (MIT/Apache; some voices CC-BY)"
       verified_at: "2025-01-01"
 
-  - name: kokoro
-    engine: kokoro
-    priority: 1
-    enabled: true
-    # Fallback local engine (already bundled via model_downloader P0-2).
-    capabilities:
-      cloning: false
-      emotion: false
-      languages: [zh, en]
-      min_compute: cpu
-    license:
-      commercial_use: true
-      name: "Kokoro-82M Apache-2.0"
-      verified_at: "2025-01-01"
-
   - name: edge_tts
     engine: edge_tts
-    priority: 2
+    priority: 1
+    # Language-specific priority overrides
+    # English: 0 (Edge has superior English neural voices: Aria, Jenny, Guy)
+    # Chinese: 1 (Edge Chinese voices are good but Piper is preferred for local)
+    priority_by_lang:
+      en: 0
+      zh: 1
     enabled: true
-    # Free Microsoft cloud TTS; used only when no local engine is available.
+    local: false                   # 云端引擎 (升级点 #2)
+    # Free Microsoft cloud TTS with excellent English neural voices.
+    # Preferred for English content (priority 1 for en, 2 for zh).
     capabilities:
       cloning: false
       emotion: false
@@ -67,3 +71,26 @@ providers:
       commercial_use: null
       name: "Edge-TTS (Microsoft cloud, ToS-restricted)"
       verified_at: null
+
+  - name: kokoro
+    engine: kokoro
+    priority: 2
+    # Language-specific priority overrides
+    # English: 1 (Kokoro has decent English voices)
+    # Chinese: 2 (Kokoro Chinese is fallback to Piper)
+    priority_by_lang:
+      en: 1
+      zh: 2
+    enabled: true
+    local: true                    # 本地离线引擎 (升级点 #2)
+    # Fallback local engine (already bundled via model_downloader P0-2).
+    # Good for Chinese, acceptable fallback for English.
+    capabilities:
+      cloning: false
+      emotion: false
+      languages: [zh, en]
+      min_compute: cpu
+    license:
+      commercial_use: true
+      name: "Kokoro-82M Apache-2.0"
+      verified_at: "2025-01-01"

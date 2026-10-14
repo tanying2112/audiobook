@@ -1,85 +1,96 @@
 <template>
-  <div class="admin-view">
-    <h1>{{ t('admin.title') }}</h1>
+  <div class="admin-view page-container">
+    <div class="page-header">
+      <h1>{{ t('admin.title') }}</h1>
+    </div>
 
-    <el-card class="section" v-loading="loadingUsers">
-      <template #header>
-        <div class="card-header">
-          <span>{{ t('admin.users') }}</span>
-          <el-button size="small" @click="loadUsers">{{ t('common.refresh') }}</el-button>
-        </div>
-      </template>
-      <el-table :data="users" stripe>
-        <el-table-column prop="id" label="ID" width="70" />
-        <el-table-column prop="username" :label="t('admin.username')" />
-        <el-table-column prop="email" :label="t('admin.email')" />
-        <el-table-column :label="t('admin.roles')">
-          <template #default="{ row }">
-            <el-tag
-              v-for="role in row.roles || []"
-              :key="role"
-              size="small"
-              closable
-              class="role-tag"
-              @close="onRevokeRole(row, role)"
-            >{{ role }}</el-tag>
-            <el-dropdown trigger="click" @command="(r: string) => onAssignRole(row, r)">
-              <el-button size="small" text type="primary">+ {{ t('admin.assignRole') }}</el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item
-                    v-for="role in availableRoles(row)"
-                    :key="role"
-                    :command="role"
-                  >{{ role }}</el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
-          </template>
-        </el-table-column>
-        <el-table-column :label="t('admin.active')" width="110">
-          <template #default="{ row }">
-            <el-switch
-              :model-value="row.is_active"
-              @change="(v: boolean) => onToggleActive(row, v)"
-            />
-          </template>
-        </el-table-column>
-        <el-table-column :label="t('common.actions')" width="120">
-          <template #default="{ row }">
-            <el-popconfirm :title="t('admin.deleteConfirm')" @confirm="onDelete(row)">
-              <template #reference>
-                <el-button size="small" type="danger" text>{{ t('common.delete') }}</el-button>
-              </template>
-            </el-popconfirm>
-          </template>
-        </el-table-column>
-      </el-table>
-      <el-alert
-        v-if="usersError"
-        :title="usersError"
-        type="error"
-        :closable="false"
-        class="mt"
-      />
-    </el-card>
+    <div class="card section" v-loading="loadingUsers">
+      <div class="card-header">
+        <span class="card-title">{{ t('admin.users') }}</span>
+        <button class="btn btn-outline btn-sm" @click="loadUsers" :aria-label="t('common.refresh')">{{ t('common.refresh') }}</button>
+      </div>
+      <div class="table-responsive">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>{{ t('admin.username') }}</th>
+              <th>{{ t('admin.email') }}</th>
+              <th>{{ t('admin.roles') }}</th>
+              <th>{{ t('admin.active') }}</th>
+              <th>{{ t('common.actions') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="user in users" :key="user.id">
+              <td>{{ user.id }}</td>
+              <td>{{ user.username }}</td>
+              <td>{{ user.email }}</td>
+              <td class="roles-cell">
+                <span
+                  v-for="role in user.roles || []"
+                  :key="role"
+                  class="badge badge-info role-tag"
+                >
+                  {{ role }}
+                  <button
+                    class="badge-dismiss"
+                    @click="onRevokeRole(user, role)"
+                    :aria-label="`Remove role ${role}`"
+                  >&times;</button>
+                </span>
+                <el-dropdown trigger="click" @command="(r: string) => onAssignRole(user, r)">
+                  <button class="btn btn-ghost btn-sm">+ {{ t('admin.assignRole') }}</button>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item
+                        v-for="role in availableRoles(user)"
+                        :key="role"
+                        :command="role"
+                      >{{ role }}</el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
+              </td>
+              <td>
+                <el-switch
+                  :model-value="user.is_active"
+                  @change="(v: boolean) => onToggleActive(user, v)"
+                />
+              </td>
+              <td>
+                <el-popconfirm :title="t('admin.deleteConfirm')" @confirm="onDelete(user)">
+                  <template #reference>
+                    <button class="btn btn-ghost btn-sm text-danger">{{ t('common.delete') }}</button>
+                  </template>
+                </el-popconfirm>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div v-if="usersError" class="alert alert-error mt-4">
+        {{ usersError }}
+      </div>
+    </div>
 
-    <el-card class="section">
-      <template #header>
-        <div class="card-header">
-          <span>{{ t('admin.systemConfig') }}</span>
-          <el-button size="small" type="warning" :loading="reloading" @click="onReloadConfig">
-            {{ t('admin.reloadConfig') }}
-          </el-button>
-        </div>
-      </template>
+    <div class="card section">
+      <div class="card-header">
+        <span class="card-title">{{ t('admin.systemConfig') }}</span>
+        <button class="btn btn-outline btn-sm" :disabled="reloading" @click="onReloadConfig" :aria-label="t('admin.reloadConfig')">
+          <span v-if="reloading" class="spinner"></span>
+          {{ t('admin.reloadConfig') }}
+        </button>
+      </div>
       <el-descriptions v-if="configStatus" :column="2" border size="small">
         <el-descriptions-item v-for="(v, k) in configStatus" :key="k" :label="String(k)">
           {{ typeof v === 'object' ? JSON.stringify(v) : String(v) }}
         </el-descriptions-item>
       </el-descriptions>
-      <el-empty v-else :description="t('admin.noConfigInfo')" />
-    </el-card>
+      <div v-else class="empty-state">
+        <p>{{ t('admin.noConfigInfo') }}</p>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -190,22 +201,55 @@ onMounted(async () => {
 
 <style scoped>
 .admin-view {
-  padding: 24px;
-  max-width: 1200px;
-  margin: 0 auto;
+  /* max-width & margin handled by .page-container */
 }
-.section {
-  margin-bottom: 24px;
-}
+
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 16px;
 }
+
+.roles-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
 .role-tag {
-  margin-right: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
-.mt {
-  margin-top: 12px;
+
+.badge-dismiss {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+  opacity: 0.6;
+  transition: opacity var(--transition-fast);
+}
+
+.badge-dismiss:hover {
+  opacity: 1;
+}
+
+@media (max-width: 767px) {
+  .card-header {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+
+  .roles-cell {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 </style>

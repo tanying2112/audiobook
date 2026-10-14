@@ -23,6 +23,8 @@ jinja2>=3.1.0,<4.0
 pdfplumber>=0.10.0
 pymupdf>=1.23.0
 ebooklib>=0.18
+beautifulsoup4>=4.12
+mutagen>=1.47
 python-docx>=1.1.0
 pillow>=10.0.0
 # OCR for scanned-image / image-only PDFs (P1.8). pytesseract is a thin wrapper

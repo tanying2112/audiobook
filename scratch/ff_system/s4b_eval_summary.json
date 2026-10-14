@@ -1,0 +1,28 @@
+{
+  "system_run_b": {
+    "file": "/Users/guwj/Documents/audiobook/output/football_forever_ch1/system_run_b/football_forever_ch1_final.mp3",
+    "duration_s": 430.7,
+    "wpm_overall": 100.3,
+    "wpm_phonation": 137.6,
+    "n_pauses": 114,
+    "pause_budget_s": 116.8,
+    "pause_median_s": 1.03,
+    "pause_p90_s": 1.7,
+    "pause_max_s": 2.2,
+    "lufs_i": -23.8,
+    "true_peak_dbfs": -3.4,
+    "utmos_chunked": 4.072,
+    "wer_vs_gold": {
+      "wer": 0.2978,
+      "errors": 277,
+      "ref_words": 930,
+      "hyp_words": 749
+    },
+    "wer_vs_synth_input": {
+      "wer": 0.1014,
+      "errors": 73,
+      "ref_words": 720,
+      "hyp_words": 749
+    }
+  }
+}

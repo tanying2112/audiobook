@@ -779,24 +779,28 @@ def test_synthesize_stage_persist(patch_persistence, monkeypatch) -> None:
 # ── QualityStage ───────────────────────────────────────────────────────────
 
 
+def _fake_quality_db() -> MagicMock:
+    """Sync ``db`` that resolves ``FakeParagraph.audio_segment_id`` to a real audio file.
+
+    ``QualityStage.run`` only reaches the real ``QualityCheckPipeline`` path when
+    ``audio_path`` is non-empty; without a ``db`` the segment lookup returns ``None``
+    and the stage honestly skips (``skipped_no_audio``) instead of judging.
+    """
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = MagicMock(file_path="/tmp/audio.wav")
+    return db
+
+
 def test_quality_stage_run(patch_pipelines, monkeypatch) -> None:
     monkeypatch.setattr(sr, "QualityCheckPipeline", lambda: FakeQualityPipeline(results=[MagicMock()]))
-    ParagraphAnnotation(
-        paragraph_index=1,
-        speaker_canonical_name="_narrator_",
-        is_dialogue=False,
-        emotion="neutral",
-        emotion_intensity=0.5,
-        confidence=0.9,
-    )
-    res = asyncio.run(QualityStage().run(paragraph=FakeParagraph()))
+    res = asyncio.run(QualityStage().run(paragraph=FakeParagraph(), db=_fake_quality_db()))
     assert res is not None
 
 
 def test_quality_stage_run_empty(patch_pipelines, monkeypatch) -> None:
     # empty results list -> run returns None
     monkeypatch.setattr(sr, "QualityCheckPipeline", lambda: FakeQualityPipeline(results=[]))
-    res = asyncio.run(QualityStage().run(paragraph=FakeParagraph()))
+    res = asyncio.run(QualityStage().run(paragraph=FakeParagraph(), db=_fake_quality_db()))
     assert res is None
 
 

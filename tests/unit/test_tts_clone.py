@@ -132,7 +132,9 @@ def test_voice_cloner_init():
 
 def test_voice_cloner_init_unavailable():
     """Test VoiceCloner initialization when model is not available."""
-    with patch("audiobook_studio.tts.clone.is_kokoro_available", return_value=False):
+    # The engine gates _model_ready on check_kokoro_model_availability (disk
+    # presence), not is_kokoro_available (the cached boolean).
+    with patch("audiobook_studio.tts.clone.check_kokoro_model_availability", return_value=False):
         # VoiceCloner doesn't raise error on init, but model_ready will be False
         cloner = VoiceCloner()
         assert cloner is not None

@@ -1,0 +1,954 @@
+{
+  "book": {
+    "book_meta": {
+      "title": "Football Forever",
+      "author": "Oxford Dominoes Level 1 graded reader (football story, Brazil)",
+      "genre": "小说",
+      "difficulty": "A",
+      "language": "en",
+      "era": "现代",
+      "total_chapters_estimated": 8,
+      "contract_version": 1
+    },
+    "character_voice_map": [
+      {
+        "canonical_name": "Tinino",
+        "aliases": [
+          "Albertino"
+        ],
+        "gender": "male",
+        "age_range": "young",
+        "suggested_voice_id": "en-US-ChristopherNeural",
+        "sample_quote": "I'm only sixteen, but I live football. In the day I play football, at night I sleep football. I eat and drink football. The beautiful game.",
+        "contract_version": 1
+      },
+      {
+        "canonical_name": "Coach Zangado",
+        "aliases": [
+          "Zangado",
+          "the coach"
+        ],
+        "gender": "male",
+        "age_range": "elderly",
+        "suggested_voice_id": "en-US-GuyNeural",
+        "sample_quote": "It's the last game of the year. We need to win to get the cup. Bad, very bad.",
+        "contract_version": 1
+      },
+      {
+        "canonical_name": "Junior",
+        "aliases": [],
+        "gender": "male",
+        "age_range": "young",
+        "suggested_voice_id": "en-US-EricNeural",
+        "sample_quote": "He's nineteen and comes from my hometown. He's a good player and my best friend.",
+        "contract_version": 1
+      },
+      {
+        "canonical_name": "Lenda",
+        "aliases": [
+          "the captain"
+        ],
+        "gender": "male",
+        "age_range": "adult",
+        "suggested_voice_id": "en-US-RogerNeural",
+        "sample_quote": "He's thirty and he comes from Sao Paulo. He's the captain of Stars and a very good player. He played for the Brazilian team when he was younger.",
+        "contract_version": 1
+      },
+      {
+        "canonical_name": "Narrator",
+        "aliases": [
+          "Tinino (narrator)"
+        ],
+        "gender": "male",
+        "age_range": "young",
+        "suggested_voice_id": "en-US-ChristopherNeural",
+        "sample_quote": "We is Stars, my new football team, and I'm Albertino, or Tinino to my friends.",
+        "contract_version": 1
+      }
+    ],
+    "emotion_snapshot": {
+      "chapter": 1,
+      "dominant_emotion": "tense",
+      "intensity": 0.7,
+      "notes": "球队落后两球，更衣室气氛压抑，教练愤怒斥责，主角紧张又兴奋等待上场机会",
+      "contract_version": 1
+    },
+    "story_line_summary": "十六岁的巴西少年Tinino（Albertino）加入Stars足球队参加赛季决赛。上半场球队0-2落后，教练Zangado在中场休息时愤怒斥责队员并决定换人。Tinino作为替补前锋获得首次登场机会，尽管队长Lenda对这名新人存疑，但Tinino凭借速度和技术准备在下半场扭转战局。故事聚焦于年轻球员的成长、团队逆境求生以及巴西足球文化的传承。",
+    "global_style_notes": "第一人称青少年视角叙述，语言简洁明了，符合分级读物Level 1水平。对话多为短句，口语化强。需体现巴西足球术语（futsal等）和葡萄牙语词汇（Zangado）。叙述语调需兼具青少年的激动、紧张与对足球的纯真热爱。教练语调严厉有力，队长Lenda语调成熟稳重带审视感。",
+    "scene_tags": [
+      "更衣室",
+      "足球场",
+      "中场休息",
+      "球迷看台",
+      "绿茵场"
+    ]
+  },
+  "records": [
+    {
+      "idx": 0,
+      "source_text": "Chapter one: Halftime. Bad, very bad. The coach says angrily, \"It's the last game of the year. We need to win to get the cup.\" We is Stars, my new football team, and I'm Albertino, or Tinino to my friends. Our team are losing two-zero to Stripes. They've got some good players and are playing well, but I know we can play better. \"Bad, very bad,\" the coach says again. They call him Zangado, angry in Portuguese. He looks around the changing room. His hair is white, his face is red. \"We must win this game. Do you want to win the cup or not?\" We want to win, but nobody answers. The players are looking down, all but three of us.",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 0,
+        "text": "",
+        "speaker_canonical_name": "Narrator",
+        "is_dialogue": false,
+        "emotion": "tense",
+        "emotion_intensity": 0.7,
+        "confidence": 0.95,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "开篇章节标题与旁白叙述混合，确立紧张的中场休息氛围，引入主角Tinino视角",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "Chapter one: Halftime. Bad, very bad. The coach says angrily, \"It's the last game of the year. We need to win to get the cup.\" We is Stars, my new football team, and I'm Albertino, or Tinino to my friends. Our team are losing two-zero to Stripes. They've got some good players and are playing well, but I know we can play better. \"Bad, very bad,\" the coach says again. They call him Zangado, angry in Portuguese. He looks around the changing room. His hair is white, his face is red. \"We must win this game. Do you want to win the cup or not?\" We want to win, but nobody answers. The players are looking down, all but three of us.",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "Chapter one: Halftime. Bad, very bad. The coach says angrily, \"It's the last game of the year. We need to win to get the cup.\" We is Stars, my new football team, and I'm Albertino, or Tinino to my friends. Our team are losing two-zero to Stripes. They've got some good players and are playing well, but I know we can play better. \"Bad, very bad,\" the coach says again. They call him Zangado, angry in Portuguese. He looks around the changing room. His hair is white, his face is red. \"We must win this game. Do you want to win the cup or not?\" We want to win, but nobody answers. The players are looking down, all but three of us.",
+      "sentences": [
+        "Chapter one: Halftime.",
+        "Bad, very bad.",
+        "The coach says angrily, \"It's the last game of the year.",
+        "We need to win to get the cup.\"",
+        "We is Stars, my new football team, and I'm Albertino, or Tinino to my friends.",
+        "Our team are losing two-zero to Stripes.",
+        "They've got some good players and are playing well, but I know we can play better.",
+        "\"Bad, very bad,\" the coach says again.",
+        "They call him Zangado, angry in Portuguese.",
+        "He looks around the changing room.",
+        "His hair is white, his face is red.",
+        "\"We must win this game.",
+        "Do you want to win the cup or not?\"",
+        "We want to win, but nobody answers.",
+        "The players are looking down, all but three of us."
+      ],
+      "director": {
+        "sentence_overrides": [
+          {
+            "idx": 0,
+            "voice_id": null,
+            "speed": null,
+            "pitch_st": null,
+            "gain_db": null,
+            "pause_after_ms": null,
+            "pause_category": "paragraph"
+          },
+          {
+            "idx": 1,
+            "voice_id": null,
+            "speed": 0.8,
+            "pitch_st": null,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 2,
+            "voice_id": "am_fenrir",
+            "speed": 0.95,
+            "pitch_st": -1.0,
+            "gain_db": 2.0,
+            "pause_after_ms": null,
+            "pause_category": null
+          },
+          {
+            "idx": 3,
+            "voice_id": "am_fenrir",
+            "speed": 0.95,
+            "pitch_st": -1.0,
+            "gain_db": 2.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 7,
+            "voice_id": "am_fenrir",
+            "speed": 0.95,
+            "pitch_st": -1.0,
+            "gain_db": 2.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 11,
+            "voice_id": "am_fenrir",
+            "speed": 0.95,
+            "pitch_st": -1.0,
+            "gain_db": 2.0,
+            "pause_after_ms": null,
+            "pause_category": null
+          },
+          {
+            "idx": 12,
+            "voice_id": "am_fenrir",
+            "speed": 0.95,
+            "pitch_st": -1.0,
+            "gain_db": 2.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          }
+        ],
+        "rationale": "Chapter title (idx 0) gets a paragraph pause for structural clarity. The opening 'Bad, very bad.' (idx 1) is the emotional hook — slowed to 0.8× with +1.5 dB and a dramatic pause to establish tension. Coach Zangado's angry dialogue (idx 2, 3, 7, 11, 12) switches to am_fenrir (deeper, authoritative male voice from available list) with slightly faster-than-baseline speed (0.95×), +2 dB gain, and -1 semitone pitch for gravitas; dramatic pauses after his key pronouncements (idx 3, 7, 12) let the weight land. Narrative sentences (idx 4-6, 8-10, 13-14) remain at paragraph defaults — restraint principle. No extreme speeds (>1.05) per Level A constraint.",
+        "confidence": 0.92
+      },
+      "ok": true
+    },
+    {
+      "idx": 1,
+      "source_text": "The first is my friend Junior. He's nineteen and comes from my hometown. He's a good player and my best friend. I like him a lot. I remember we played futsal when we were children. Futsal is football with only five players in the team. It's a fast game. The second is Lenda. He's thirty and he comes from Sao Paulo. He's the captain of Stars and a very good player. He played for the Brazilian team when he was younger. I saw him play and I had a picture of him in my bedroom, but he doesn't like me because I'm new and very young. The third is me, Tinino. I'm only sixteen, but I live football. In the day I play football, at night I sleep football. I eat and drink football. The beautiful game. Stars is my first big team and I'm very happy to be here. I know I'm young, but it doesn't matter. I've got two quick feet. I'm not tall, but I'm very fast and stronger than other boys of sixteen. I can play for... I didn't play in the first half. I waited and watched, but I could do nothing. Of course we went one-zero down after ten minutes, then two-zero down five minutes before halftime.",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 1,
+        "text": "The first is my friend Junior. He's nineteen and comes from my hometown. He's a good player and my best friend. I like him a lot. I remember we played futsal when we were children. Futsal is football with only five players in the team. It's a fast game. The second is Lenda. He's thirty and he comes from Sao Paulo. He's the captain of Stars and a very good player. He played for the Brazilian team when he was younger. I saw him play and I had a picture of him in my bedroom, but he doesn't like me because I'm new and very young. The third is me, Tinino. I'm only sixteen, but I live football. In the day I play football, at night I sleep football. I eat and drink football. The beautiful game. Stars is my first big team and I'm very happy to be here. I know I'm young, but it doesn't matter. I've got two quick feet. I'm not tall, but I'm very fast and stronger than other boys of sixteen. I can play for... I didn't play in the first half. I waited and watched, but I could do nothing. Of course we went one-zero down after ten minutes, then two-zero down five minutes before halftime.",
+        "speaker_canonical_name": "Tinino",
+        "is_dialogue": false,
+        "emotion": "contemplative",
+        "emotion_intensity": 0.6,
+        "confidence": 0.9,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "主角 Tinino 以第一人称回忆队友 Junior 和队长 Lenda，并自我介绍，语调平静回忆中带对足球的热爱，属于叙述性独白。",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "The first is my friend Junior. He's nineteen and comes from my hometown. He's a good player and my best friend. I like him a lot. I remember we played futsal when we were children. Futsal is football with only five players in the team. It's a fast game. The second is Lenda. He's thirty and he comes from Sao Paulo. He's the captain of Stars and a very good player. He played for the Brazilian team when he was younger. I saw him play and I had a picture of him in my bedroom, but he doesn't like me because I'm new and very young. The third is me, Tinino. I'm only sixteen, but I live football. In the day I play football, at night I sleep football. I eat and drink football. The beautiful game. Stars is my first big team and I'm very happy to be here. I know I'm young, but it doesn't matter. I've got two quick feet. I'm not tall, but I'm very fast and stronger than other boys of sixteen. I can play for... I didn't play in the first half. I waited and watched, but I could do nothing. Of course we went one-zero down after ten minutes, then two-zero down five minutes before halftime.",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "The first is my friend Junior. He's nineteen and comes from my hometown. He's a good player and my best friend. I like him a lot. I remember we played futsal when we were children. Futsal is football with only five players in the team. It's a fast game. The second is Lenda. He's thirty and he comes from Sao Paulo. He's the captain of Stars and a very good player. He played for the Brazilian team when he was younger. I saw him play and I had a picture of him in my bedroom, but he doesn't like me because I'm new and very young. The third is me, Tinino. I'm only sixteen, but I live football. In the day I play football, at night I sleep football. I eat and drink football. The beautiful game. Stars is my first big team and I'm very happy to be here. I know I'm young, but it doesn't matter. I've got two quick feet. I'm not tall, but I'm very fast and stronger than other boys of sixteen. I can play for... I didn't play in the first half. I waited and watched, but I could do nothing. Of course we went one-zero down after ten minutes, then two-zero down five minutes before halftime.",
+      "sentences": [
+        "The first is my friend Junior.",
+        "He's nineteen and comes from my hometown.",
+        "He's a good player and my best friend.",
+        "I like him a lot.",
+        "I remember we played futsal when we were children.",
+        "Futsal is football with only five players in the team.",
+        "It's a fast game.",
+        "The second is Lenda.",
+        "He's thirty and he comes from Sao Paulo.",
+        "He's the captain of Stars and a very good player.",
+        "He played for the Brazilian team when he was younger.",
+        "I saw him play and I had a picture of him in my bedroom, but he doesn't like me because I'm new and very young.",
+        "The third is me, Tinino.",
+        "I'm only sixteen, but I live football.",
+        "In the day I play football, at night I sleep football.",
+        "I eat and drink football.",
+        "The beautiful game.",
+        "Stars is my first big team and I'm very happy to be here.",
+        "I know I'm young, but it doesn't matter.",
+        "I've got two quick feet.",
+        "I'm not tall, but I'm very fast and stronger than other boys of sixteen.",
+        "I can play for...",
+        "I didn't play in the first half.",
+        "I waited and watched, but I could do nothing.",
+        "Of course we went one-zero down after ten minutes, then two-zero down five minutes before halftime."
+      ],
+      "director": {
+        "sentence_overrides": [
+          {
+            "idx": 11,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": -1.0,
+            "gain_db": -1.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 13,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": -1.0,
+            "gain_db": -1.5,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 14,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": -1.0,
+            "gain_db": -1.5,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 15,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": -1.0,
+            "gain_db": -1.5,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 16,
+            "voice_id": null,
+            "speed": 0.8,
+            "pitch_st": -1.0,
+            "gain_db": -2.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 21,
+            "voice_id": null,
+            "speed": 0.75,
+            "pitch_st": -2.0,
+            "gain_db": -2.5,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 22,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": -1.0,
+            "gain_db": -1.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 23,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": -1.0,
+            "gain_db": -1.0,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 24,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": -1.0,
+            "gain_db": -1.0,
+            "pause_after_ms": null,
+            "pause_category": "paragraph"
+          }
+        ],
+        "rationale": "The passage is a first-person contemplative monologue by Tinino (A-level graded reader, baseline speed ~0.85). Most sentences are plain narration and need no override. Key interventions: (1) Sentence 11 — emotional pivot where Tinino reveals Lenda's dislike; slower, softer, lower pitch with a dramatic pause to let the hurt land. (2) Sentences 13-16 — the 'live/sleep/eat football' internal-monologue cluster; progressively quieter and slower, clause pauses for breath-like rhythm, culminating in a dramatic pause after 'The beautiful game.' (3) Sentence 21 — trailing ellipsis ('I can play for...') marks a hesitant, vulnerable moment; slowest speed, lowest gain/pitch, dramatic pause. (4) Sentences 22-24 — match-memory recollection stays contemplative but slightly more present; clause pause at 23, paragraph close at 24. No voice_id changes (single speaker, no dialogue). All values respect A-level ceiling (speed ≤ 1.05) and parameter bounds.",
+        "confidence": 0.92
+      },
+      "ok": true
+    },
+    {
+      "idx": 2,
+      "source_text": "\"Ouch. Okay,\" the coach says suddenly. \"I want much more from all of you in the second half. We must play better, so I'm going to make some changes now.\" All the players look up. \"You and you,\" the coach says to two players. \"You worked well, but I'm making two changes. Nacano, are you ready?\" he asks a different player. \"Yes, coach,\" says Nacano. \"Okay, you're on then.\" He looks around... next player. Then he looks back. \"Tinino, are you ready?\" \"Who, me?\" I ask. \"Up front with...\" and gives... Lenda looks at me, but he doesn't smile. He's thinking, \"Who is this boy? How good is he? Can he help us win?\" I can't answer these questions, but I feel very happy and excited. Shirt number 22 with Tinino in big black letters on the back. On the front is a big star. I pull up my right sock, then my left. In my left sock there is something for good luck.",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 2,
+        "text": "\"Ouch. Okay,\" the coach says suddenly. \"I want much more from all of you in the second half. We must play better, so I'm going to make some changes now.\" All the players look up. \"You and you,\" the coach says to two players. \"You worked well, but I'm making two changes. Nacano, are you ready?\" he asks a different player. \"Yes, coach,\" says Nacano. \"Okay, you're on then.\" He looks around... next player. Then he looks back. \"Tinino, are you ready?\" \"Who, me?\" I ask. \"Up front with...\" and gives... Lenda looks at me, but he doesn't smile. He's thinking, \"Who is this boy? How good is he? Can he help us win?\" I can't answer these questions, but I feel very happy and excited. Shirt number 22 with Tinino in big black letters on the back. On the front is a big star. I pull up my right sock, then my left. In my left sock there is something for good luck.",
+        "speaker_canonical_name": "Narrator",
+        "is_dialogue": false,
+        "emotion": "tense",
+        "emotion_intensity": 0.7,
+        "confidence": 0.9,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "第一人称叙述，描写中场休息时教练换人、主角紧张兴奋等待上场、队长审视新人的心理活动，符合章节压抑又期待的基调",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "\"Ouch. Okay,\" the coach says suddenly. \"I want much more from all of you in the second half. We must play better, so I'm going to make some changes now.\" All the players look up. \"You and you,\" the coach says to two players. \"You worked well, but I'm making two changes. Nacano, are you ready?\" he asks a different player. \"Yes, coach,\" says Nacano. \"Okay, you're on then.\" He looks around... next player. Then he looks back. \"Tinino, are you ready?\" \"Who, me?\" I ask. \"Up front with...\" and gives... Lenda looks at me, but he doesn't smile. He's thinking, \"Who is this boy? How good is he? Can he help us win?\" I can't answer these questions, but I feel very happy and excited. Shirt number 22 with Tinino in big black letters on the back. On the front is a big star. I pull up my right sock, then my left. In my left sock there is something for good luck.",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "\"Ouch. Okay,\" the coach says suddenly. \"I want much more from all of you in the second half. We must play better, so I'm going to make some changes now.\" All the players look up. \"You and you,\" the coach says to two players. \"You worked well, but I'm making two changes. Nacano, are you ready?\" he asks a different player. \"Yes, coach,\" says Nacano. \"Okay, you're on then.\" He looks around... next player. Then he looks back. \"Tinino, are you ready?\" \"Who, me?\" I ask. \"Up front with...\" and gives... Lenda looks at me, but he doesn't smile. He's thinking, \"Who is this boy? How good is he? Can he help us win?\" I can't answer these questions, but I feel very happy and excited. Shirt number 22 with Tinino in big black letters on the back. On the front is a big star. I pull up my right sock, then my left. In my left sock there is something for good luck.",
+      "sentences": [
+        "\"Ouch.",
+        "Okay,\" the coach says suddenly.",
+        "\"I want much more from all of you in the second half.",
+        "We must play better, so I'm going to make some changes now.\"",
+        "All the players look up.",
+        "\"You and you,\" the coach says to two players.",
+        "\"You worked well, but I'm making two changes.",
+        "Nacano, are you ready?\"",
+        "he asks a different player.",
+        "\"Yes, coach,\" says Nacano.",
+        "\"Okay, you're on then.\"",
+        "He looks around...",
+        "next player.",
+        "Then he looks back.",
+        "\"Tinino, are you ready?\"",
+        "\"Who, me?\"",
+        "I ask.",
+        "\"Up front with...\"",
+        "and gives...",
+        "Lenda looks at me, but he doesn't smile.",
+        "He's thinking, \"Who is this boy?",
+        "How good is he?",
+        "Can he help us win?\"",
+        "I can't answer these questions, but I feel very happy and excited.",
+        "Shirt number 22 with Tinino in big black letters on the back.",
+        "On the front is a big star.",
+        "I pull up my right sock, then my left.",
+        "In my left sock there is something for good luck."
+      ],
+      "director": {
+        "sentence_overrides": [
+          {
+            "idx": 0,
+            "voice_id": null,
+            "speed": null,
+            "pitch_st": null,
+            "gain_db": null,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 1,
+            "voice_id": null,
+            "speed": 1.05,
+            "pitch_st": null,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 2,
+            "voice_id": null,
+            "speed": 1.05,
+            "pitch_st": null,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 3,
+            "voice_id": null,
+            "speed": 1.05,
+            "pitch_st": null,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "paragraph"
+          },
+          {
+            "idx": 5,
+            "voice_id": null,
+            "speed": 1.05,
+            "pitch_st": null,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 6,
+            "voice_id": null,
+            "speed": 1.05,
+            "pitch_st": null,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 7,
+            "voice_id": null,
+            "speed": 1.05,
+            "pitch_st": null,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 9,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": -1.0,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 10,
+            "voice_id": null,
+            "speed": 1.05,
+            "pitch_st": null,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 11,
+            "voice_id": null,
+            "speed": null,
+            "pitch_st": null,
+            "gain_db": null,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 13,
+            "voice_id": null,
+            "speed": null,
+            "pitch_st": null,
+            "gain_db": null,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 14,
+            "voice_id": null,
+            "speed": 1.05,
+            "pitch_st": null,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 15,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": 1.0,
+            "gain_db": -1.0,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 19,
+            "voice_id": null,
+            "speed": null,
+            "pitch_st": null,
+            "gain_db": null,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 20,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": -2.0,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 21,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": -2.0,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 22,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": -2.0,
+            "pause_after_ms": null,
+            "pause_category": "paragraph"
+          },
+          {
+            "idx": 23,
+            "voice_id": null,
+            "speed": 1.05,
+            "pitch_st": 1.0,
+            "gain_db": 1.0,
+            "pause_after_ms": null,
+            "pause_category": "paragraph"
+          },
+          {
+            "idx": 27,
+            "voice_id": null,
+            "speed": null,
+            "pitch_st": null,
+            "gain_db": null,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          }
+        ],
+        "rationale": "段落整体为紧张感(tense, 强度0.7)的足球场景，基线语速建议0.85(A级分级读物)。教练对白(句1-3,5-7,10,14)采用威严/宣告风格：speed 1.05, gain_db +1.5, 句间用clause停顿控制节奏，关键转折处用paragraph/dramatic停顿。Nacano回应(句9)胆怯/低语：speed 0.85, gain_db -1.0。主角内心独白(句20-22)内心独白风格：speed 0.85, gain_db -2.0。主角兴奋独白(句23)兴奋/惊喜：speed 1.05, gain_db +1.0, pitch_st +1。关键动作/心理转折点(句0,11,13,19,27)使用dramatic停顿增强张力。全段单一叙述人视角，不涉及voice_id切换。",
+        "confidence": 0.9
+      },
+      "ok": true
+    },
+    {
+      "idx": 3,
+      "source_text": "\"Star to play futsal here, Tinino,\" says coach in the changing room. \"Isn't... but we've got 45 minutes. Can one player... He's a big man and he can stop a... He only one team's... Stand and think. Play feet and when you can... Brazilian football, it's easy.\" The players are looking at coach. \"He's right,\" says Lenda. \"The game isn't finished. We can do it. But do you want to win?\" asks the coach. Some of the players say... \"I can't hear you,\" says the coach. \"You want this...\" This time all of the players shout. \"And can you do it?\" asks the coach. \"Yes!\" shout the players. \"Come on, we can do it!\" the captain shouts. \"Okay, let's go.\" We all walk out of the changing room. I've got butterflies in me, but I feel good. Butterflies are okay in my first big game. The fans shout when we run onto the pitch. The noise is amazing. The pitch is very green and it suddenly feels very, very big. I look around. There are thousands and thousands of fans. Some in white shirts, some in red shirts. White is our color. Red is the color of Stripes. They're all watching the game and watching me. \"Come on, Tinino,\" I say quietly. \"I know I can do it.\"",
+      "annotation": {
+        "paragraph_id": null,
+        "chapter_id": null,
+        "paragraph_index": 3,
+        "text": "",
+        "speaker_canonical_name": "Narrator",
+        "is_dialogue": false,
+        "emotion": "tense",
+        "emotion_intensity": 0.7,
+        "confidence": 0.9,
+        "difficulty": "A",
+        "content_rating": "大众",
+        "notes": "第一人称青少年视角叙述，包含教练、队长、主角的对话混合段落，主角内心独白体现紧张与兴奋交织的心理状态",
+        "contract_version": 2,
+        "speech_rate": null,
+        "pitch_shift_semitones": null,
+        "needs_sfx": null,
+        "sfx_tags": null,
+        "pause_before_ms": null,
+        "pause_after_ms": null,
+        "tts_edit_history": null,
+        "quality_records": null,
+        "routing_decision": null,
+        "annotations_full": null
+      },
+      "edit": {
+        "edited_text": "\"Star to play futsal here, Tinino,\" says coach in the changing room. \"Isn't... but we've got 45 minutes. Can one player... He's a big man and he can stop a... He only one team's... Stand and think. Play feet and when you can... Brazilian football, it's easy.\" The players are looking at coach. \"He's right,\" says Lenda. \"The game isn't finished. We can do it. But do you want to win?\" asks the coach. Some of the players say... \"I can't hear you,\" says the coach. \"You want this...\" This time all of the players shout. \"And can you do it?\" asks the coach. \"Yes!\" shout the players. \"Come on, we can do it!\" the captain shouts. \"Okay, let's go.\" We all walk out of the changing room. I've got butterflies in me, but I feel good. Butterflies are okay in my first big game. The fans shout when we run onto the pitch. The noise is amazing. The pitch is very green and it suddenly feels very, very big. I look around. There are thousands and thousands of fans. Some in white shirts, some in red shirts. White is our color. Red is the color of Stripes. They're all watching the game and watching me. \"Come on, Tinino,\" I say quietly. \"I know I can do it.\"",
+        "changes_made": [
+          "difficulty_A_or_forbid_edit_preserved_original"
+        ],
+        "forbidden_content_removed": [],
+        "confidence": 1.0,
+        "rationale": "Difficulty A or forbid_edit=true: preserved original text per hard rule",
+        "difficulty": "B",
+        "forbid_edit": false
+      },
+      "synth_text": "\"Star to play futsal here, Tinino,\" says coach in the changing room. \"Isn't... but we've got 45 minutes. Can one player... He's a big man and he can stop a... He only one team's... Stand and think. Play feet and when you can... Brazilian football, it's easy.\" The players are looking at coach. \"He's right,\" says Lenda. \"The game isn't finished. We can do it. But do you want to win?\" asks the coach. Some of the players say... \"I can't hear you,\" says the coach. \"You want this...\" This time all of the players shout. \"And can you do it?\" asks the coach. \"Yes!\" shout the players. \"Come on, we can do it!\" the captain shouts. \"Okay, let's go.\" We all walk out of the changing room. I've got butterflies in me, but I feel good. Butterflies are okay in my first big game. The fans shout when we run onto the pitch. The noise is amazing. The pitch is very green and it suddenly feels very, very big. I look around. There are thousands and thousands of fans. Some in white shirts, some in red shirts. White is our color. Red is the color of Stripes. They're all watching the game and watching me. \"Come on, Tinino,\" I say quietly. \"I know I can do it.\"",
+      "sentences": [
+        "\"Star to play futsal here, Tinino,\" says coach in the changing room.",
+        "\"Isn't...",
+        "but we've got 45 minutes.",
+        "Can one player...",
+        "He's a big man and he can stop a...",
+        "He only one team's...",
+        "Stand and think.",
+        "Play feet and when you can...",
+        "Brazilian football, it's easy.\"",
+        "The players are looking at coach.",
+        "\"He's right,\" says Lenda.",
+        "\"The game isn't finished.",
+        "We can do it.",
+        "But do you want to win?\"",
+        "asks the coach.",
+        "Some of the players say...",
+        "\"I can't hear you,\" says the coach.",
+        "\"You want this...\"",
+        "This time all of the players shout.",
+        "\"And can you do it?\"",
+        "asks the coach.",
+        "\"Yes!\"",
+        "shout the players.",
+        "\"Come on, we can do it!\"",
+        "the captain shouts.",
+        "\"Okay, let's go.\"",
+        "We all walk out of the changing room.",
+        "I've got butterflies in me, but I feel good.",
+        "Butterflies are okay in my first big game.",
+        "The fans shout when we run onto the pitch.",
+        "The noise is amazing.",
+        "The pitch is very green and it suddenly feels very, very big.",
+        "I look around.",
+        "There are thousands and thousands of fans.",
+        "Some in white shirts, some in red shirts.",
+        "White is our color.",
+        "Red is the color of Stripes.",
+        "They're all watching the game and watching me.",
+        "\"Come on, Tinino,\" I say quietly.",
+        "\"I know I can do it.\""
+      ],
+      "director": {
+        "sentence_overrides": [
+          {
+            "idx": 0,
+            "voice_id": "am_onyx",
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 1,
+            "voice_id": "am_onyx",
+            "speed": 0.8,
+            "pitch_st": null,
+            "gain_db": null,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 2,
+            "voice_id": "am_onyx",
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": null,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 3,
+            "voice_id": "am_onyx",
+            "speed": 0.8,
+            "pitch_st": null,
+            "gain_db": null,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 4,
+            "voice_id": "am_onyx",
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": null,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 5,
+            "voice_id": "am_onyx",
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": null,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 6,
+            "voice_id": "am_onyx",
+            "speed": 0.8,
+            "pitch_st": null,
+            "gain_db": 1.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 7,
+            "voice_id": "am_onyx",
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": null,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 8,
+            "voice_id": "am_onyx",
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": null,
+            "pause_after_ms": null,
+            "pause_category": "paragraph"
+          },
+          {
+            "idx": 10,
+            "voice_id": "af_bella",
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": -0.5,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 11,
+            "voice_id": "af_bella",
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": null,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 12,
+            "voice_id": "af_bella",
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": 1.0,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 13,
+            "voice_id": "am_onyx",
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 16,
+            "voice_id": "am_onyx",
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": 2.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 17,
+            "voice_id": "am_onyx",
+            "speed": 0.8,
+            "pitch_st": null,
+            "gain_db": 1.5,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 19,
+            "voice_id": "am_onyx",
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": 2.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 21,
+            "voice_id": null,
+            "speed": 0.9,
+            "pitch_st": null,
+            "gain_db": 2.5,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 23,
+            "voice_id": "am_michael",
+            "speed": 0.9,
+            "pitch_st": null,
+            "gain_db": 2.0,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 25,
+            "voice_id": "am_onyx",
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": 1.0,
+            "pause_after_ms": null,
+            "pause_category": "paragraph"
+          },
+          {
+            "idx": 27,
+            "voice_id": null,
+            "speed": 0.8,
+            "pitch_st": -1.0,
+            "gain_db": -1.5,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 28,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": -1.0,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 30,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": null,
+            "gain_db": 1.0,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 31,
+            "voice_id": null,
+            "speed": 0.8,
+            "pitch_st": null,
+            "gain_db": -0.5,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 33,
+            "voice_id": null,
+            "speed": 0.8,
+            "pitch_st": null,
+            "gain_db": 0.5,
+            "pause_after_ms": null,
+            "pause_category": "clause"
+          },
+          {
+            "idx": 37,
+            "voice_id": null,
+            "speed": 0.8,
+            "pitch_st": null,
+            "gain_db": 0.5,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 38,
+            "voice_id": null,
+            "speed": 0.75,
+            "pitch_st": -1.0,
+            "gain_db": -2.5,
+            "pause_after_ms": null,
+            "pause_category": "dramatic"
+          },
+          {
+            "idx": 39,
+            "voice_id": null,
+            "speed": 0.85,
+            "pitch_st": -1.0,
+            "gain_db": -1.0,
+            "pause_after_ms": null,
+            "pause_category": "paragraph"
+          }
+        ],
+        "rationale": "段落核心张力在于更衣室战术布置与赛前紧张感的交织。教练(am_onyx)需展现威严与紧迫感，通过稍快语速(0.8-0.85)、提升响度(+1.5~+2.0dB)与戏剧性停顿传达指令力度；Lenda(af_bella)以柔和音色、微降响度(-0.5dB)形成性别/角色反差；队长(am_michael)用中性男声、高响度(+2.0dB)引领士气；旁白保持基线音色(en-US-ChristopherNeural)但关键心理刻画句(27,28,38,39)降速至0.75-0.8、降响度(-1.0~-2.5dB)、降音高(-1半音)并配合戏剧性停顿，渲染'蝴蝶在飞'的内心独白张力。集体呐喊句(21,22)不换声、仅提升响度与语速表现群体爆发。全段严守A级难度慢速基线，最高语速不超0.9。",
+        "confidence": 0.92
+      },
+      "ok": true
+    }
+  ]
+}

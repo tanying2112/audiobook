@@ -1,7 +1,5 @@
 <script setup lang="ts">
-import './ProviderManager.css'
 import { useProviderManager } from '../composables/useProviderManager'
-import type { ProviderOut } from '../api/provider_router'
 
 const {
   t,
@@ -27,194 +25,302 @@ const {
 } = useProviderManager()
 </script>
 
-
 <template>
-  <div class="provider-manager">
-    <div class="breadcrumb">
-      <span>{{ t('common.home') }}</span>
-      <span class="sep">/</span>
-      <span>{{ t('nav.provider_management') }}</span>
-    </div>
-
+  <div class="page-container provider-manager">
     <div class="page-header">
       <div>
         <h1>{{ t('provider_manager.title') }}</h1>
-        <p class="subtitle">{{ t('provider_manager.subtitle') }}</p>
+        <p class="page-subtitle">{{ t('provider_manager.subtitle') }}</p>
       </div>
       <div class="header-actions">
-        <el-button type="primary" @click="openCreateProvider">
+        <button class="btn btn-primary btn-sm" @click="openCreateProvider">
           {{ t('provider_manager.add_provider') }}
-        </el-button>
-        <el-button @click="onReload" :title="t('provider_manager.reload_help')">
+        </button>
+        <button class="btn btn-outline btn-sm" @click="onReload" :aria-label="t('provider_manager.reload_help')">
           {{ t('provider_manager.reload') }}
-        </el-button>
+        </button>
       </div>
     </div>
 
-    <div v-if="loading" class="loading">{{ t('provider_manager.loading') }}</div>
+    <div v-if="loading" class="loading-state">
+      <div class="spinner"></div>
+      <span>{{ t('provider_manager.loading') }}</span>
+    </div>
 
-    <div v-else class="layout">
+    <div v-else class="provider-layout">
       <!-- Provider table -->
       <div class="card">
         <div class="card-title">{{ t('provider_manager.provider_list') }} ({{ providers.length }})</div>
-        <el-table
-          v-if="providers.length"
-          :data="providers"
-          highlight-current-row
-          @current-change="(row: ProviderOut | null) => row && selectProvider(row)"
-        >
-          <el-table-column prop="name" :label="t('provider_manager.name')" min-width="120" />
-          <el-table-column prop="display_name" :label="t('provider_manager.display_name')" min-width="120">
-            <template #default="{ row }">{{ row.display_name || '-' }}</template>
-          </el-table-column>
-          <el-table-column prop="provider_type" :label="t('provider_manager.provider_type')" min-width="140" />
-          <el-table-column :label="t('provider_manager.status_enabled')" width="110">
-            <template #default="{ row }">
-              <el-tag :type="row.is_enabled ? 'success' : 'info'" size="small">
-                {{ row.is_enabled ? t('provider_manager.status_enabled') : t('provider_manager.status_disabled') }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="sort_priority" :label="t('provider_manager.sort_priority')" width="110" />
-          <el-table-column :label="t('provider_manager.actions')" width="160">
-            <template #default="{ row }">
-              <el-button size="small" @click="openEditProvider(row)">
-                {{ t('provider_manager.edit_provider') }}
-              </el-button>
-              <el-button size="small" type="danger" plain @click="removeProvider(row)">
-                {{ t('common.delete') }}
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-        <div v-else class="empty">{{ t('provider_manager.no_providers') }}</div>
+        <div class="table-responsive">
+          <table class="table" v-if="providers.length">
+            <thead>
+              <tr>
+                <th>{{ t('provider_manager.name') }}</th>
+                <th>{{ t('provider_manager.display_name') }}</th>
+                <th>{{ t('provider_manager.provider_type') }}</th>
+                <th>{{ t('provider_manager.status_enabled') }}</th>
+                <th>{{ t('provider_manager.sort_priority') }}</th>
+                <th>{{ t('provider_manager.actions') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="row in providers"
+                :key="row.id"
+                :class="{ 'row-selected': selectedProvider?.id === row.id }"
+                @click="selectProvider(row)"
+                role="button"
+                tabindex="0"
+                @keydown.enter="selectProvider(row)"
+              >
+                <td class="cell-name">{{ row.name }}</td>
+                <td>{{ row.display_name || '—' }}</td>
+                <td><span class="badge badge-muted">{{ row.provider_type }}</span></td>
+                <td>
+                  <span class="badge" :class="row.is_enabled ? 'badge-success' : 'badge-muted'">
+                    {{ row.is_enabled ? t('provider_manager.status_enabled') : t('provider_manager.status_disabled') }}
+                  </span>
+                </td>
+                <td>{{ row.sort_priority }}</td>
+                <td class="cell-actions">
+                  <button class="btn btn-sm btn-ghost" @click.stop="openEditProvider(row)" :aria-label="t('provider_manager.edit_provider')">
+                    {{ t('provider_manager.edit_provider') }}
+                  </button>
+                  <button class="btn btn-sm btn-ghost btn-danger-text" @click.stop="removeProvider(row)" :aria-label="t('common.delete')">
+                    {{ t('common.delete') }}
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div v-else class="empty-state">{{ t('provider_manager.no_providers') }}</div>
+        </div>
       </div>
 
       <!-- Model table -->
       <div class="card" v-if="selectedProvider">
         <div class="card-title">
-          {{ t('provider_manager.model_list') }} ({{ models.length }})
-          <el-button size="small" type="primary" @click="openCreateModel">
+          <span>{{ t('provider_manager.model_list') }} ({{ models.length }})</span>
+          <button class="btn btn-primary btn-sm" @click="openCreateModel">
             {{ t('provider_manager.add_model') }}
-          </el-button>
+          </button>
         </div>
-        <el-table v-if="models.length" :data="models" v-loading="modelLoading">
-          <el-table-column prop="name" :label="t('provider_manager.model_name')" min-width="120" />
-          <el-table-column prop="model_id" :label="t('provider_manager.model_id')" min-width="120">
-            <template #default="{ row }">{{ row.model_id || '-' }}</template>
-          </el-table-column>
-          <el-table-column prop="version" :label="t('provider_manager.version')" min-width="100">
-            <template #default="{ row }">{{ row.version || '-' }}</template>
-          </el-table-column>
-          <el-table-column prop="context_window" :label="t('provider_manager.context_window')" width="140" />
-          <el-table-column :label="t('provider_manager.status_enabled')" width="110">
-            <template #default="{ row }">
-              <el-tag :type="row.is_enabled ? 'success' : 'info'" size="small">
-                {{ row.is_enabled ? t('provider_manager.status_enabled') : t('provider_manager.status_disabled') }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column :label="t('provider_manager.actions')" width="160">
-            <template #default="{ row }">
-              <el-button size="small" @click="openEditModel(row)">
-                {{ t('provider_manager.edit_model') }}
-              </el-button>
-              <el-button size="small" type="danger" plain @click="removeModel(row)">
-                {{ t('common.delete') }}
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-        <div v-else class="empty">{{ t('provider_manager.select_provider_hint') }}</div>
+        <div class="table-responsive">
+          <table class="table" v-if="models.length">
+            <thead>
+              <tr>
+                <th>{{ t('provider_manager.model_name') }}</th>
+                <th>{{ t('provider_manager.model_id') }}</th>
+                <th>{{ t('provider_manager.version') }}</th>
+                <th>{{ t('provider_manager.context_window') }}</th>
+                <th>{{ t('provider_manager.status_enabled') }}</th>
+                <th>{{ t('provider_manager.actions') }}</th>
+              </tr>
+            </thead>
+            <tbody v-loading="modelLoading">
+              <tr v-for="row in models" :key="row.id">
+                <td class="cell-name">{{ row.name }}</td>
+                <td>{{ row.model_id || '—' }}</td>
+                <td>{{ row.version || '—' }}</td>
+                <td>{{ row.context_window }}</td>
+                <td>
+                  <span class="badge" :class="row.is_enabled ? 'badge-success' : 'badge-muted'">
+                    {{ row.is_enabled ? t('provider_manager.status_enabled') : t('provider_manager.status_disabled') }}
+                  </span>
+                </td>
+                <td class="cell-actions">
+                  <button class="btn btn-sm btn-ghost" @click="openEditModel(row)" :aria-label="t('provider_manager.edit_model')">
+                    {{ t('provider_manager.edit_model') }}
+                  </button>
+                  <button class="btn btn-sm btn-ghost btn-danger-text" @click="removeModel(row)" :aria-label="t('common.delete')">
+                    {{ t('common.delete') }}
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div v-else class="empty-state">{{ t('provider_manager.select_provider_hint') }}</div>
+        </div>
       </div>
     </div>
 
     <!-- Provider dialog -->
-    <el-dialog
-      v-model="providerDialog.visible"
-      :title="providerDialog.editing ? t('provider_manager.edit_provider') : t('provider_manager.add_provider')"
-      width="560px"
-    >
-      <el-form label-position="top">
-        <el-form-item :label="t('provider_manager.name') + ' *'">
-          <el-input v-model="providerDialog.form.name" />
-        </el-form-item>
-        <el-form-item :label="t('provider_manager.display_name')">
-          <el-input v-model="providerDialog.form.display_name" />
-        </el-form-item>
-        <el-form-item :label="t('provider_manager.provider_type')">
-          <el-select v-model="providerDialog.form.provider_type" style="width: 100%">
-            <el-option v-for="t2 in PROVIDER_TYPES" :key="t2" :label="t2" :value="t2" />
-          </el-select>
-        </el-form-item>
-        <el-form-item :label="t('provider_manager.api_base')">
-          <el-input v-model="providerDialog.form.api_base" placeholder="https://api.openai.com/v1" />
-        </el-form-item>
-        <el-form-item :label="t('provider_manager.api_key')">
-          <el-input v-model="providerDialog.form.api_key" type="password" show-password />
-        </el-form-item>
-        <el-form-item :label="t('provider_manager.auth_type')">
-          <el-select v-model="providerDialog.form.auth_type" style="width: 100%">
-            <el-option v-for="a in AUTH_TYPES" :key="a" :label="a" :value="a" />
-          </el-select>
-        </el-form-item>
-        <el-form-item :label="t('provider_manager.default_model')">
-          <el-input v-model="providerDialog.form.default_model" />
-        </el-form-item>
-        <el-form-item :label="t('provider_manager.max_tokens')">
-          <el-input-number v-model="providerDialog.form.max_tokens" :min="1" style="width: 100%" />
-        </el-form-item>
-        <el-form-item :label="t('provider_manager.temperature')">
-          <el-input-number v-model="providerDialog.form.temperature" :min="0" :max="2" :step="0.01" style="width: 100%" />
-        </el-form-item>
-        <el-form-item :label="t('provider_manager.sort_priority')">
-          <el-input-number v-model="providerDialog.form.sort_priority" style="width: 100%" />
-        </el-form-item>
-        <el-form-item :label="t('provider_manager.is_enabled')">
-          <el-switch v-model="providerDialog.form.is_enabled" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="providerDialog.visible = false">{{ t('provider_manager.cancel') }}</el-button>
-        <el-button type="primary" :loading="providerDialog.saving" @click="saveProvider">
-          {{ t('provider_manager.save') }}
-        </el-button>
-      </template>
-    </el-dialog>
+    <div v-if="providerDialog.visible" class="dialog-overlay" @click.self="providerDialog.visible = false">
+      <div class="dialog" role="dialog" aria-modal="true" :aria-label="providerDialog.editing ? t('provider_manager.edit_provider') : t('provider_manager.add_provider')">
+        <div class="dialog-header">
+          <h2>{{ providerDialog.editing ? t('provider_manager.edit_provider') : t('provider_manager.add_provider') }}</h2>
+          <button class="dialog-close" @click="providerDialog.visible = false" aria-label="Close">&times;</button>
+        </div>
+        <div class="dialog-body">
+          <div class="form-group">
+            <label>{{ t('provider_manager.name') }} *</label>
+            <input v-model="providerDialog.form.name" class="form-control" />
+          </div>
+          <div class="form-group">
+            <label>{{ t('provider_manager.display_name') }}</label>
+            <input v-model="providerDialog.form.display_name" class="form-control" />
+          </div>
+          <div class="form-group">
+            <label>{{ t('provider_manager.provider_type') }}</label>
+            <select v-model="providerDialog.form.provider_type" class="form-control">
+              <option v-for="t2 in PROVIDER_TYPES" :key="t2" :value="t2">{{ t2 }}</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>{{ t('provider_manager.api_base') }}</label>
+            <input v-model="providerDialog.form.api_base" class="form-control" placeholder="https://api.openai.com/v1" />
+          </div>
+          <div class="form-group">
+            <label>{{ t('provider_manager.api_key') }}</label>
+            <input v-model="providerDialog.form.api_key" type="password" class="form-control" />
+          </div>
+          <div class="form-group">
+            <label>{{ t('provider_manager.auth_type') }}</label>
+            <select v-model="providerDialog.form.auth_type" class="form-control">
+              <option v-for="a in AUTH_TYPES" :key="a" :value="a">{{ a }}</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>{{ t('provider_manager.default_model') }}</label>
+            <input v-model="providerDialog.form.default_model" class="form-control" />
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>{{ t('provider_manager.max_tokens') }}</label>
+              <input v-model.number="providerDialog.form.max_tokens" type="number" min="1" class="form-control" />
+            </div>
+            <div class="form-group">
+              <label>{{ t('provider_manager.temperature') }}</label>
+              <input v-model.number="providerDialog.form.temperature" type="number" min="0" max="2" step="0.01" class="form-control" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>{{ t('provider_manager.sort_priority') }}</label>
+              <input v-model.number="providerDialog.form.sort_priority" type="number" class="form-control" />
+            </div>
+            <div class="form-group form-group-switch">
+              <label>{{ t('provider_manager.is_enabled') }}</label>
+              <label class="toggle" :class="{ on: providerDialog.form.is_enabled }" role="switch" :aria-checked="providerDialog.form.is_enabled" tabindex="0" @click="providerDialog.form.is_enabled = !providerDialog.form.is_enabled" @keydown.space.prevent="providerDialog.form.is_enabled = !providerDialog.form.is_enabled">
+                <span class="toggle-knob"></span>
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="dialog-footer">
+          <button class="btn btn-outline btn-sm" @click="providerDialog.visible = false">{{ t('provider_manager.cancel') }}</button>
+          <button class="btn btn-primary btn-sm" :disabled="providerDialog.saving" @click="saveProvider">
+            <span v-if="providerDialog.saving" class="spinner"></span>
+            {{ t('provider_manager.save') }}
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- Model dialog -->
-    <el-dialog
-      v-model="modelDialog.visible"
-      :title="modelDialog.editing ? t('provider_manager.edit_model') : t('provider_manager.add_model')"
-      width="520px"
-    >
-      <el-form label-position="top">
-        <el-form-item :label="t('provider_manager.model_name') + ' *'">
-          <el-input v-model="modelDialog.form.name" />
-        </el-form-item>
-        <el-form-item :label="t('provider_manager.model_id')">
-          <el-input v-model="modelDialog.form.model_id" placeholder="gpt-4o" />
-        </el-form-item>
-        <el-form-item :label="t('provider_manager.version')">
-          <el-input v-model="modelDialog.form.version" />
-        </el-form-item>
-        <el-form-item :label="t('provider_manager.context_window')">
-          <el-input-number v-model="modelDialog.form.context_window" :min="1" style="width: 100%" />
-        </el-form-item>
-        <el-form-item :label="t('provider_manager.sort_priority')">
-          <el-input-number v-model="modelDialog.form.sort_priority" style="width: 100%" />
-        </el-form-item>
-        <el-form-item :label="t('provider_manager.is_enabled')">
-          <el-switch v-model="modelDialog.form.is_enabled" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="modelDialog.visible = false">{{ t('provider_manager.cancel') }}</el-button>
-        <el-button type="primary" :loading="modelDialog.saving" @click="saveModel">
-          {{ t('provider_manager.save') }}
-        </el-button>
-      </template>
-    </el-dialog>
+    <div v-if="modelDialog.visible" class="dialog-overlay" @click.self="modelDialog.visible = false">
+      <div class="dialog" role="dialog" aria-modal="true" :aria-label="modelDialog.editing ? t('provider_manager.edit_model') : t('provider_manager.add_model')">
+        <div class="dialog-header">
+          <h2>{{ modelDialog.editing ? t('provider_manager.edit_model') : t('provider_manager.add_model') }}</h2>
+          <button class="dialog-close" @click="modelDialog.visible = false" aria-label="Close">&times;</button>
+        </div>
+        <div class="dialog-body">
+          <div class="form-group">
+            <label>{{ t('provider_manager.model_name') }} *</label>
+            <input v-model="modelDialog.form.name" class="form-control" />
+          </div>
+          <div class="form-group">
+            <label>{{ t('provider_manager.model_id') }}</label>
+            <input v-model="modelDialog.form.model_id" class="form-control" placeholder="gpt-4o" />
+          </div>
+          <div class="form-group">
+            <label>{{ t('provider_manager.version') }}</label>
+            <input v-model="modelDialog.form.version" class="form-control" />
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>{{ t('provider_manager.context_window') }}</label>
+              <input v-model.number="modelDialog.form.context_window" type="number" min="1" class="form-control" />
+            </div>
+            <div class="form-group">
+              <label>{{ t('provider_manager.sort_priority') }}</label>
+              <input v-model.number="modelDialog.form.sort_priority" type="number" class="form-control" />
+            </div>
+          </div>
+          <div class="form-group form-group-switch">
+            <label>{{ t('provider_manager.is_enabled') }}</label>
+            <label class="toggle" :class="{ on: modelDialog.form.is_enabled }" role="switch" :aria-checked="modelDialog.form.is_enabled" tabindex="0" @click="modelDialog.form.is_enabled = !modelDialog.form.is_enabled" @keydown.space.prevent="modelDialog.form.is_enabled = !modelDialog.form.is_enabled">
+              <span class="toggle-knob"></span>
+            </label>
+          </div>
+        </div>
+        <div class="dialog-footer">
+          <button class="btn btn-outline btn-sm" @click="modelDialog.visible = false">{{ t('provider_manager.cancel') }}</button>
+          <button class="btn btn-primary btn-sm" :disabled="modelDialog.saving" @click="saveModel">
+            <span v-if="modelDialog.saving" class="spinner"></span>
+            {{ t('provider_manager.save') }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
+<style scoped>
+.provider-layout { display: flex; flex-direction: column; gap: 16px; }
+
+/* Table enhancements */
+.row-selected { background: var(--color-primary-soft); }
+.cell-name { font-weight: 500; }
+.cell-actions { display: flex; gap: 4px; flex-wrap: wrap; }
+.btn-danger-text { color: var(--color-danger); }
+.btn-danger-text:hover { background: var(--color-danger-soft); }
+
+/* Form row for side-by-side fields */
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+/* Toggle switch */
+.form-group-switch { display: flex; flex-direction: column; gap: 6px; justify-content: flex-start; }
+.toggle {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  background: var(--color-border-strong);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  flex-shrink: 0;
+}
+.toggle.on { background: var(--color-primary); }
+.toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: var(--shadow-xs);
+  transition: transform var(--transition-fast);
+}
+.toggle.on .toggle-knob { transform: translateX(20px); }
+
+/* Dialog */
+.dialog-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px; }
+.dialog { background: var(--color-surface); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); width: 100%; max-width: 560px; max-height: calc(100vh - 32px); overflow-y: auto; }
+.dialog-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--color-border); }
+.dialog-header h2 { margin: 0; font-size: 17px; font-weight: 600; }
+.dialog-close { background: none; border: none; font-size: 22px; color: var(--color-text-muted); cursor: pointer; padding: 0 4px; line-height: 1; }
+.dialog-close:hover { color: var(--color-text); }
+.dialog-body { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+.dialog-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--color-border); }
+
+@media (max-width: 767px) {
+  .page-header { flex-direction: column; align-items: stretch; }
+  .header-actions { justify-content: flex-end; }
+  .form-row { grid-template-columns: 1fr; }
+  .dialog { margin: 0; border-radius: var(--radius); }
+  .cell-actions { flex-direction: column; }
+}
+</style>
