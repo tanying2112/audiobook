@@ -1630,8 +1630,9 @@ class SynthesizePipeline:
             # Define retry callback for quality failures
             async def retry_callback(seg_id: str, attempt: int) -> Optional[Path]:
                 """Re-synthesize a failed segment."""
-                # Find the original input for this segment
-                seg_input = next((inp for inp in inputs if f"_p{inp.paragraph_index}" in seg_id), None)
+                # Find the original input for this segment — 按尾部段落号精确匹配
+                # (历史子串 bug 见 _match_retry_input docstring)。
+                seg_input = _match_retry_input(inputs, seg_id)
                 if seg_input is None:
                     logger.warning(f"No input found for segment {seg_id}")
                     return None
@@ -2521,6 +2522,26 @@ def build_routing_input(
         sentence_overrides=(getattr(para, "sentence_overrides", None) if para else None),
         contract_version=1,
     )
+
+
+def _match_retry_input(
+    inputs: List["TtsRoutingInput"], seg_id: str
+) -> Optional["TtsRoutingInput"]:
+    """质检重试回调用：按 seg_id 尾部段落号精确匹配原输入。
+
+    历史教训（2026-10-13 Run B 全书实证）：旧实现用子串包含判断
+    ``f"_p{idx}" in seg_id``——seg_id "stockholm_ch6_p10" 会命中 "_p1"，
+    导致 p10-p19 段的质检重试拿到 p1 的输入（p20-p29 拿到 p2 的，依此
+    类推）。重试产物是错误文本的音频，而质检复检只验音质不验文本
+    （reference_texts 未传 → WER 诚实跳过），错误内容于是通过复检被
+    换进对应槽位：全书 21/33 章出现大段重复朗读（ch6 p10_retry 即 p1
+    的音频，时长 19285ms 与 p1 一字不差）。必须按尾部段落号精确匹配。
+    """
+    m = re.search(r"_p(\d+)$", seg_id)
+    if not m:
+        return None
+    idx = int(m.group(1))
+    return next((inp for inp in inputs if inp.paragraph_index == idx), None)
 
 
 def synthesize_paragraphs(
