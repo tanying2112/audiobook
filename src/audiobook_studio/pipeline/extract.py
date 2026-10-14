@@ -343,8 +343,15 @@ class ExtractPipeline:
         }
         try:
             book = epub.read_epub(file_path)
+            # ebooklib 的 item.get_type() 返回整型枚举 (ITEM_DOCUMENT=9)，不是
+            # media-type 字符串——只按字符串匹配会让真实 EPUB 提取恒为空文本
+            # （此前单测 mock 了字符串返回值，掩盖了这一点）。字符串匹配保留给
+            # 兼容替身，真实路径按枚举/实例判断。
+            from ebooklib import ITEM_DOCUMENT
+
             for item in book.get_items():
-                if item.get_type() in DOCUMENT_TYPES:
+                item_type = item.get_type()
+                if item_type in DOCUMENT_TYPES or item_type == ITEM_DOCUMENT or isinstance(item, epub.EpubHtml):
                     from bs4 import BeautifulSoup
 
                     soup = BeautifulSoup(item.get_content(), "html.parser")
